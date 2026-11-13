@@ -16,36 +16,15 @@ jobs:
   screen-service:
     name: Rust remote services (Linux)
     runs-on: ubuntu-latest
-    permissions:
-      contents: write # Read the signed payload asset from the release draft.
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-unknown-linux-musl,x86_64-unknown-linux-musl
       - name: Build Linux remote service payloads
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         run: |
           sh scripts/service-build.sh build-screen
           sh scripts/service-build.sh build-agent
-      - name: Import signed release service payloads
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -eu
-          ARCHIVE="Termish-${GITHUB_REF_NAME#v}-remote-services.tar.gz"
-          # The publisher uploads the locally signed archive immediately after
-          # pushing the tag. Private signing keys stay on the signing Mac.
-          for attempt in $(seq 1 12); do
-            if gh release download "$GITHUB_REF_NAME" --pattern "$ARCHIVE" --dir "$RUNNER_TEMP" --clobber; then break; fi
-            echo "Waiting for signed payload archive ($attempt/12)"
-            sleep 10
-          done
-          python3 scripts/remote-payloads.py unpack "$RUNNER_TEMP/$ARCHIVE" "$(git rev-parse HEAD)"
-          sh scripts/service-build.sh pack-screen
-          sh scripts/service-build.sh pack-agent
-          python3 scripts/remote-payloads.py verify-macos
       - uses: actions/upload-artifact@v4
         with:
           name: remote-service-payloads
@@ -115,6 +94,17 @@ jobs:
       - name: Build debug APK
         if: github.event_name == 'workflow_dispatch'
         run: ./gradlew :composeApp:assembleDebug
+
+      - name: Start integration test SSH server
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openssh-server
+          sudo bash scripts/test-sshd.sh
+
+      - name: Run Android tests and lint
+        if: github.event_name == 'workflow_dispatch'
+        run: ./gradlew testIntegration :composeApp:lintRelease ktlintCheck
 
       # Release signing: repo secrets are injected as process environment variables; the build
       # script reads them and decodes the base64. Locally it reads the project root .env;
@@ -226,11 +216,6 @@ jobs:
           rm -rf apk bundle
           ls -l
 
-      - name: Include signed companion service archive
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release download "$GITHUB_REF_NAME" --pattern "Termish-${GITHUB_REF_NAME#v}-remote-services.tar.gz" --dir dist
-
       - name: Generate SHA-256 checksums
         run: |
           cd dist
@@ -243,7 +228,6 @@ jobs:
         run: |
           set -e
           TAG="$GITHUB_REF_NAME"
-          # Preserve the signed service archive staged by the signing Mac.
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --title "$TAG" --draft --generate-notes
           fi

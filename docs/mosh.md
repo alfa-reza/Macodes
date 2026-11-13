@@ -7,7 +7,7 @@
 
 ## Why We Built Our Own
 
-To share one protocol implementation between Android and iOS, `dev.termish.mosh`
+To keep the protocol implementation platform-independent, `dev.termish.mosh`
 implements the SSP protocol, AES-128-OCB, zlib fragmentation and direct UDP in
 pure Kotlin, without depending on the official client's native binary.
 The implementation is based on the publicly documented protocol behavior and
@@ -123,7 +123,7 @@ a terminal response. Constraints:
 ## Testing
 
 - Unit tests (`commonTest/mosh/`): `OcbTest` (independent standard decryption vectors, not a self-consistent round-trip), `SspTest`, `TransportTest`, `PredictionTest`.
-- **No mosh-server integration tests**: CI does not install mosh-server, and androidUnitTest only covers sshj/SFTP integration. When changing the send/receive logic in MoshTransport/KmpMoshSession, it is recommended to start a real mosh-server locally for manual verification (or first run the unit tests + connect to a real host from Android/iOS).
+- **No mosh-server integration tests**: CI does not install mosh-server, and androidUnitTest only covers sshj/SFTP integration. When changing the send/receive logic in MoshTransport/KmpMoshSession, it is recommended to start a real mosh-server locally for manual verification (or first run the unit tests + connect to a real host from Android).
 
 ## Known Trade-offs
 

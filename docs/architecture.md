@@ -121,5 +121,5 @@ KmpMoshSession event-loop coroutine (Default thread)
 ## Persistence
 
 - Non-secret data (host list / settings / recent sessions) → `multiplatform-settings` (JSON, `ignoreUnknownKeys`).
-- Secret data (passwords / private keys) → `SecretStore` (Keystore/Keychain).
+- Secret data (passwords / private keys) → `SecretStore` (Android Keystore).
 - Parse failures never lose data: the raw string is backed up to a `*.corrupt.<ts>` key (at most 3 copies).

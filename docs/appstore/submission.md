@@ -1,5 +1,8 @@
 # App Store Connect submission material (iOS)
 
+> Historical upstream submission material. This repository no longer builds an iOS app; the
+> referenced iOS project and screenshots have been removed.
+
 Submission copy and preparation notes for the MIT-licensed Termish iPhone app.
 
 Verification date: 2026-09-05. The copy is based on iOS 1.7.1 in the repository;

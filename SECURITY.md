@@ -22,7 +22,7 @@ follow up on remediation progress by email.
 Understanding our threat model helps determine whether an issue counts as a
 security vulnerability:
 
-- Passwords/private keys are stored in the Android Keystore (AES-GCM) / iOS Keychain
+- Passwords/private keys are stored using Android Keystore (AES-GCM)
 - Host keys use TOFU (trust on first use + fingerprint confirmation)
 - The pure-Kotlin implementations under `crypto/` are **unaudited**, as stated in
   the README; the production path only uses Sha256 from them

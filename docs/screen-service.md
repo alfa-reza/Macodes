@@ -97,30 +97,10 @@ ad hoc bundle loses the screen-recording authorisation identity. Local developme
 with an existing Apple Development identity, but that must not be claimed as a completed public
 distribution signature. Certificate private keys are never committed to the repository.
 
-The official tag flow imports the `Termish-X.Y.Z-remote-services.tar.gz` prebuilt by the signing
-machine from the same-named Release draft, verifies the commit SHA, source fingerprint and per-file
-digest inside the archive, and checks that the signing certificates of both Mac Helpers match
-`.github/macos-signing-certificate.sha1`. The archive contains only distributable artifacts and
-manifests, no private keys; CI does not re-sign or downgrade to ad hoc. The current identity in
-this version is Apple Development; signature verification and Developer ID notarisation are
-separate verification items.
-
-After the signing machine completes all checks, the bump and the commit locally, it builds the
-services and the APK/AAB with the same certificate:
-
-```bash
-TERMISH_SCREEN_MACOS_SIGN_IDENTITY='certificate identity of the signing machine' sh scripts/service-build.sh build-screen --all
-sh scripts/service-build.sh build-agent --all
-python3 scripts/remote-payloads.py verify-macos
-python3 scripts/remote-payloads.py pack /tmp/Termish-X.Y.Z-remote-services.tar.gz "$(git rev-parse HEAD)"
-```
-
-Immediately after pushing the tag, create the same-named Release draft and upload that archive; CI
-waits at most two minutes and stops publication if the package is missing, the signature does not
-match or the source is inconsistent. The publish job keeps that archive, uploads the signed Android
-package and checksums, and then makes the Release public.
-When updating the signing identity, rotate the certificate fingerprint explicitly and re-verify
-upgrade authorisation; never pass the certificate private key to GitHub.
+GitHub Actions currently builds and bundles Linux payloads only, including for tagged releases.
+The macOS service remains in the repository, but Actions-built Android packages do not include its
+payload. Before restoring macOS distribution, restore signature verification and confirm the signing
+identity and upgrade authorisation; never pass the certificate private key to GitHub.
 
 Linux needs only the matching musl target and uses Rust's bundled linker, with no cross C compiler
 or X11 development libraries. By default it builds the targets that are installed and usable on the
