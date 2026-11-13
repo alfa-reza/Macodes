@@ -1,17 +1,20 @@
-# Cloudflare R2 发布同步
+# Cloudflare R2 release sync
 
-> **English summary:** Node.js 22 validates published release assets, uploads them to R2 using curl SigV4, verifies anonymous downloads and updates the latest version pointer last.
+> **Summary:** Node.js 22 validates published release assets, uploads them to R2 using curl SigV4, verifies anonymous downloads and updates the latest version pointer last.
 
-`Build` 工作流创建正式 GitHub Release 后，调用 `Publish Release to R2`，把签名 APK、AAB、SHA256SUMS 和版本 JSON 同步到 R2。官网从 R2 直接下载正式安装包。
+After the `Build` workflow creates the official GitHub Release, it calls `Publish Release to R2` to
+sync the signed APK, AAB, SHA256SUMS and version JSON to R2. The website downloads the official
+installer straight from R2.
 
-## Cloudflare 配置
+## Cloudflare configuration
 
-1. 开通 R2，创建仅存放公开发行文件的桶，存储类型选择 **Standard**。下面的工作流使用默认 jurisdiction 的 S3 endpoint。
-2. 桶的 **Settings → Custom Domains** 绑定下载域名，例如 `download.termish.dev`，等状态变成 Active。域名需在同一个 Cloudflare 账号中。
-3. 测试阶段也可以启用 **Public Development URL**，使用控制台提供的 `https://pub-….r2.dev` 地址；该地址有限流、不提供 CDN 缓存，正式分发使用自定义域名。
-4. 在 R2 的 **Manage API Tokens** 创建该桶专用的 **Object Read & Write** 凭据，保存 **Access Key ID** 和 **Secret Access Key**。这两个值用于 S3 API，与一般的 Cloudflare API token 不同。
+1. Enable R2 and create a bucket that holds only public release files, with storage class **Standard**. The workflow below uses the S3 endpoint of the default jurisdiction.
+2. In the bucket's **Settings → Custom Domains**, bind the download domain, for example `download.termish.dev`, and wait for the status to become Active. The domain must be in the same Cloudflare account.
+3. During testing you can also enable **Public Development URL** and use the `https://pub-….r2.dev` address the console provides; that address is rate-limited and not CDN-cached, so official distribution uses the custom domain.
+4. In R2's **Manage API Tokens**, create credentials with **Object Read & Write** scoped to this bucket, and save the **Access Key ID** and **Secret Access Key**. These two values are used for the S3 API and differ from a regular Cloudflare API token.
 
-如果官网跨域读取版本 JSON，在桶的 **CORS Policy** 配置实际官网来源。例如：
+If the website reads the version JSON cross-origin, configure the actual website origins in the
+bucket's **CORS Policy**. For example:
 
 ```json
 [
@@ -24,44 +27,66 @@
 ]
 ```
 
-公开下载不需要放行写入操作。固定 APK/AAB、版本 JSON 和固定校验和使用 `Cache-Control: no-store, max-age=0`，避免自定义域名的浏览器缓存时间设置让最新版下载仍命中旧包。按版本归档的安装包和校验和长期缓存。Cloudflare 缓存规则应尊重这些响应头，不要对固定入口强制缓存。
+Public downloads do not need write operations allowed. The fixed APK/AAB, version JSON and fixed
+checksums use `Cache-Control: no-store, max-age=0`, so that the custom domain's browser cache TTL
+setting does not make the latest download hit an old package. Per-version archived installers and
+checksums are cached long-term. Cloudflare cache rules should respect these response headers and
+must not force caching on the fixed entry points.
 
-## GitHub Actions 仓库配置
+## GitHub Actions repository configuration
 
-仓库 **Settings → Secrets and variables → Actions**，在 **Secrets** 和 **Variables** 页签分别添加：
+In the repository's **Settings → Secrets and variables → Actions**, add the following on the
+**Secrets** and **Variables** tabs respectively:
 
-| 类型 | 名称 | 内容 |
+| Type | Name | Content |
 | --- | --- | --- |
 | Secret | `R2_ACCESS_KEY_ID` | R2 S3 Access Key ID |
 | Secret | `R2_SECRET_ACCESS_KEY` | R2 S3 Secret Access Key |
-| Variable | `R2_ACCOUNT_ID` | Cloudflare 的 32 位 Account ID |
-| Variable | `R2_BUCKET` | R2 桶名，例如 `termish-releases` |
-| Variable | `R2_PUBLIC_BASE_URL` | 公开下载的 HTTPS 根域名，例如 `https://download.termish.dev`，不带 `/downloads` |
-| Variable | `R2_PREFIX` | 可选，默认 `downloads` |
+| Variable | `R2_ACCOUNT_ID` | the 32-character Cloudflare Account ID |
+| Variable | `R2_BUCKET` | R2 bucket name, for example `termish-releases` |
+| Variable | `R2_PUBLIC_BASE_URL` | HTTPS root domain for public downloads, for example `https://download.termish.dev`, without `/downloads` |
+| Variable | `R2_PREFIX` | optional, defaults to `downloads` |
 
-`R2_PUBLIC_BASE_URL` 不能填 `*.r2.cloudflarestorage.com`，这是需要鉴权的 S3 API 地址，不是公开下载地址。工作流自动用 Account ID 生成上传 endpoint。
+`R2_PUBLIC_BASE_URL` must not be `*.r2.cloudflarestorage.com`, which is an S3 API address that
+requires authentication, not a public download address. The workflow generates the upload endpoint
+automatically from the Account ID.
 
-GitHub Release 下载使用自动提供的 `GITHUB_TOKEN`，无需额外 PAT。工作流直接读取仓库级配置，无需创建 GitHub Environment。
+GitHub Release downloads use the automatically provided `GITHUB_TOKEN`, with no extra PAT. The
+workflow reads repository-level configuration directly, with no GitHub Environment to create.
 
-本地 Android 签名配置保存在项目根 `.env`（已被 Git 忽略）。可以把其中各项密钥批量写入独立的仓库 Secret：
+The local Android signing configuration is stored in `.env` at the project root (already
+Git-ignored). Its secrets can be written into separate repository Secrets in bulk:
 
 ```bash
 gh secret set --repo ttermish/termish --env-file .env
 ```
 
-该命令只上传文件中已有的项，不会删除其他仓库密钥。普通 R2 配置仍放在 Variables；不要把密钥文件导入 Variables，也无需创建合并所有内容的 `ENV_FILE`。CI 从仓库配置注入进程环境变量，R2 发布脚本读取这些变量。
+That command uploads only the entries already in the file and does not delete other repository
+secrets. Regular R2 configuration still goes in Variables; do not import a secrets file into
+Variables, and there is no need to create a combined `ENV_FILE`. CI injects process environment
+variables from the repository configuration, and the R2 publish script reads them.
 
-## 发布和补传
+## Publishing and backfilling
 
-新版本按项目现有流程发布，GitHub Release 成功后自动同步 R2。
+Publish a new version with the project's existing flow; R2 is synced automatically once the GitHub
+Release succeeds.
 
-补传已有版本：**Actions → Publish Release to R2 → Run workflow**，分支选择 `main`，tag 填 `v1.7.1`；留空则同步最新正式版。不需要重新编译应用。
+To backfill an existing version: **Actions → Publish Release to R2 → Run workflow**, select the
+`main` branch and enter tag `v1.7.1`; leave it empty to sync the latest official version. No rebuild
+of the app is needed.
 
-上传脚本先核对 GitHub Release 的 SHA-256、文件大小和 GitHub 提供的 digest，再上传并匿名下载校验每个对象。安装包和归档下载验证通过后，才更新最新入口，`version.json` 最后写入并读取校验。公开下载返回 403/404 或内容不一致会让工作流失败，避免把仅上传成功当作分发成功。
+The upload script first checks the GitHub Release's SHA-256, file size and the digest GitHub
+provides, then uploads and verifies each object by anonymous download. The latest entry is updated
+only after the installer and archive downloads verify, and `version.json` is written last and read
+back for verification. A public download returning 403/404 or mismatched content fails the workflow,
+so a merely successful upload is not mistaken for successful distribution.
 
-补传旧版本只更新归档，不覆盖最新入口。工作流串行执行，避免并发上传相互覆盖。脚本不创建桶、不删除旧归档，也不修改域名、CORS 或公开访问配置；匿名检查不代替浏览器 CORS 检查。
+Backfilling an older version updates only the archive and does not overwrite the latest entry.
+Workflow runs are serialised so concurrent uploads do not overwrite each other. The script does not
+create buckets, delete old archives, or change the domain, CORS or public-access configuration; the
+anonymous check is no substitute for a browser CORS check.
 
-## 文件与下载地址
+## Files and download URLs
 
 ```text
 downloads/
@@ -77,7 +102,7 @@ downloads/
     release.json
 ```
 
-官网读取 `version.json` 的 `download_url`，即可下载 R2 上的签名正式 APK：
+The website reads `download_url` from `version.json` to download the signed official APK from R2:
 
 ```json
 {
@@ -85,19 +110,21 @@ downloads/
   "version_name": "1.7.1",
   "download_url": "https://download.termish.dev/downloads/releases/v1.7.1/Termish-1.7.1-release.apk",
   "github_download_url": "https://github.com/ttermish/termish/releases/download/v1.7.1/Termish-1.7.1-release.apk",
-  "sha256": "文件的 SHA-256",
+  "sha256": "the file's SHA-256",
   "assets": {"apk": {}, "aab": {}}
 }
 ```
 
-`assets.apk.url` 和 `assets.aab.url` 均为 R2 下载地址；`github_download_url` 指向对应的 GitHub Release 文件。固定下载对象 `/downloads/termish.apk` 也来自同一个正式 Release。
+`assets.apk.url` and `assets.aab.url` are both R2 download addresses; `github_download_url` points to
+the corresponding GitHub Release file. The fixed download object `/downloads/termish.apk` also comes
+from the same official Release.
 
-## 本地验证
+## Local verification
 
-无需密钥、不会访问云端的测试：
+Tests that need no credentials and never touch the cloud:
 
 ```bash
 node --test scripts/tests/*.test.mjs
 ```
 
-参考：[R2 S3 凭据](https://developers.cloudflare.com/r2/get-started/s3/)、[公开访问与自定义域名](https://developers.cloudflare.com/r2/buckets/public-buckets/)、[CORS](https://developers.cloudflare.com/r2/buckets/cors/)、[S3 API 兼容性](https://developers.cloudflare.com/r2/api/s3/api/)。
+References: [R2 S3 credentials](https://developers.cloudflare.com/r2/get-started/s3/), [public access and custom domains](https://developers.cloudflare.com/r2/buckets/public-buckets/), [CORS](https://developers.cloudflare.com/r2/buckets/cors/), [S3 API compatibility](https://developers.cloudflare.com/r2/api/s3/api/).

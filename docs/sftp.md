@@ -1,6 +1,6 @@
-# SFTP（ssh/SftpSession）
+# SFTP (ssh/SftpSession)
 
-> **English summary:** the platform-neutral `SftpSession` contract (list / mkdir /
+> **Summary:** the platform-neutral `SftpSession` contract (list / mkdir /
 > home / upload / download), the sshj implementation for JVM and the libssh2
 > one for iOS — including the longentry→stat fallback for servers without
 > `readdir` long entries, the binary-safe upload workaround, the download
@@ -12,150 +12,192 @@
 > plus native video playback backed by independent
 > SFTP range readers (64-bit seeking, bounded reads, lifecycle cleanup).
 
-## 设计
+## Design
 
-SFTP 是**独立的 SSH 连接 + SFTP 通道**：不复用终端会话（断开终端不影响
-SFTP），但认证 / 主机密钥确认复用同一套 `SshCallbacks`——弹窗由 UI 层全局
-处理，用户无感知。
+SFTP is an **independent SSH connection + SFTP channel**: it does not reuse the
+terminal session (disconnecting the terminal does not affect SFTP), but
+authentication / host key confirmation reuse the same `SshCallbacks` — dialogs
+are handled globally by the UI layer, transparently to the user.
 
 ```kotlin
 interface SftpSession {
-    fun list(path: String): List<SftpEntry>   // 失败抛异常，UI 层提示
+    fun list(path: String): List<SftpEntry>   // throws on failure, surfaced by the UI layer
     fun mkdir(path: String)
-    fun home(): String                        // realpath(".") 解析用户主目录
+    fun home(): String                        // realpath(".") resolves the user's home directory
     fun upload(remotePath: String, content: ByteArray)
     fun download(
         remotePath: String,
-        onProgress: (loaded: Long, total: Long) -> Unit = { _, _ -> },  // 进度
-        onChunk: (ByteArray) -> Unit,                                   // 阻塞分块回调
+        onProgress: (loaded: Long, total: Long) -> Unit = { _, _ -> },  // progress
+        onChunk: (ByteArray) -> Unit,                                   // blocking chunk callback
     )
     fun close()
 }
 ```
 
-`SftpEntry` 是平台无关的目录条目（名称 / 目录标志 / 权限串 / 大小 / 时间 /
-隐藏），权限串统一格式化为 `drwxr-xr-x` 供 UI 展示。
+`SftpEntry` is a platform-neutral directory entry (name / directory flag /
+permission string / size / time / hidden), and the permission string is
+uniformly formatted as `drwxr-xr-x` for display in the UI.
 
-## JVM 实现（SftpSessionSshj）
+## JVM Implementation (SftpSessionSshj)
 
-复用 `SshSessionSshj` 的认证链路（密码 / 私钥 / 加密私钥口令 / KBI / TOFU），
-`openSftp()` 在已认证连接上开 `SFTPClient`（懒初始化，`clientOrThrow`）。
+Reuses the `SshSessionSshj` auth chain (password / private key / encrypted key
+passphrase / KBI / TOFU); `openSftp()` opens an `SFTPClient` on the authenticated
+connection (lazily initialized, `clientOrThrow`).
 
-- **list**：`c.ls(path)` 映射属性（`FileMode.Type.DIRECTORY` 判目录，
-  permissions 集合 → `drwxr-xr-x` 串）
-- **home**：`canonicalize(".")`——比猜 `/home/xxx` 通用（macOS / BSD /
-  自定义 home 全覆盖）
-- **upload**：包一个 `LocalSourceFile`（内存 `ByteArrayInputStream`，
-  权限 0644）走 sshj 的 `put` 传输
-- **download**：`open(remotePath)` + 按 offset 读 64KB 分块回调——**流式**，
-  不整文件驻留内存；`onProgress` 用 `remote.length()` 报总大小；由 UI 层写
-  本地文件并 close 保存通道
+- **list**: `c.ls(path)` maps the attributes (`FileMode.Type.DIRECTORY` decides
+  directories, the permissions set → a `drwxr-xr-x` string)
+- **home**: `canonicalize(".")` — more general than guessing `/home/xxx` (covers
+  macOS / BSD / custom homes fully)
+- **upload**: wraps a `LocalSourceFile` (in-memory `ByteArrayInputStream`,
+  permissions 0644) and transfers it via sshj's `put`
+- **download**: `open(remotePath)` + 64KB chunks read by offset via callback —
+  **streaming**, the whole file is never held in memory; `onProgress` reports the
+  total size via `remote.length()`; the UI layer writes the local file and closes
+  the save channel
 
-## iOS 实现（SftpSessionLibssh2）
+## iOS Implementation (SftpSessionLibssh2)
 
-`ssh.openSftp()` 在**阻塞模式**（`session_set_blocking(1)`）下 `libssh2_sftp_init`，
-`libssh2_sftp_*` 全部阻塞调用 + EAGAIN 重试。
+`ssh.openSftp()` calls `libssh2_sftp_init` in **blocking mode**
+(`session_set_blocking(1)`), and all `libssh2_sftp_*` calls block, with EAGAIN
+retries.
 
-### readdir：longentry 解析 + stat 兜底（最易踩的坑）
+### readdir: longentry parsing + stat fallback (the easiest trap)
 
-cinterop 里 `LIBSSH2_SFTP_ATTRIBUTES` 不透明，拿不到文件类型。libssh2 的
-`readdir_ex` 同时返回 longentry（`drwxr-xr-x 2 root root 4096 Jan 1 12:34 name`），
-从那里解析权限 / 大小 / 类型：
+`LIBSSH2_SFTP_ATTRIBUTES` is opaque in cinterop, so the file type is unavailable.
+libssh2's `readdir_ex` also returns a longentry
+(`drwxr-xr-x 2 root root 4096 Jan 1 12:34 name`), from which permissions / size /
+type are parsed:
 
-- **服务器不返回 longentry**（Windows OpenSSH、部分嵌入式 SFTP）→ 类型未知，
-  逐条目 `stat_ex` 兜底拿真实类型——**递归目录下载依赖准确的 isDirectory**，
-  判错会拿目录当文件下载
-- stat 也失败 → 按普通文件处理（下载/进入时自然会再报错），不中断整个列表
+- **The server returns no longentry** (Windows OpenSSH, some embedded SFTP) → the
+  type is unknown, so each entry falls back to `stat_ex` for the real type —
+  **recursive directory download depends on an accurate isDirectory**, and a
+  wrong judgement would download a directory as a file
+- if stat also fails → treat it as a regular file (the error surfaces naturally on
+  download/enter), without aborting the whole listing
 
-### 二进制上传：termish_sftp_write 原生辅助
+### Binary Upload: termish_sftp_write Native Helper
 
-`libssh2_sftp_write` 的 cinterop 映射只暴露 `String` 版本（UTF-8 编码），
-二进制内容经它必损坏。`nativeInterop/cinterop/sftp_write.h` 用
-`unsigned char*` 重新声明：
+`libssh2_sftp_write`'s cinterop mapping only exposes the `String` variant (UTF-8
+encoded), so binary content is inevitably corrupted through it.
+`nativeInterop/cinterop/sftp_write.h` redeclares it with `unsigned char*`:
 
 ```c
 static inline long termish_sftp_write(LIBSSH2_SFTP_HANDLE *handle,
                                       const unsigned char *buffer, size_t count)
 ```
 
-cinterop 对 `unsigned char*` 生成指针参数，`usePinned` 拿字节地址直接写。
-32KB 分块 + EAGAIN 重试，`0x1A4`（0644）+ TRUNC。
+cinterop generates a pointer parameter for `unsigned char*`, and `usePinned` takes
+the byte address to write directly. 32KB chunks + EAGAIN retries, `0x1A4` (0644) +
+TRUNC.
 
-### 其他
+### Other
 
-- **home**：`symlink_ex(".", …, LIBSSH2_SFTP_REALPATH)` 解析主目录
-- **mkdir**：`0x1ED`（0755）
-- **download**：64KB 分块 `sftp_read` 回调，与 JVM 侧同语义；`onProgress`
-  用 `fstat_ex` 拿总大小
+- **home**: `symlink_ex(".", …, LIBSSH2_SFTP_REALPATH)` resolves the home directory
+- **mkdir**: `0x1ED` (0755)
+- **download**: 64KB chunks of `sftp_read` via callback, same semantics as the JVM
+  side; `onProgress` gets the total size via `fstat_ex`
 
-## UI 层（SftpScreen / SftpHostPickerOverlay）
+## UI Layer (SftpScreen / SftpHostPickerOverlay)
 
-- 连接覆盖层 → 文件浏览 tab；**面包屑导航**（两级折叠 + 返回=历史回退）；
-  **递归搜索**（跨目录，文件名 + 相对路径扁平展示，点击跳转所在目录；
-  限深 8 层 / 限 500 结果）；切 tab 保持路径 / 列表状态（`SftpUiState` 随
-  `SftpSessionEntry` 存活）
-- 上传：系统文件选择器（SAF / UIDocumentPicker / AWT）
-- **文本预览**（文件菜单 → 预览）：`readSftpPreview` 复用 download 分块回调，
-  只读前 512 KB（超过即抛 `SftpPreviewTooLargeException` 中断下载流，两平台
-  download 的 finally 都会关通道）；前 4 KB 含 NUL 判二进制抛
-  `SftpPreviewBinaryException`；UTF-8 解码（非法序列替换字符不崩）。
-  UI：全屏模态覆盖层（文件名 + 大小 + 关闭），LazyColumn 等宽渲染，
-  截断时顶部提示条；状态挂在 `SftpUiState`（切 tab 不丢）
-- 下载：**流式分块写本地文件**（不整文件驻留内存）+ 顶部进度横幅（文件名 /
-  百分比 / 进度条）+ 下载完成系统通知（Android 点击打开文件）；Android 10+
-  直接写公共 Download 目录（MediaStore，同名自动去重、不弹另存为），
-  Android 9- 回退 SAF；iOS 写临时文件下载完弹 Files 转存
-- **递归目录下载**：`DirectorySaver` 逐文件/子目录展开，目录识别依赖
-  `isDirectory` 的准确性（见上）
-- 会话与终端会话平级管理（`SessionManager.sftpSessions`）：连接页可见、
-  卡片 Close 可关、删除主机连带释放
+- Connection overlay → file browser tab; **breadcrumb navigation** (two-level
+  collapsing + back = history back); **recursive search** (cross-directory, file
+  name + relative path shown flat, clicking jumps to the containing directory;
+  depth limited to 8 levels / 500 results); switching tabs keeps the path / list
+  state (`SftpUiState` lives with `SftpSessionEntry`)
+- Upload: system file picker (SAF / UIDocumentPicker / AWT)
+- **Text preview** (file menu → preview): `readSftpPreview` reuses the download
+  chunk callback and reads only the first 512 KB (beyond that it throws
+  `SftpPreviewTooLargeException` to abort the download stream; the download
+  `finally` on both platforms closes the channel); if the first 4 KB contain NUL
+  it is judged binary and throws `SftpPreviewBinaryException`; UTF-8 decoding
+  (invalid sequences are replaced rather than crashing).
+  UI: full-screen modal overlay (file name + size + close), monospace rendering via
+  LazyColumn, a hint bar at the top when truncated; state lives in `SftpUiState`
+  (not lost when switching tabs)
+- Download: **streams chunks to a local file** (the whole file is never held in
+  memory) + a top progress banner (file name / percentage / progress bar) + a
+  system notification on completion (tapping opens the file on Android); on
+  Android 10+ it writes straight to the public Download directory (MediaStore,
+  same-name dedup automatically, no save-as dialog); Android 9- falls back to
+  SAF; iOS writes a temp file and offers a Files export prompt when the download
+  completes
+- **Recursive directory download**: `DirectorySaver` expands file by file /
+  subdirectory by subdirectory; directory detection depends on the accuracy of
+  `isDirectory` (see above)
+- Sessions are managed at the same level as terminal sessions
+  (`SessionManager.sftpSessions`): visible on the connections page, closable from
+  the card's Close, released together when the host is deleted
 
-## 测试
+## Testing
 
-- `commonTest/ui/SftpLogicTest`：UI 层纯逻辑（路径拼接 / 递归展开 / 递归搜索）
-- `androidUnitTest/ssh/SftpIntegrationTest`：打真实 sshd 的上传 / 下载 / 递归
-  目录往返（self-detect，sshd 缺席 SKIP）
-- iOS 的 longentry→stat 兜底路径无自动化覆盖——涉及 `SftpSessionLibssh2.kt`
-  的改动需真机验证（尤其 Windows OpenSSH 服务器场景）
+- `commonTest/ui/SftpLogicTest`: UI-layer pure logic (path joining / recursive
+  expansion / recursive search)
+- `androidUnitTest/ssh/SftpIntegrationTest`: upload / download / recursive
+  directory round-trip against a real sshd (self-detect, SKIP when sshd is absent)
+- The iOS longentry→stat fallback path has no automated coverage — changes
+  touching `SftpSessionLibssh2.kt` need real-device verification (especially the
+  Windows OpenSSH server case)
 
-## SVG 图片预览
+## SVG Image Preview
 
-文件列表点击 `.svg`（扩展名大小写不敏感）进入图片预览，沿用适应屏幕 / 原始大小
-切换与下载菜单。与其他图片一致，读取上限为 8 MiB，超过显示现有图片过大提示。
-Android 使用 AndroidSVG，iOS 使用 Skia SVGDOM 静态渲染，透明背景保留；不执行
-脚本，不配置外部图片、字体或样式的资源解析器。
+Clicking a `.svg` in the file list (extension matching is case-insensitive) opens
+the image preview, reusing the fit-to-screen / original-size toggle and the
+download menu. As with other images, the read limit is 8 MiB; beyond that the
+existing image-too-large hint is shown. Android uses AndroidSVG and iOS uses Skia
+SVGDOM for static rendering, preserving transparent backgrounds; scripts are not
+executed, and no resource resolvers are configured for external images, fonts or
+styles.
 
-优先采用文档尺寸，缺省尺寸从 `viewBox` 推导，均缺省时使用 300 × 150 画布。
-保留文档坐标系并将输出位图最长边限制在 2048 像素，避免大尺寸 SVG 导致无界
-位图分配。损坏文件沿用图片解码失败提示，仍可下载。预览为静态栅格图，不提供
-SVG 动画、交互或无限缩放；两平台支持的 SVG 特性取决于各自渲染器。当前 iOS
-Skia SVGDOM 的默认字体解析不完整，`<text>` 文字可能缺失；需要完整文字外观时
-应使用文字已转路径的 SVG，或下载后使用其他查看器。
+Document dimensions are preferred; missing dimensions are derived from the
+`viewBox`, and when both are missing a 300 × 150 canvas is used. The document
+coordinate system is preserved and the output bitmap's longest edge is limited to
+2048 pixels, avoiding unbounded bitmap allocation from large SVGs. Corrupt files
+reuse the image decode failure hint and can still be downloaded. The preview is a
+static raster image; SVG animation, interaction or infinite zoom are not provided;
+which SVG features work on each platform depends on its renderer. The current iOS
+Skia SVGDOM default font resolution is incomplete, so `<text>` content may be
+missing; when complete text appearance is required, use an SVG with the text
+converted to paths, or download it and open it in another viewer.
 
-回归测试：`SvgPreviewSizeTest` 覆盖尺寸回退和内存边界；Android `ImageDecodeTest`
-实际栅格化路径、透明背景、百分比尺寸、仅 viewBox 和超大无 viewBox 画布，验证
-缩小时不裁切内容、损坏文件失败以及已有 PNG 解码。
+Regression tests: `SvgPreviewSizeTest` covers the dimension fallback and memory
+bounds; Android's `ImageDecodeTest` exercises the actual rasterization path,
+transparent backgrounds, percentage dimensions, viewBox-only and oversized
+viewBox-less canvases, verifying that content is not cropped when scaled down,
+that corrupt files fail, and that existing PNG decoding works.
 
-## 在线视频预览
+## Streaming Video Preview
 
-文件列表点击视频（mp4 / m4v / mov / mkv / webm 等）进入原生播放器，播放、暂停
-和拖动进度均使用平台控件；不先下载完整文件。容器和音视频编码是否可播放取决于
-设备的原生解码能力，iOS 优先使用 MP4 / MOV（例如 H.264 + AAC）。不支持的编码或
-连接异常会显示本地化错误，仍可从预览页更多菜单下载后用其他播放器打开。
+Clicking a video in the file list (mp4 / m4v / mov / mkv / webm etc.) opens the
+native player; play, pause and seeking all use platform controls; the complete
+file is not downloaded first. Whether the container and audio/video codecs are
+playable depends on the device's native decoding capability; iOS prefers MP4 / MOV
+(e.g. H.264 + AAC). Unsupported codecs or connection errors show a localized
+error, and the file can still be downloaded from the preview page's more menu and
+opened in another player.
 
-`SftpSession.openRead` 返回 `SftpReadHandle`，独占一条 SSH/SFTP 连接，避免与文件
-浏览、下载竞争同一通道。文件大小、请求 offset 均为 `Long`；每次读取最多 64 KB，
-允许短读、EOF 返回空数组。句柄在后台串行调用；关闭父文件会话不会关闭播放句柄。
-播放连接复用认证和主机密钥验证，但不向父会话传播关闭/trace 事件。
+`SftpSession.openRead` returns `SftpReadHandle`, which owns a dedicated SSH/SFTP
+connection, avoiding contention with file browsing and downloads on the same
+channel. The file size and requested offset are both `Long`; each read is at most
+64 KB, and short reads and an empty array at EOF are allowed. The handle is called
+serially on a background thread; closing the parent file session does not close
+the playback handle. The playback connection reuses authentication and host key
+verification, but does not propagate close/trace events to the parent session.
 
-- Android：Media3 ExoPlayer / PlayerView，`DataSpec.position/length` 映射 SFTP
-  随机读取；seek 期间复用文件句柄，播放器销毁后才关闭。前向缓冲目标 16 MB。
-- iOS：AVPlayerViewController，AVURLAsset 自定义 scheme + resource loader；
-  content length / byte-range 信息从句柄提供，每 64 KB 让出串行队列，处理取消或
-  新范围请求。前向缓冲目标 15 秒。URL 不携带远端地址或凭据，也不启动 HTTP 服务。
-- 切 tab 会销毁播放器并释放连接，`SftpUiState` 记录远端路径和播放位置，返回时从
-  该位置重新打开；应用进入后台暂停播放，返回后可用原生控件继续。预览关闭不留缓存文件。
+- Android: Media3 ExoPlayer / PlayerView, with `DataSpec.position/length` mapped to
+  SFTP random reads; the file handle is reused during a seek and closed only after
+  the player is destroyed. Forward buffer target 16 MB.
+- iOS: AVPlayerViewController, AVURLAsset custom scheme + resource loader;
+  content length / byte-range information is provided from the handle, yielding to
+  the serial queue every 64 KB to handle cancellation or a new range request.
+  Forward buffer target 15 seconds. The URL carries no remote address or
+  credentials, and no HTTP server is started.
+- Switching tabs destroys the player and releases the connection; `SftpUiState`
+  records the remote path and playback position, and reopens from that position on
+  return; entering the background pauses playback, and native controls can resume
+  it on return. Closing the preview leaves no cached file.
 
-回归测试：`SftpVideoDataSourceTest` 验证范围、短读、EOF、损坏/截断、释放和 >4 GB
-偏移；`SftpIntegrationTest.randomReadUsesIndependentConnectionAndLongOffsets` 使用
-本地 sshd 和稀疏文件验证真实随机读取、Unicode 路径、父会话关闭与幂等释放。
+Regression tests: `SftpVideoDataSourceTest` verifies ranges, short reads, EOF,
+corruption/truncation, release and >4 GB offsets;
+`SftpIntegrationTest.randomReadUsesIndependentConnectionAndLongOffsets` uses a
+local sshd and a sparse file to verify real random reads, Unicode paths, parent
+session closing and idempotent release.

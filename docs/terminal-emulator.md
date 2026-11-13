@@ -1,155 +1,155 @@
-# 终端模拟器（term/）
+# Terminal emulator (term/)
 
-> **English summary:** design and capability notes for the pure-Kotlin VT100/xterm
+> **Summary:** design and capability notes for the pure-Kotlin VT100/xterm
 > emulator — color model, dual screen buffer with COW line sharing and
 > (identity, version) line-level incremental sync, wide-char bookkeeping,
 > the supported escape-sequence matrix, and the renderer's text-layout cache.
 > Any change here must come with a unit test in `commonTest/`.
 
-`commonMain/term/` 是项目的核心资产：纯 Kotlin、零平台依赖、可单元测试的终端模拟器。
-四个文件，职责分明：
+`commonMain/term/` is the project's core asset: a pure-Kotlin, zero-platform-dependency, unit-testable terminal emulator.
+Four files, with clear responsibilities:
 
-| 文件 | 职责 |
+| File | Responsibility |
 |------|------|
-| `TerminalColor.kt` | 颜色编码、xterm 256 色板、单元格属性位、简易 wcwidth |
-| `TerminalBuffer.kt` | 屏幕缓冲：普通屏+备用屏、滚动回看、光标/模式状态 |
-| `TerminalEmulator.kt` | UTF-8 增量解码 + VT100/xterm 状态机 + OSC/DCS 处理 |
-| `TerminalSelection.kt` | 文本选择与复制 |
+| `TerminalColor.kt` | color encoding, xterm 256-color palette, cell attribute bits, minimal wcwidth |
+| `TerminalBuffer.kt` | screen buffer: normal + alternate screen, scrollback, cursor/mode state |
+| `TerminalEmulator.kt` | incremental UTF-8 decoding + VT100/xterm state machine + OSC/DCS handling |
+| `TerminalSelection.kt` | text selection and copy |
 
-渲染器 `ui/TerminalView.kt` 在 term/ 之外（Compose 依赖），但渲染性能约定与
-term/ 的行模型强耦合，一并记录。
+The renderer `ui/TerminalView.kt` lives outside term/ (Compose dependency), but its rendering performance conventions are
+tightly coupled to term/'s line model, so they are recorded here as well.
 
-## 颜色模型
+## Color model
 
-- 单元颜色为 `0xRRGGBB` Int；`DEFAULT_FG = -1` / `DEFAULT_BG = -2` / `DEFAULT_CURSOR = -3` 是哨兵值，渲染时按主题默认色解析。
-- `TerminalPalette.BASIC_16`（VGA 标准）+ 256 色板（16 基础 + 216 立方体 `0/95/135/175/215/255` + 24 灰度 `8+10n`）。
-- `CellAttr` 位掩码：BOLD/DIM/ITALIC/UNDERLINE/BLINK/INVERSE/HIDDEN/STRIKE。
-- `CharWidth.wcwidth`：常用全角/CJK/emoji 区间返回 2，其余 1（移动端 SSH 场景够用的简化实现，非 Unicode TR11 全量）。
+- Cell color is an `0xRRGGBB` Int; `DEFAULT_FG = -1` / `DEFAULT_BG = -2` / `DEFAULT_CURSOR = -3` are sentinel values, resolved to the theme default color at render time.
+- `TerminalPalette.BASIC_16` (VGA standard) + 256-color palette (16 basic + 216 cube `0/95/135/175/215/255` + 24 grayscale `8+10n`).
+- `CellAttr` bitmask: BOLD/DIM/ITALIC/UNDERLINE/BLINK/INVERSE/HIDDEN/STRIKE.
+- `CharWidth.wcwidth`: common full-width/CJK/emoji ranges return 2, everything else 1 (a simplified implementation sufficient for mobile SSH, not full Unicode TR11).
 
-## 缓冲模型
+## Buffer model
 
-### 双屏幕
+### Dual screen
 
-- **普通屏**：`ArrayDeque<TerminalLine>`，末尾 `rows` 行是可见屏幕，之前的行是滚动回看（上限 `maxScrollbackLines`，UI 缓冲 10,000；mosh 影子终端 `Int.MAX_VALUE`——影子必须完整镜像服务端，diff 才不错位）。
-- **备用屏**：固定 `rows×cols`，无回看（vim/tmux/htop 等全屏程序）。1049 进入时清屏（xterm 行为），1047/47 不清。
+- **Normal screen**: `ArrayDeque<TerminalLine>`, the last `rows` lines are the visible screen and the lines before them are scrollback (capped at `maxScrollbackLines`, UI buffer 10,000; mosh shadow terminal `Int.MAX_VALUE` — the shadow must mirror the server completely or the diff misaligns).
+- **Alternate screen**: fixed `rows×cols`, no scrollback (vim/tmux/htop and other full-screen programs). 1049 clears on entry (xterm behavior), 1047/47 do not.
 
-### 行级 COW 与增量同步（渲染性能的关键）
+### Line-level COW and incremental sync (the key to rendering performance)
 
-每一行 `TerminalLine` 携带：
+Each `TerminalLine` carries:
 
-- `version: Long` —— 单元格实际被改写时递增（`touch()`）；
-- `identity: Any` —— 逻辑行身份，克隆/复制时保留；
-- `shared: Boolean` —— COW 标记：为 true 的行不可原地修改，写前必须克隆（`mutableLine`）。
+- `version: Long` — incremented when cells are actually rewritten (`touch()`);
+- `identity: Any` — logical line identity, preserved across clone/copy;
+- `shared: Boolean` — COW flag: lines with true cannot be modified in place and must be cloned before writing (`mutableLine`).
 
-两个核心 API：
+Two core APIs:
 
-- `shallowFork()`：行对象共享、写时复制，O(行数) 而非 O(单元格)——mosh 影子状态分叉用（行对象共享的写时复制）。分叉用 `rows=0` 构造再追加源行，避免每代分叉累积幻影空行。
-- `copyContentFrom(other)`：**行级增量同步**——同 identity 且 version 未变的行直接复用，只克隆变化行。UI 缓冲从 mosh 影子拷贝每帧状态时，未变行零拷贝；返回是否有视觉变化，无变化跳过重绘。
+- `shallowFork()`: line objects are shared and copied on write, O(lines) instead of O(cells) — used for mosh shadow state forking (copy-on-write over shared line objects). Forking constructs with `rows=0` and then appends the source lines, avoiding phantom blank lines accumulating across generations of forks.
+- `copyContentFrom(other)`: **line-level incremental sync** — lines with the same identity and an unchanged version are reused directly, and only changed lines are cloned. When the UI buffer copies state from the mosh shadow each frame, unchanged lines are zero-copy; returns whether there was a visual change, and skips redraw when there is none.
 
-### 宽字符（全链路 2 格）
+### Wide characters (2 cells end to end)
 
-- 写入时预计算 `width`（1/2），渲染不再调 wcwidth。
-- 尾巴（`isWideTail`）**继承头的颜色/属性**：否则宽字符右半格露出默认背景，在带底色的行（如 agent TUI 的消息条）上表现为黑块盖住半个字。
-- 覆盖语义：写到尾巴上先清头；覆盖宽字符头清掉尾巴标记；尾巴盖掉原宽字符头时清掉其原尾巴标记。
-- 行末写宽字符：DECAWM 开则换行，关则按窄字符覆盖最后一格。
-- `pendingWrap`：行末写窄字符只标记延迟换行，下一个字符进入时消费（xterm 语义；DECAWM 关时钳在行末覆盖）。
+- `width` (1/2) is precomputed at write time; rendering no longer calls wcwidth.
+- The tail (`isWideTail`) **inherits the head's color/attributes**: otherwise the right half of a wide character shows the default background, appearing as a black block covering half the glyph on lines with a background color (e.g. message bars in agent TUIs).
+- Overwrite semantics: writing onto a tail clears the head first; overwriting a wide-char head clears the tail marker; when a tail covers an existing wide-char head, that head's original tail marker is cleared.
+- Writing a wide character at the end of a line: with DECAWM on, wrap; with it off, overwrite the last cell like a narrow character.
+- `pendingWrap`: writing a narrow character at the end of a line only marks a deferred wrap, consumed when the next character arrives (xterm semantics; with DECAWM off it is clamped to overwrite at the end of the line).
 
-### resize（xterm 式）
+### resize (xterm style)
 
-- 屏幕变矮（键盘弹出）：优先丢弃**光标下方的空白行**，保证光标与提示符留在可视区；不足的收缩量自然把顶部行挤入回看。
-- 屏幕变高：从回看取回或新建空行。
-- 每行宽度调整时共享行先克隆（COW）；截断若让宽字符尾巴悬空则清掉。
-- 修改 `term/` 的 resize/宽字符逻辑必须同步补 `TerminalBufferTest`。
+- Screen gets shorter (keyboard appears): prefer discarding **blank lines below the cursor**, keeping the cursor and prompt in the visible area; any shortfall in shrinkage naturally pushes top lines into scrollback.
+- Screen gets taller: take lines back from scrollback or create new blank lines.
+- When adjusting line width, shared lines are cloned first (COW); if truncation leaves a wide-char tail dangling, it is cleared.
+- Changes to resize/wide-char logic in `term/` must be accompanied by `TerminalBufferTest` updates.
 
-## 状态机与序列支持
+## State machine and sequence support
 
-`TerminalEmulator`：增量 UTF-8 解码（非法序列按 U+FFFD 或重新起头）+ 十态状态机
-（GROUND / ESCAPE / ESC_INTERMEDIATE / CSI_ENTRY / CSI_PARAM / CSI_INTERMEDIATE /
-OSC / OSC_ESC / DCS / DCS_ESC）。
+`TerminalEmulator`: incremental UTF-8 decoding (invalid sequences become U+FFFD or start over) + a ten-state state machine
+(GROUND / ESCAPE / ESC_INTERMEDIATE / CSI_ENTRY / CSI_PARAM / CSI_INTERMEDIATE /
+OSC / OSC_ESC / DCS / DCS_ESC).
 
-### C0 控制
+### C0 control
 
-| 序列 | 行为 |
+| Sequence | Behavior |
 |------|------|
-| NUL, BEL | 忽略 |
-| BS | 退格（撤销 pendingWrap 优先） |
-| HT | 跳到下一 tab stop（默认每 8 列） |
-| LF, VT, FF | 换行（受滚动区域约束） |
-| CR | 回车 |
-| SO / SI | 切换 G1 / G0 字符集 |
-| 其余 C0、DEL | 忽略 |
-| C1（0x80–0x9F） | 忽略（不支持，不应当字符画出） |
+| NUL, BEL | ignored |
+| BS | backspace (undoing pendingWrap takes priority) |
+| HT | jump to the next tab stop (every 8 columns by default) |
+| LF, VT, FF | line feed (constrained by the scroll region) |
+| CR | carriage return |
+| SO / SI | switch G1 / G0 character set |
+| other C0, DEL | ignored |
+| C1 (0x80–0x9F) | ignored (unsupported, must not be drawn as characters) |
 
-### ESC 序列
+### ESC sequences
 
-`7` DECSC / `8` DECRC（保存恢复光标 **及 pendingWrap、字符集**——tmux 依赖完整状态）；
-`D` IND、`E` NEL、`M` RI、`H` HTS、`c` RIS、`=` DECKPAM、`>` DECKPNM；
-`(` / `)` 字符集指定（`0` = DEC 特殊图形）、`#8` DECALN。
+`7` DECSC / `8` DECRC (save/restore the cursor **and pendingWrap, character set** — tmux depends on the complete state);
+`D` IND, `E` NEL, `M` RI, `H` HTS, `c` RIS, `=` DECKPAM, `>` DECKPNM;
+`(` / `)` character set designation (`0` = DEC special graphics), `#8` DECALN.
 
 ### CSI
 
-| 类别 | 序列 |
+| Category | Sequences |
 |------|------|
-| 光标移动 | CUU/CUD/CUF/CUB/CNL/CPL/CHA/CUP(HVP)/VPA |
-| 擦除 | ED 0–3（含清回看）、EL 0–2、ECH |
-| 插入/删除 | IL/DL/ICH/DCH |
-| 滚动 | SU/SD、DECSTBM（`r`） |
-| 光标保存 | SCOSC/SCORC（`s`/`u`） |
-| 属性 | SGR（见下）、DECSCUSR（`q`，1–6） |
-| 应答 | DSR（5/6）、DA（`ESC[?1;2c`）、DA2（`ESC[>1;2;0c`）、DECRQM（`$p`） |
-| 其它 | REP（`b`，重复上次字符，上限 1024） |
+| Cursor movement | CUU/CUD/CUF/CUB/CNL/CPL/CHA/CUP(HVP)/VPA |
+| Erase | ED 0–3 (including clearing scrollback), EL 0–2, ECH |
+| Insert/delete | IL/DL/ICH/DCH |
+| Scrolling | SU/SD, DECSTBM (`r`) |
+| Cursor save | SCOSC/SCORC (`s`/`u`) |
+| Attributes | SGR (see below), DECSCUSR (`q`, 1–6) |
+| Replies | DSR (5/6), DA (`ESC[?1;2c`), DA2 (`ESC[>1;2;0c`), DECRQM (`$p`) |
+| Other | REP (`b`, repeat the last character, max 1024) |
 
-### 模式（SM/RM）
+### Modes (SM/RM)
 
-| 模式 | 含义 |
+| Mode | Meaning |
 |------|------|
-| 4 | IRM 插入模式 |
-| ?1 | DECCKM 应用光标键 |
-| ?6 | DECOM 原点模式 |
-| ?7 | DECAWM 自动换行 |
-| ?25 | DECTCEM 光标显隐 |
-| ?47 / ?1047 / ?1049 | 备用屏（1049 进出带光标保存/恢复） |
-| ?1048 | 光标保存/恢复 |
+| 4 | IRM insert mode |
+| ?1 | DECCKM application cursor keys |
+| ?6 | DECOM origin mode |
+| ?7 | DECAWM auto-wrap |
+| ?25 | DECTCEM cursor visibility |
+| ?47 / ?1047 / ?1049 | alternate screen (1049 saves/restores the cursor on enter/exit) |
+| ?1048 | save/restore cursor |
 | ?2004 | bracketed paste |
-| ?1000 / ?1002 / ?1003 | 鼠标上报（X10 / 按钮拖拽 / 全事件） |
-| ?1004 | 焦点事件（CSI I / CSI O） |
-| ?1006 / ?1015 | SGR / urxvt 鼠标坐标格式（互斥） |
-| ?1007 | 备用屏滚轮转方向键 |
-| 20 | LF→CRLF：**有意忽略** |
+| ?1000 / ?1002 / ?1003 | mouse reporting (X10 / button drag / all events) |
+| ?1004 | focus events (CSI I / CSI O) |
+| ?1006 / ?1015 | SGR / urxvt mouse coordinate format (mutually exclusive) |
+| ?1007 | alternate-screen wheel to arrow keys |
+| 20 | LF→CRLF: **intentionally ignored** |
 
 ### SGR
 
-`0/1/2/3/4/5/7/8/9`、`21→下划线`、`22/23/24/25/27/28/29`、`30–37`、`38;5;n`、`38;2;r;g;b`、
-`39`、`40–47`、`48;5;n`、`48;2;r;g;b`、`49`、`90–97`、`100–107`。
+`0/1/2/3/4/5/7/8/9`, `21→underline`, `22/23/24/25/27/28/29`, `30–37`, `38;5;n`, `38;2;r;g;b`,
+`39`, `40–47`, `48;5;n`, `48;2;r;g;b`, `49`, `90–97`, `100–107`.
 
 ### OSC
 
-| OSC | 行为 |
+| OSC | Behavior |
 |-----|------|
-| 0/1/2 | 标题变更 |
-| 4;idx;? | 调色板查询（可多对，应答 xterm `rgb:rrrr/gggg/bbbb` 格式） |
-| 8 | 超链接开始/结束 |
-| 10/11 | 默认前景/背景色**查询**（TUI 如 herdr 据此决定对比色，必须应答；设置暂不支持） |
-| 12 | 光标色查询/设置（仅 `#RRGGBB`） |
-| 52 | 剪贴板写入/查询（受设置开关控制，base64） |
-| 其它 | 忽略 |
+| 0/1/2 | title change |
+| 4;idx;? | palette query (multiple pairs allowed, replied in the xterm `rgb:rrrr/gggg/bbbb` format) |
+| 8 | hyperlink start/end |
+| 10/11 | default foreground/background color **query** (TUIs such as herdr decide contrast from this, so a reply is required; setting is not supported yet) |
+| 12 | cursor color query/set (only `#RRGGBB`) |
+| 52 | clipboard write/query (controlled by a settings toggle, base64) |
+| other | ignored |
 
 ### DCS
 
-- `$q` DECRQSS：应答 DECSTBM / SGR（仅默认态）/ DECSCUSR 查询，无效查询回 `0$r`。
-- 其余 DCS（sixel / tmux passthrough 等）忽略，缓冲限长 64KB 防内存膨胀。
+- `$q` DECRQSS: replies to DECSTBM / SGR (default state only) / DECSCUSR queries, invalid queries get `0$r`.
+- All other DCS (sixel / tmux passthrough, etc.) are ignored, with a 64KB buffer cap to prevent memory bloat.
 
-## 渲染（ui/TerminalView.kt）
+## Rendering (ui/TerminalView.kt)
 
-- **行级文本布局缓存**：`(identity, version)` 键 + LRU 256 行，未变行重绘只回放
-  `TextLayoutResult`，跳过文本测量——全屏文本布局是每帧最贵的部分，滚动时整屏平移几乎全部命中。
-- 样式缓存：按 (ARGB, bold, 窄/宽字体) 缓存 TextStyle；BOLD + 基本 8 色提亮到 8–15（xterm 惯例）。
-- 只设底色、留默认前景的单元按背景亮度自动取黑/白前景（浅色主题下深底+深字不成黑块）。
-- 字体：JetBrains Mono（捆绑，各端度量一致）；CJK 回退（iOS 显式 PingFang SC）。
-- 光标：DECSCUSR 稳态样式（2/4/6）常亮，闪烁样式按 530ms 相位交替；块状光标下字符反色重绘。
-- 目标列数模式：按 12sp 参考测量反算字号，逐次实测校正列数（见 `effectiveFontSizeSp`）。
+- **Line-level text layout cache**: `(identity, version)` key + LRU of 256 lines; redrawing an unchanged line only replays
+  `TextLayoutResult`, skipping text measurement — full-screen text layout is the most expensive part of every frame, and during scrolling almost all of the full-screen translation hits the cache.
+- Style cache: TextStyle cached by (ARGB, bold, narrow/wide font); BOLD + the basic 8 colors brightened to 8–15 (xterm convention).
+- Cells with only a background color and the default foreground pick black/white foreground automatically by background luminance (deep background + dark text no longer becomes a black block in light themes).
+- Fonts: JetBrains Mono (bundled, consistent metrics on every platform); CJK fallback (explicit PingFang SC on iOS).
+- Cursor: DECSCUSR steady styles (2/4/6) are always on, blinking styles alternate on a 530ms phase; under a block cursor the character is redrawn inverted.
+- Target column-count mode: back-computes the font size from a 12sp reference measurement and corrects the column count by measuring each time (see `effectiveFontSizeSp`).
 
-## 测试纪律
+## Test discipline
 
-任何 `term/` 改动（转义序列、缓冲行为、宽字符）必须配 `commonTest/` 单测：
-`TerminalBufferTest` / `TerminalEmulatorTest` / `TerminalColorTest` / `TerminalSelectionTest`。
+Any `term/` change (escape sequences, buffer behavior, wide characters) must come with a `commonTest/` unit test:
+`TerminalBufferTest` / `TerminalEmulatorTest` / `TerminalColorTest` / `TerminalSelectionTest`.

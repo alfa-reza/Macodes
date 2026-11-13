@@ -1,107 +1,107 @@
-# 输入管线（IME / 键盘 / 触摸）
+# Input pipeline (IME / keyboard / touch)
 
-> **English summary:** how keyboard input reaches the remote shell — a hidden
+> **Summary:** how keyboard input reaches the remote shell — a hidden
 > `BasicTextField` as the IME entry point, composition-safe CJK input (composing
 > text never hits the wire; only committed text is diffed), split backspace
 > semantics, sticky CTRL/ALT, bracketed paste, and the touch-to-mouse-event
 > mapping for TUIs with mouse reporting enabled.
 
-Termish 的输入管线围绕一个原则设计：**IME 组合态（拼音）是一等公民**——组合态不上线、
-提交才发送，远端行永远不会被拼音污染。实现集中在 `ui/TerminalScreen.kt`（状态管理）、
-`ui/TerminalView.kt`（触摸手势）、`ui/KeyToolbar.kt`（功能键）。
+Termish's input pipeline is built around one principle: **IME composing state (pinyin) is a first-class citizen** — composing text
+never goes on the wire, only committed text is sent, and the remote line is never polluted by pinyin. The implementation is
+concentrated in `ui/TerminalScreen.kt` (state management), `ui/TerminalView.kt` (touch gestures), `ui/KeyToolbar.kt` (function keys).
 
-## 输入接入口：隐藏 BasicTextField
+## Input entry point: hidden BasicTextField
 
-- 一个 1dp 透明 `BasicTextField` 悬浮在工具栏区，仅作为输入法接入口，**不渲染可见 UI**——打字内容以远端回显为准（远端 echo 才是真实状态，本地显示反而重复干扰）。
-- `KeyboardType.Text`（不是 Ascii）：保中文候选栏；`capitalization = None`、`autoCorrect = false`。
-- `singleLine = false` 多行模式：捕获输入法 Enter（`\n` → 发 CR）。
-- 点画布/⌨ 键时 `requestFocus()` + 延迟 150ms `show()`：焦点变更与输入连接建立是异步的，立即 show 常被忽略；`onFocusChanged` 里再兜底 show 一次。
-- 输入法组合期间**组合文本绝不发往远端**。
+- A 1dp transparent `BasicTextField` floats in the toolbar area, serving only as the IME entry point and **rendering no visible UI** — what you type is reflected by the remote echo (the remote echo is the real state; a local display would duplicate it and get in the way).
+- `KeyboardType.Text` (not Ascii): keeps the Chinese candidate bar; `capitalization = None`, `autoCorrect = false`.
+- `singleLine = false` multiline mode: captures the IME Enter (`\n` → sends CR).
+- Tapping the canvas/⌨ key does `requestFocus()` + a delayed 150ms `show()`: focus changes and input-connection establishment are asynchronous, so an immediate show is often ignored; `onFocusChanged` does one more fallback show.
+- During IME composition **composing text is never sent to the remote**.
 
-## 提交 diff 算法
+## Commit diff algorithm
 
-已提交文本基线 `committedText` + 输入框当前值做**公共前缀 diff**：
+The committed-text baseline `committedText` plus the current field value are diffed by **longest common prefix**:
 
 ```
-p = 最长公共前缀长度
-发送 oldText.length - p 个 0x7f（删除尾部差异）
-发送 newText.substring(p)（新增部分，经 sendTyped 处理 CTRL/ALT/换行）
+p = length of the longest common prefix
+send oldText.length - p bytes of 0x7f (delete the differing tail)
+send newText.substring(p) (the added part, passed through sendTyped for CTRL/ALT/newline)
 ```
 
-- 纯尾部增删是精确操作；中间编辑无法映射到远端光标，按"删尾重发"处理。
-- 输入框缓冲 >64 字符或含 `\n` 时清空（防长粘贴积压 + Enter 后复位）。
+- Pure tail insertions/deletions are exact operations; mid-string edits cannot be mapped to the remote cursor, so they are handled as "delete the tail and resend".
+- The field buffer is cleared when it holds >64 characters or contains `\n` (prevents long-paste buildup + resets after Enter).
 
-## 退格语义（三段式）
+## Backspace semantics (three cases)
 
-| 场景 | 行为 |
+| Case | Behavior |
 |------|------|
-| 输入法组合中 | 不拦截：IME 自己删拼音（组合文本本就没发给远端） |
-| 输入框有已提交内容 | 不拦截：平台删除 → onValueChange diff 发送（光标/选区由系统维护） |
-| 输入框为空 | `onPreviewKeyEvent` 拦截 Backspace，直接发 0x7f —— Enter 后/快速命令后远端行有内容也删得掉 |
+| IME composing | Not intercepted: the IME deletes the pinyin itself (composing text was never sent to the remote anyway) |
+| Field has committed content | Not intercepted: platform deletion → onValueChange diff sends (cursor/selection maintained by the system) |
+| Field is empty | `onPreviewKeyEvent` intercepts Backspace and sends 0x7f directly — so content on the remote line after Enter or a quick command is still deletable |
 
-## 字符发送（sendTyped）
+## Character sending (sendTyped)
 
-- ALT 粘性 → 前缀 `ESC`（0x1b）。
-- CTRL 粘性 + a–z → `(ch.code and 0x1f)`。
-- `\n` → CR（0x0d）。
-- 其余 → UTF-8 字节直发。
+- ALT sticky → prefix `ESC` (0x1b).
+- CTRL sticky + a–z → `(ch.code and 0x1f)`.
+- `\n` → CR (0x0d).
+- Everything else → raw UTF-8 bytes.
 
-**粘性修饰键消费规则**：任何键发出后（工具栏 onKey / onChar / onPaste）CTRL/ALT 立即复位，
-避免残留导致下个字母变成 ⌃D/⌃C 意外退出会话。
+**Sticky modifier consumption rule**: after any key is sent (toolbar onKey / onChar / onPaste) CTRL/ALT reset immediately,
+so no residue turns the next letter into ⌃D/⌃C and accidentally exits the session.
 
 ## bracketed paste
 
-工具栏 PST（或系统粘贴）：远端开启 DECSET 2004 时包裹 `ESC[200~ … ESC[201~`，
-vim/nvim 不会把粘贴内容当手打（避免自动缩进错乱）。OSC 52 反向通道（远端写剪贴板）
-受设置开关控制，静默写入不弹提示。
+Toolbar PST (or system paste): when the remote has DECSET 2004 enabled, wrap in `ESC[200~ … ESC[201~`,
+so vim/nvim does not treat pasted content as typed (avoiding broken auto-indent). The OSC 52 reverse channel (remote writes the clipboard)
+is controlled by a settings toggle and writes silently without a prompt.
 
-## 焦点事件
+## Focus events
 
-DECSET 1004 开启时，输入框聚焦/失焦发 `CSI I` / `CSI O`（vim/tmux 据此刷新界面状态）。
+When DECSET 1004 is enabled, field focus/blur sends `CSI I` / `CSI O` (vim/tmux refresh their UI state from this).
 
-## 功能键工具栏（固定两行 8+8，无展开层）
+## Function-key toolbar (fixed two rows 8+8, no expandable layer)
 
 ```
-行1: CTRL  ALT  ESC  TAB  ⌃C  ↑  ⌃L  ⌨
-行2: ⌃D    PST  /    ⌃E   ←  ↓  →   ENT
+Row 1: CTRL  ALT  ESC  TAB  ⌃C  ↑  ⌃L  ⌨
+Row 2: ⌃D    PST  /    ⌃E   ←  ↓  →   ENT
 ```
 
-- ↑ 与 ↓ 上下对齐，⌨ 与 ENT 同在右上/右下拇指区。
-- CTRL/ALT 粘性 + 系统键盘字母即 ⌃A/⌃E/⌃R 等组合，不设专用按钮；符号键由系统键盘提供；画布惯性滚动替代 PgUp/PgDn。
-- 方向键在发送时读取当前会话 buffer 的 `applicationCursorKeys`（DECCKM）：普通模式用
-  `ESC [ A/B/C/D`（CSI），应用模式用 `ESC O A/B/C/D`（SS3），不能混成 `ESC [ O …`。
-  HOME/END 同样切换为 CSI H/F 或 SS3 H/F。模式由远端 `CSI ? 1 h/l` 控制；
-  存活会话切 tab、退出终端页后重入及健康连接回前台时保留各自的 buffer，不依赖 UI 重组刷新模式。
-- 低频键（F1–F12 / HOM / END / PGUP / PGDN / DEL / ⌫）已随固定两行工具栏设计移除；
-  如需重新暴露，转义映射见早期展开层实现（已从代码中移除，git 历史可查）
+- ↑ and ↓ align vertically, ⌨ and ENT sit in the top-right/bottom-right thumb zones.
+- CTRL/ALT sticky + system keyboard letters gives combinations like ⌃A/⌃E/⌃R, so no dedicated buttons; symbol keys come from the system keyboard; canvas inertial scrolling replaces PgUp/PgDn.
+- Arrow keys read the current session buffer's `applicationCursorKeys` (DECCKM) when sending: normal mode uses
+  `ESC [ A/B/C/D` (CSI), application mode uses `ESC O A/B/C/D` (SS3), never mixed into `ESC [ O …`.
+  HOME/END likewise switch between CSI H/F and SS3 H/F. The mode is controlled by the remote `CSI ? 1 h/l`;
+  switching tabs on a live session, re-entering after leaving the terminal page, and a healthy connection returning to the foreground all preserve each buffer, without relying on UI recomposition to refresh the mode.
+- Low-frequency keys (F1–F12 / HOM / END / PGUP / PGDN / DEL / ⌫) were removed together with the fixed two-row toolbar design;
+  if they need to be exposed again, the escape mappings are in the early expandable-layer implementation (removed from the code, still available in git history)
 
-## 触摸 → 终端鼠标事件（TUI 鼠标上报）
+## Touch → terminal mouse events (TUI mouse reporting)
 
-远端开启鼠标上报（1000/1002/1003）时，画布手势被接管并映射为鼠标事件；未开启时不消费
-事件，保持聚焦键盘/选择/滚动回看的默认行为。编码按模式：X10（字节偏移 32，上限 223）、
-SGR 1006、urxvt 1015（与 1006 互斥）。
+When the remote enables mouse reporting (1000/1002/1003), canvas gestures are taken over and mapped to mouse events; when it is off, events are not consumed
+and the default behavior of focusing the keyboard / selection / scrollback is kept. Encoding depends on the mode: X10 (byte offset 32, max 223),
+SGR 1006, urxvt 1015 (mutually exclusive with 1006).
 
-| 手势 | 映射 | 细节 |
+| Gesture | Mapping | Details |
 |------|------|------|
-| 轻点 | 同格 Down + Up | 释放用按下格，避免手指抖动被 herdr 的 1 格拖拽阈值判成拖拽 |
-| 单指纵向拖拽 | 滚轮（64/65） | 位移主导方向锁定（防横向抖动误判）；**滚轮行钳制到第 1 行起**——第 0 行在桌面布局下是 herdr 的 tab 栏，滚到 0 会疯狂切 tab |
-| 单指横向 / 双指拖拽 | Down + drag-motion(32) + Up | 选字、拖分割线、pane 内拖拽（需 1002/1003） |
-| 纵向拖拽抬起 | 惯性滚轮 | 近 150ms 窗口估速（裁剪长按期的静止事件），衰减循环补发 |
+| Tap | Down + Up in the same cell | Release uses the pressed cell, so finger jitter is not judged as a drag by herdr's 1-cell drag threshold |
+| One-finger vertical drag | Wheel (64/65) | Locked to the dominant direction (prevents sideways jitter from being misread); **wheel rows are clamped to start at row 1** — row 0 is herdr's tab bar in the desktop layout, and scrolling to 0 switches tabs like crazy |
+| One-finger horizontal / two-finger drag | Down + drag-motion(32) + Up | Text selection, dragging split lines, dragging inside a pane (requires 1002/1003) |
+| Vertical drag release | Inertial wheel | Velocity estimated over a ~150ms window (trimming stationary events from a long press), with a decay loop re-sending |
 
-手势意图明确前不补发 Down（轻点=点击、纵向=纯滚轮），避免"按下后在其他格抬起"被 herdr
-判成拖拽选区并复制 → OSC 52 → 反复弹剪贴板提示。
+Down is not sent before the gesture intent is clear (tap = click, vertical = pure wheel), to avoid "pressed then released in another cell" being
+judged by herdr as a drag selection and copying → OSC 52 → repeated clipboard prompts.
 
-## 滚动回看（非鼠标模式）
+## Scrollback (non-mouse mode)
 
-- `scrollable` fling 惯性；右边缘可拖滚动条。
-- DECSET 1007 alternate scroll：备用屏无回看可滚，滚动手势转方向键交给远端全屏程序（less/vim）。
-- 键盘弹出时画布按光标位置向上平移（不改 PTY 尺寸，避免全屏程序随键盘弹收反复重排），平移计算放 `graphicsLayer` 块内，不触发重组。
+- `scrollable` fling inertia; the scrollbar can be dragged on the right edge.
+- DECSET 1007 alternate scroll: the alternate screen has no scrollback to scroll, so the scroll gesture is turned into arrow keys for the remote full-screen program (less/vim).
+- When the keyboard appears the canvas shifts up by cursor position (without changing the PTY size, avoiding full-screen programs relayouting repeatedly as the keyboard opens and closes); the shift calculation lives inside the `graphicsLayer` block and does not trigger recomposition.
 
-## 快速命令与启动命令
+## Quick commands and startup command
 
-- 主机可配 quick commands（如常用运维命令），连接后以 chip 形式显示在画布上方，点按即发。
-- startup command（如 `tmux new -A -s main`）连接成功后自动执行，配合自动重连实现服务端会话现场恢复。
+- A host can be configured with quick commands (e.g. common ops commands); after connecting they are shown as chips above the canvas, and tapping one sends it.
+- The startup command (e.g. `tmux new -A -s main`) runs automatically after a successful connection, which together with auto-reconnect restores the server-side session in place.
 
-## 相关设置项
+## Related settings
 
-工具栏显隐、自动重连、TOFU 首次确认、OSC 52 剪贴板、触感反馈——见设置页（apply-on-change 即改即存）。
+Toolbar visibility, auto-reconnect, TOFU first-time confirmation, OSC 52 clipboard, haptic feedback — see the settings page (apply-on-change, saves immediately).

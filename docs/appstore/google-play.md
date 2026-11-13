@@ -1,26 +1,27 @@
-# Google Play 提交材料
+# Google Play submission material
 
-> 包名：`dev.termish.app`<br>
-> 类别：工具（Tools）<br>
-> 默认语言：简体中文<br>
-> 隐私政策 URL：`https://termish.dev/privacy`<br>
-> 支持 URL：`https://termish.dev`
+> Package name: `dev.termish.app`<br>
+> Category: Tools<br>
+> Default language: Simplified Chinese<br>
+> Privacy policy URL: `https://termish.dev/privacy`<br>
+> Support URL: `https://termish.dev`
 
-首次上传前必须确认 `compileSdk` / `targetSdk` 均为 36，并使用现有 Termish
-正式签名作为 Play App Signing 的 app signing key，以保持官网 APK 与 Play 版
-签名一致。建议另建独立 upload key。
+Before the first upload, confirm that `compileSdk` / `targetSdk` are both 36 and
+use the existing Termish production signing key as the Play App Signing app
+signing key, so the website APK and the Play version keep the same signature.
+Creating a separate upload key is recommended.
 
-## 商店文案（简体中文）
+## Store copy (Simplified Chinese)
 
-### 应用名称（30 字符内）
+### App name (30 characters max)
 
 `Termish SSH 终端`
 
-### 简短说明（80 字符内）
+### Short description (80 characters max)
 
 `支持 SSH、Mosh、SFTP、远程画面与 AI Agent 的本地优先终端`
 
-### 完整说明（4000 字符内）
+### Full description (4000 characters max)
 
 ```text
 Termish 是一款为手机打造的 SSH 与 Mosh 终端，也是连接远程开发环境和 AI Agent
@@ -119,9 +120,10 @@ Privacy policy: https://termish.dev/privacy
 Source code (MIT): https://github.com/ttermish/termish
 ```
 
-## App content 表单建议
+## App content form recommendations
 
-最终答案必须与准备上传的 AAB、第三方服务条款及线上隐私政策保持一致。
+Final answers must match the AAB you are about to upload, the third-party
+service terms, and the live privacy policy.
 
 ### Ads
 
@@ -129,7 +131,8 @@ Source code (MIT): https://github.com/ttermish/termish
 
 ### App access
 
-选择“部分功能受限”，因为核心 SSH/SFTP/远程画面能力需要服务器凭据。
+Choose "Some functionality is restricted" because the core SSH/SFTP/remote-screen
+capabilities require server credentials.
 
 ```text
 Termish does not have an application account. To review its core functionality,
@@ -152,40 +155,46 @@ The credentials are reusable, do not require MFA, and remain available throughou
 the review period. The account is isolated and contains only disposable test data.
 ```
 
-提交前把全部占位符换成公网审核机信息；不要把审核密码写进仓库或商店公开文案。
+Before submitting, replace every placeholder with the public review host
+details; do not write the review password into the repository or public store copy.
 
 ### Target audience
 
-推荐仅在产品确实面向专业开发/运维用户时选择 `18 and over`，并声明应用不面向儿童。
+Only select `18 and over` when the product genuinely targets professional
+development/operations users, and declare that the app is not intended for children.
 
 ### Content rating
 
-如实完成 IARC 问卷。应用自身不包含暴力、色情、赌博、毒品或用户公开互动内容；
-用户自己的服务器内容不由 Termish 提供。
+Complete the IARC questionnaire truthfully. The app itself contains no violence,
+sexual content, gambling, drugs, or public user interaction content; content on
+users' own servers is not provided by Termish.
 
 ### Data safety
 
-建议按当前实现申报：
+Recommend declaring as per the current implementation:
 
-| 数据类型 | 收集 | 共享 | 必需性 | 用途 | 说明 |
+| Data type | Collected | Shared | Necessity | Purpose | Notes |
 |---|---|---|---|---|---|
-| Audio files → Voice or sound recordings | Yes | 依据火山引擎角色确认 | Optional | App functionality | 用户按住麦克风时发送至火山引擎转写 |
+| Audio files → Voice or sound recordings | Yes | Confirm per the Volcano Engine role | Optional | App functionality | Sent to Volcano Engine for transcription while the user holds the microphone |
 
-通用问题建议：
+General question recommendations:
 
-- Data encrypted in transit：`Yes`
-- Users can request deletion：Termish 无中央账号或自有服务器数据；第三方数据删除方式
-  以火山引擎条款为准，确认后再选择
-- Credentials、SSH 内容、SFTP 文件：Termish 项目不接收；流量直接到用户指定服务器
-- Agent 提示词与附件：从用户服务器发送至其自行配置的服务商；根据 Google Play
-  对用户主动传输和服务商的定义确认是否属于 sharing 豁免，不要直接填“无数据”
+- Data encrypted in transit: `Yes`
+- Users can request deletion: Termish has no central account or its own server
+  data; third-party data deletion follows Volcano Engine's terms — confirm before selecting
+- Credentials, SSH content, SFTP files: not received by the Termish project;
+  traffic goes directly to the server the user specifies
+- Agent prompts and attachments: sent from the user's server to the provider they
+  configured themselves; confirm against Google Play's definitions of
+  user-initiated transfer and service providers whether this qualifies for the
+  sharing exemption, and do not simply enter "no data"
 
 ### Foreground service declaration
 
-类型：`connectedDevice`<br>
-最接近的用途：`Continuous data transfer to an external device`
+Type: `connectedDevice`<br>
+Closest purpose: `Continuous data transfer to an external device`
 
-功能说明：
+Function description:
 
 ```text
 Termish is an interactive SSH and Mosh client. After the user explicitly connects
@@ -194,7 +203,7 @@ encrypted network session while the app is backgrounded. A persistent notificati
 makes the activity visible and lets the user return to or stop the session.
 ```
 
-延迟或中断影响：
+Impact of delaying or interrupting:
 
 ```text
 Deferring the task prevents an explicitly requested interactive shell from becoming
@@ -203,12 +212,14 @@ output and file transfers, and may lose unsaved remote work unless the user also
 configured a persistent server-side session.
 ```
 
-演示视频应完整录到：用户主动连接 → 终端输出 → 切后台 → 常驻通知 → 回前台仍连接
-→ 用户主动断开后通知消失。视频用不公开的 YouTube 链接并保证审核员可访问。
+The demo video should record the full flow: user-initiated connection → terminal
+output → switch to background → persistent notification → still connected when
+returning to foreground → notification disappears after the user disconnects.
+Use an unlisted YouTube link for the video and make sure reviewers can access it.
 
-## 发布说明
+## Release notes
 
-首次内测可用：
+For the first internal test, use:
 
 ```text
 首个 Google Play 测试版本：支持 SSH、Mosh、SFTP、多会话、远程画面、语音输入和远程 Agent 工作台。
@@ -220,44 +231,44 @@ English:
 First Google Play test release with SSH, Mosh, SFTP, multiple sessions, remote screen, voice input, and remote Agent workflows.
 ```
 
-## 图形素材
+## Graphic assets
 
-- Play 图标：`google-play/play-icon.png`（512×512）
-- Feature graphic：`google-play/feature-graphic.png`（1024×500）
-- 中文手机截图：`google-play/zh/`
-- 英文手机截图：`google-play/en/`
+- Play icon: `google-play/play-icon.png` (512×512)
+- Feature graphic: `google-play/feature-graphic.png` (1024×500)
+- Chinese phone screenshots: `google-play/zh/`
+- English phone screenshots: `google-play/en/`
 
-上传顺序和无障碍说明：
+Upload order and accessibility notes:
 
-| 顺序 | 文件 | 中文 Alt text | English alt text |
+| Order | File | Chinese alt text | English alt text |
 |---|---|---|---|
 | 1 | `hosts.png` | Termish 主机列表及活跃连接状态 | Host list with active connection status |
 | 2 | `terminal-menu.png` | 终端会话及 Git、上传、SFTP 和语音快捷菜单 | Terminal session with Git, upload, SFTP, and voice actions |
 | 3 | `sftp.png` | SFTP 文件列表与目录操作菜单 | SFTP file browser and directory actions |
 | 4 | `settings.png` | 主题、语言、通知和终端偏好设置 | Theme, language, notification, and terminal preferences |
 
-## 控制台执行顺序
+## Console execution order
 
-1. 完成开发者身份、联系方式、真机和付款资料验证。
-2. 创建应用并确认包名 `dev.termish.app`。
-3. 配置 Play App Signing：导入现有 Termish app signing key，另建 upload key。
-4. 上传 API 36 的 AAB 到 Internal testing。
-5. 完成 Store listing、Privacy policy、Ads、App access、Target audience、
-   Content rating、Data safety 和 Foreground service declarations。
-6. 检查 Pre-launch report，修复崩溃、ANR、无障碍和兼容性问题。
-7. 新个人账号运行 12 人连续 14 天的 Closed testing，并保存测试反馈。
-8. 申请 Production access；获批后先小比例发布，再逐步扩大。
+1. Complete developer identity, contact details, real-device, and payment profile verification.
+2. Create the app and confirm the package name `dev.termish.app`.
+3. Configure Play App Signing: import the existing Termish app signing key and create a separate upload key.
+4. Upload the API 36 AAB to Internal testing.
+5. Complete Store listing, Privacy policy, Ads, App access, Target audience,
+   Content rating, Data safety, and Foreground service declarations.
+6. Check the Pre-launch report and fix crashes, ANRs, accessibility, and compatibility issues.
+7. New personal accounts must run Closed testing with 12 testers for 14 consecutive days, and save the tester feedback.
+8. Apply for Production access; after approval, release to a small percentage first, then expand gradually.
 
-## 提交前清单
+## Pre-submission checklist
 
-- [ ] `compileSdk` / `targetSdk` 为 36
-- [ ] `versionCode` 高于 Play Console 已上传版本
-- [ ] AAB 使用正确 upload key 签名
-- [ ] 线上隐私政策可通过 HTTPS 匿名访问
-- [ ] App 内隐私政策与线上版本、Data safety 一致
-- [ ] 火山引擎音频保存、删除及服务商角色已经核实
-- [ ] FGS 演示视频无需登录即可观看
-- [ ] 审核 SSH 账号公网可达、无 MFA、长期有效
-- [ ] 512 图标、1024×500 宣传图和至少四张手机截图已上传
-- [ ] 中英文商店文案与当前功能一致
-- [ ] 已检查 Android vitals、Pre-launch report 和政策状态
+- [ ] `compileSdk` / `targetSdk` are 36
+- [ ] `versionCode` is higher than the version already uploaded to Play Console
+- [ ] The AAB is signed with the correct upload key
+- [ ] The live privacy policy is anonymously reachable over HTTPS
+- [ ] The in-app privacy policy matches the live version and Data safety
+- [ ] Volcano Engine audio retention, deletion, and provider roles have been verified
+- [ ] The FGS demo video is watchable without signing in
+- [ ] The review SSH account is publicly reachable, has no MFA, and remains valid long-term
+- [ ] The 512 icon, 1024×500 feature graphic, and at least four phone screenshots have been uploaded
+- [ ] The Chinese and English store copy matches current functionality
+- [ ] Android vitals, Pre-launch report, and policy status have been checked
