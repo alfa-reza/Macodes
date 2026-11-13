@@ -133,7 +133,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 
-/** 终端页会话 tab：SSH/Mosh 终端 或 SFTP 文件浏览器。 */
+/** Terminal screen session tab: SSH/Mosh terminal or SFTP file browser. */
 sealed interface SessionTab {
     val id: String
 
@@ -151,10 +151,10 @@ sealed interface SessionTab {
         override val id: String get() = "sftp:${host.id}:${session?.hashCode() ?: "restored"}"
     }
 
-    /** 远程屏幕（H.264 推流播放）——现作为终端 tab 内的小窗/全屏，不再独立展示。 */
+    /** Remote Screen (H.264 streaming) — Now displayed as a floating window or in fullscreen mode within a terminal tab; it is no longer displayed as a standalone window. */
     data class Screen(
         val host: Host,
-        /** 归属的终端会话 id（小窗只在该 tab 显示）。 */
+        /** The ID of the terminal session to which it belongs (the floating window is shown only in that tab). */
         val ownerSessionId: String,
         val session: ScreenSession?,
         val uiState: ScreenUiState = ScreenUiState(),
@@ -163,7 +163,7 @@ sealed interface SessionTab {
     }
 }
 
-/** 终端页当前 tab 的配色：终端 tab 用终端主题，应用类页面 tab 用应用主题。 */
+/** Color scheme for the current terminal screen tab: Terminal tabs use the terminal theme; app-type screen tabs use the app theme. */
 @Composable
 private fun tabColors(
     current: SessionTab,
@@ -182,78 +182,78 @@ fun TerminalScreen(
     current: SessionTab,
     theme: TerminalTheme,
     settings: AppSettings,
-    /** 终端内插入命令片段（全局库读取）。 */
+    /** Insert command snippets in the terminal (read from the global library). */
     repository: HostRepository,
     onBack: () -> Unit,
     onSwitchTab: (SessionTab) -> Unit,
     onAddSession: () -> Unit,
     onCloseTab: (SessionTab) -> Unit,
     onOpenSftpPicker: () -> Unit,
-    /** 文件管理（菜单项）：直接打开当前主机的 SFTP 文件管理视图，定位到给定目录。 */
+    /** File Management (menu item): Directly opens the SFTP file management view for the current host and navigates to the specified directory. */
     onOpenSftpForHost: (Host, String?) -> Unit = { _, _ -> },
-    /** 收藏夹（菜单项）：列出当前主机收藏目录并跳转。 */
+    /** Favorites (menu item): Lists the current host’s favorites directory and navigates to it. */
     onOpenFavorites: (Host) -> Unit = {},
-    /** 收藏变更持久化（SFTP 页回调，AppRoot 落盘）。 */
+    /** Persistence of changes to favorites (SFTP page callback, save to AppRoot). */
     onFavoritesChanged: (Host, List<String>) -> Unit = { _, _ -> },
-    /** SFTP 浏览路径即时持久化（崩溃/强杀不丢最后目录）。 */
+    /** Instant persistence of SFTP browse paths (the last directory is not lost upon crash or force kill). */
     onSftpPathChanged: (Host, String) -> Unit = { _, _ -> },
-    /** 将终端选中输出和当前目录交给同主机 Agent，内容只作为不可信上下文。 */
+    /** Pass the selected terminal output and the current directory to an Agent on the same host; the content is treated solely as untrusted context. */
     onAskAgent: (Host, AgentLaunchContext) -> Unit = { _, _ -> },
-    /** SFTP 断线重连：重建会话后替换 tab 中的 session（由 AppRoot 实现）。 */
+    /** SFTP reconnection: Replace the session in the tab after rebuilding the connection (implemented by AppRoot). */
     onReconnectSftp: (SessionTab.Sftp) -> Unit = {},
-    /** 屏幕（菜单项）：打开当前主机的远程画面。 */
+    /** Screen (menu item): Opens the remote screen for the current host. */
     onOpenScreen: (Host) -> Unit = {},
-    /** 屏幕断线重连：重建推流会话替换 tab。 */
+    /** Screen reconnection: rebuild the streaming session and replace the tab's session. */
     onReconnectScreen: (SessionTab.Screen) -> Unit = {},
-    /** 屏幕重连（就地全屏用，按主机定位会话）。 */
+    /** Screen reconnection (for fullscreen mode; uses the host to locate the session). */
     onReconnectScreenForHost: (Host) -> Unit = {},
-    /** 屏幕推流服务安装（引导卡片按钮；按主机定位会话）。 */
+    /** Screen streaming service installation (guide card button; locate session by host). */
     onInstallScreenService: (Host, String?) -> Unit = { _, _ -> },
-    /** 全屏推流参数切换（帧率/画质）：写远端配置后重建会话生效。 */
+    /** Fullscreen streaming parameter toggling (frame rate/image quality): Changes take effect after saving the remote configuration and rebuilding the session. */
     onStreamConfigChange: (Host, Int, String) -> Unit = { _, _, _ -> },
-    /** 终端页小窗：当前主机活跃屏幕会话的 uiState（null = 不显示）；点击 = 就地全屏。 */
+    /** Terminal screen: The uiState of the active terminal session on the current host (null = does not show); tap = go fullscreen in place. */
     screenPip: ScreenUiState? = null,
-    /** 主机卡直接打开画面时的全屏请求；普通终端菜单启动为 null。 */
+    /** Fullscreen request when the host card opens the screen directly; null when launched from the standard terminal menu. */
     screenFullscreenRequestHostId: String? = null,
     onScreenFullscreenRequestConsumed: () -> Unit = {},
-    /** 屏幕会话所属主机（全屏头部显示用；独立于 current tab）。 */
+    /** Host of the screen session (shown in the fullscreen header; independent of the current tab). */
     pipHost: Host? = null,
-    /** 小窗 ✕：关闭当前屏幕会话（由 AppRoot 销毁会话并移除条目）。 */
+    /** Floating window ✕: Close the current screen session (AppRoot destroys the session and removes the entry). */
     onCloseScreenPip: () -> Unit = {},
 ) {
     val s = LocalAppStrings.current
-    // 关闭 tab 前确认：x 太容易误触
+    // Confirm before closing a tab: The “x” is too easy to click by accident
     var pendingClose by remember { mutableStateOf<SessionTab?>(null) }
-    // 背景在 statusBarsPadding 之前应用：状态栏/灵动岛区域与页面同色，
-    // 避免终端黑色时顶部露出 App 浅色背景（或终端白色时露出深色背景）
+    // Background: Before `statusBarsPadding` was applied, the status bar/Dynamic Island region shared the same color as the screen,
+    // Avoid exposing the app’s light background at the top when the terminal is black (or exposing a dark background when the terminal is white).
     val (pageBackground, pageForeground) = tabColors(current, theme)
-    // 屏幕小窗就地全屏（提升到 TerminalScreen 根层）：全屏画面要覆盖 tab 栏与
-    // 状态栏区域，放在 TerminalBody 内会被 statusBarsPadding + TabBar 框成画布全屏（v1.5.1 反馈）
+    // Make a floating window fullscreen in place (elevate it to the TerminalScreen root layer): The fullscreen view should cover the tab bar and
+    // The status bar region, when placed inside `TerminalBody`, is enclosed by `statusBarsPadding` and `TabBar`, making it fullscreen on the canvas (feedback from v1.5.1).
     var pipFullscreen by remember { mutableStateOf(false) }
     val setPipFullscreen: (Boolean) -> Unit = { fullscreen ->
-        // 主机卡“远程画面”会投递一次自动展开请求；用户主动收起时同步消费，
-        // 否则 screenPip 重组会再次把 pipFullscreen 拉回 true，看起来像返回无效。
+        // The host card “Remote Screen” posts a one-shot auto-expand request; when the user actively collapses it, the request is consumed synchronously,
+        // otherwise the screenPip recomposition would set pipFullscreen back to true, making the back action look ineffective.
         if (!fullscreen) onScreenFullscreenRequestConsumed()
         pipFullscreen = fullscreen
     }
     LaunchedEffect(screenPip, pipHost, screenFullscreenRequestHostId) {
         if (screenPip == null) {
-            // 待连接条目失败/关闭后退出沉浸式，恢复终端与系统状态栏。
+            // Exit immersive mode when the linked entry closes or the connection fails, and resume the terminal and system status bar.
             pipFullscreen = false
         } else if (pipHost?.id == screenFullscreenRequestHostId) {
             pipFullscreen = true
             onScreenFullscreenRequestConsumed()
         }
     }
-    // 屏幕尺寸（px）：全屏展开动画从小窗几何映射用
+    // Screen size (px): Used for geometric mapping of the fullscreen expansion animation from a floating window
     var screenSize by remember { mutableStateOf(IntSize.Zero) }
-    // 小窗位置/尺寸（提升到 TerminalScreen：全屏展开动画需要从小窗几何放大，
-    // 且全屏时小窗离开组合不能重置——v1.4.0 回归同源）
+    // Floating window position/size (when expanding to TerminalScreen: the fullscreen expansion animation requires scaling up from the floating window’s geometry,
+    // and in fullscreen the floating window must not reset when it leaves composition — same root cause as the v1.4.0 regression)
     val pipDrag = remember { mutableStateOf(Offset.Zero) }
     val pipSizeW = remember { mutableStateOf(PIP_DEFAULT_W) }
     val pipSizeH = remember { mutableStateOf(PIP_DEFAULT_H) }
-    // 全屏展开/收起动画进度（0 = 小窗几何，1 = 全屏）：从小窗位置尺寸放大，
-    // 画面由 setOutputSurface 无缝续帧（用户反馈：中心展开不是小窗放大效果）
+    // Fullscreen expand/collapse animation progress (0 = floating window geometry, 1 = fullscreen): Zoom in from the floating window’s position and dimensions,
+    // The screen is seamlessly updated by `setOutputSurface` (User feedback: The center expansion does not look like a floating window being enlarged).
     val expandAnim = remember { Animatable(0f) }
     LaunchedEffect(pipFullscreen) {
         if (pipFullscreen) {
@@ -263,35 +263,35 @@ fun TerminalScreen(
             expandAnim.animateTo(0f, animationSpec = tween(200))
         }
     }
-    // 只在 tab id 真正变化时退出全屏。首次进入 TerminalScreen 不能执行：主机卡
-    // 自动展开刚写入 true 时，初始 effect 若紧接着写 false，会让状态与动画脱节，
-    // 最终画面停在全屏但返回按钮永远收不起。
+    // Exit fullscreen only when the tab id actually changes. Do not run this on the first entry into TerminalScreen: the host card
+    // When automatically expanding, if `true` is just written and `false` immediately follows in the initial `effect`, it will cause the state and animation to become out of sync,
+    // the screen ends up in fullscreen but the back button can never collapse it.
     var fullscreenTabId by remember { mutableStateOf(current.id) }
     LaunchedEffect(current.id) {
         if (fullscreenTabId != current.id) setPipFullscreen(false)
         fullscreenTabId = current.id
     }
-    // 沉浸式隐藏状态栏后 inset 归零：记录非全屏时的状态栏高度，
-    // 全屏 header 内容下移与终端页 tab 栏对齐（用户反馈：按钮更靠上）
+    // Reset the inset after the status bar is hidden in immersive mode: Record the status bar height when not in fullscreen mode,
+    // Move the fullscreen header content down to achieve alignment with the terminal screen tab bar (user feedback: buttons are positioned higher).
     val screenDensity = LocalDensity.current
     var lastStatusBarTop by remember { mutableIntStateOf(0) }
-    // 收起动画完成（expandAnim 归零）后才更新状态栏高度：动画期间全屏层
-    // 还在，此时沉浸式刚退出、inset 可能还是 0——提前更新会让头部主机名
-    // 上跑到状态栏区域（用户反馈）。
-    // ⚠️ 取最大值：状态栏恢复动画刚开始时 getTop 还是 0，直接赋值会把
-    // lastStatusBarTop 置 0——下次全屏 header 的模拟状态栏 padding 失效
-    // （用户反馈：自己写的状态栏没了）
+    // Update the status bar height only after the collapse animation is complete (expandAnim reaches zero): During the animation, the fullscreen layer
+    // It’s still there—at this point, Immersive Mode has just exited, and `inset` might still be 0—updating early would cause the hostname in the header to
+    // Appears in the status bar region (user feedback).
+    // ⚠️ Take the maximum value: When the status bar resume animation first starts, `getTop` is still 0; assigning a value directly would
+    // Set lastStatusBarTop to 0—this will disable the mock status bar padding in the next fullscreen header.
+    // (User feedback: The status bar I wrote is gone.)
     if (!pipFullscreen && expandAnim.value <= 0f) {
         lastStatusBarTop =
             maxOf(lastStatusBarTop, WindowInsets.statusBars.getTop(screenDensity))
     }
-    // 全屏沉浸式：隐藏系统状态栏，画面铺满整个屏幕。
-    // 收起动画期间保持隐藏（expandAnim > 0 仍 immersive）：动画结束（全屏层
-    // 移除、回到终端页）才恢复状态栏——否则动画播放中状态栏突然刷出
-    // （用户反馈：点击返回状态栏刷新一下）
+    // Fullscreen immersive mode: The system status bar is hidden, and the display fills the entire screen.
+    // Remain hidden during the collapse animation (expandAnim > 0 remains immersive): animation ends (fullscreen layer
+    // The status bar only resumes after exiting or returning to the terminal screen—otherwise, it suddenly appears while the animation is playing.
+    // (User feedback: Tap the back button to refresh.)
     PlatformImmersiveMode(pipFullscreen || expandAnim.value > 0f)
-    // 固定状态栏高度（px）：沉浸式隐藏状态栏时 statusBarsPadding 会归零，
-    // 返回瞬间从无到有 → tab 页内容跳变（用户定位根因）。用记录值固定
+    // Fixed status bar height (px): When the status bar is hidden in immersive mode, `statusBarsPadding` is set to zero,
+    // from nothing to present in an instant → the tab page content jumps (root cause identified by the user). Use the recorded value to pin
     val statusBarTopPx = maxOf(lastStatusBarTop, WindowInsets.statusBars.getTop(screenDensity))
     Box(Modifier.fillMaxSize().background(pageBackground).onSizeChanged { screenSize = it }) {
         Column(
@@ -321,7 +321,7 @@ fun TerminalScreen(
                         onBack = onBack,
                         pipFullscreen = pipFullscreen,
                         onPipFullscreenChange = setPipFullscreen,
-                        // 收起动画播放中（全屏层还在缩回）：小窗延迟出现防闪烁
+                        // Collapse animation in progress (fullscreen layer still retracting): the floating window appears after a delay to avoid flickering
                         pipCollapsing = !pipFullscreen && expandAnim.value > 0f,
                         pipDrag = pipDrag,
                         pipSizeW = pipSizeW,
@@ -391,16 +391,16 @@ fun TerminalScreen(
             )
         }
 
-        // 全屏画面覆盖层：根层（TabBar 之上），真全屏铺满；
-        // 沉浸式（状态栏隐藏）由 PlatformImmersiveMode(pipFullscreen) 处理。
-        // 展开/收起动画：从小窗【位置+尺寸】放大到全屏（ToDesk 同款），
-        // 画面由 setOutputSurface 无缝续帧；收起反向缩小回小窗。
-        // 动画期间保留在组合中（progress>0），退出动画播完才移除
+        // Fullscreen overlay: Root layer (above the TabBar), truly fullscreen;
+        // Immersive mode (hidden status bar) is handled by PlatformImmersiveMode(pipFullscreen).
+        // Expand/collapse animation: Enlarge from a floating window [position + size] to fullscreen (similar to ToDesk),
+        // The screen is seamlessly refreshed by `setOutputSurface`; minimizing it shrinks it back to a floating window.
+        // Remain in the composition during the animation (progress > 0); remove only after the exit animation has finished playing.
         val expandP = expandAnim.value
         if ((pipFullscreen || expandP > 0f) && screenPip != null) {
             val fullHost = pipHost ?: (current as? SessionTab.Terminal)?.controller?.host
             if (fullHost != null) {
-                // 小窗几何（px）：初始右上角（TopEnd + 8dp padding）+ 拖动偏移
+                // Floating window dimensions (px): Initial top-right corner (TopEnd + 8dp padding) + drag offset
                 val edge = with(screenDensity) { 8.dp.toPx() }
                 val pipW = pipSizeW.value * screenDensity.density
                 val pipH = pipSizeH.value * screenDensity.density
@@ -417,22 +417,22 @@ fun TerminalScreen(
                     onInstallService = { password -> onInstallScreenService(fullHost, password) },
                     onClose = { setPipFullscreen(false) },
                     statusBarInsetTop = lastStatusBarTop,
-                    // ⚠️ 之前漏传（默认空实现）——全屏切档位回调从未到达 AppRoot
+                    // ⚠️ Previously omitted (default empty implementation) — the fullscreen gear-selection callback never reached AppRoot
                     onStreamConfigChange = { fps, scale ->
                         onStreamConfigChange(fullHost, fps, scale)
                     },
                     onFpsIndex = { fps -> screenPip?.streamFps = fps },
-                    // 展开/收起动画期间不上真实视频面（黑底占位）：动画把整个
-                    // 容器 graphicsLayer 缩放，部分设备 SurfaceView 表面不跟随
-                    // 缩放 → 画面卡成小窗尺寸的「亮点」/黑屏（用户反馈）。
-                    // 动画结束（expandP=1）再建面，surface 永远全尺寸创建。
+                    // Do not display the actual video during the expand/collapse animation (use a black background placeholder): The animation covers the entire
+                    // The `graphicsLayer` container scales, but the `SurfaceView` surface does not follow on some devices
+                    // Scale → the picture freezes as a floating-window-sized “bright spot” / black screen (user feedback).
+                    // After the animation ends (expandP=1), create a new surface; the surface is always created at full size.
                     videoEnabled = expandP >= 1f,
                     modifier =
                         Modifier
                             .fillMaxSize()
                             .zIndex(100f)
-                            // 小窗→全屏变换：scale 从小窗/屏幕比例到 1，
-                            // translation 从小窗中心偏移到 0（画面内容连续）
+                            // Transform between floating windows and fullscreen modes: set `scale` from the floating window/screen ratio to 1,
+                            // translation goes from the floating-window center offset to 0 (content stays continuous)
                             .graphicsLayer {
                                 val p = expandP
                                 scaleX = (pipW / sw) + (1f - pipW / sw) * p
@@ -446,8 +446,8 @@ fun TerminalScreen(
     }
 }
 
-/** 终端主体：banner + 画布 + 工具栏 + 输入框（切换 tab 按会话 id 重组）。 */
-@Suppress("DEPRECATION") // Compose 1.8 新 Clipboard 尚无稳定的跨平台纯文本构造 API。
+/** Terminal body: banner + canvas + toolbar + input field (toggle tabs based on session ID for reassembly). */
+@Suppress("DEPRECATION") // Compose 1.8’s new Clipboard does not yet have a stable, cross-platform plain-text construction API.
 @Composable
 private fun TerminalBody(
     controller: TerminalController,
@@ -455,37 +455,37 @@ private fun TerminalBody(
     settings: AppSettings,
     repository: HostRepository,
     onBack: () -> Unit,
-    /** 屏幕小窗就地全屏状态（提升到 TerminalScreen：全屏层在根层）。 */
+    /** Floating window to fullscreen state in place (elevated to TerminalScreen: fullscreen layer at the root level). */
     pipFullscreen: Boolean,
-    /** 全屏状态变更回调。 */
+    /** Fullscreen state change callback. */
     onPipFullscreenChange: (Boolean) -> Unit,
-    /** 收起动画播放中（全屏层缩回期间小窗延迟出现，防闪烁）。 */
+    /** Collapse animation while it is playing (a floating window appears with latency while the fullscreen layer is collapsing to prevent flickering). */
     pipCollapsing: Boolean = false,
-    /** 小窗位置/尺寸（TerminalScreen 持有：全屏展开动画需要）。 */
+    /** Floating window position/size (held by `TerminalScreen`: required for fullscreen expansion animation). */
     pipDrag: MutableState<Offset>,
     pipSizeW: MutableState<Float>,
     pipSizeH: MutableState<Float>,
-    /** 文件管理（菜单项）：打开当前主机的 SFTP 文件管理视图，定位到给定目录。 */
+    /** File Management (menu item): Opens the SFTP file management view for the current host and navigates to the specified directory. */
     onOpenSftpForHost: (Host, String?) -> Unit = { _, _ -> },
-    /** 收藏夹（菜单项）：列出当前主机收藏目录并跳转。 */
+    /** Favorites (menu item): Lists the current host’s favorites directory and navigates to it. */
     onOpenFavorites: (Host) -> Unit = {},
-    /** 收藏变更持久化（SFTP 页回调，AppRoot 落盘）。 */
+    /** Persistence of changes to favorites (SFTP page callback, save to AppRoot). */
     onFavoritesChanged: (Host, List<String>) -> Unit = { _, _ -> },
-    /** SFTP 浏览路径即时持久化（崩溃/强杀不丢最后目录）。 */
+    /** Instant persistence of SFTP browse paths (the last directory is not lost upon crash or force kill). */
     onSftpPathChanged: (Host, String) -> Unit = { _, _ -> },
-    /** 将终端选中输出和当前目录交给同主机 Agent。 */
+    /** Pass the selected terminal output and the current directory to an Agent on the same host. */
     onAskAgent: (Host, AgentLaunchContext) -> Unit = { _, _ -> },
-    /** 屏幕（菜单项）：打开当前主机的远程画面。 */
+    /** Screen (menu item): Opens the remote screen for the current host. */
     onOpenScreen: (Host) -> Unit = {},
-    /** 终端页小窗：当前主机活跃屏幕会话的 uiState（点击 = 就地全屏）。 */
+    /** Terminal screen: The uiState of the current host’s active screen session (tap = fullscreen in place). */
     screenPip: ScreenUiState? = null,
-    /** 小窗 ✕：关闭当前屏幕会话（由 AppRoot 销毁会话并移除条目）。 */
+    /** Floating window ✕: Close the current screen session (AppRoot destroys the session and removes the entry). */
     onCloseScreenPip: () -> Unit = {},
-    /** 屏幕推流服务安装（引导卡片按钮；就地全屏用当前主机）。 */
+    /** Screen streaming service installation (guide card button; use current host for fullscreen mode). */
     onInstallScreenService: (Host, String?) -> Unit = { _, _ -> },
-    /** 屏幕重连（就地全屏用，按主机定位会话）。 */
+    /** Screen reconnection (for fullscreen mode; uses the host to locate the session). */
     onReconnectScreenForHost: (Host) -> Unit = {},
-    /** 全屏推流参数切换（帧率/画质）：写远端配置后重建会话生效。 */
+    /** Fullscreen streaming parameter toggling (frame rate/image quality): Changes take effect after saving the remote configuration and rebuilding the session. */
     onStreamConfigChange: (Host, Int, String) -> Unit = { _, _, _ -> },
 ) {
     val s = LocalAppStrings.current
@@ -496,25 +496,25 @@ private fun TerminalBody(
     var ctrlActive by remember { mutableStateOf(false) }
     var altActive by remember { mutableStateOf(false) }
     var inputValue by remember { mutableStateOf(TextFieldValue("")) }
-    // 已提交基线：输入法组合态（拼音等）不参与 diff，提交时才更新
+    // Submitted baseline: Input method compositions (Pinyin, etc.) are excluded from the diff and are updated only upon commit.
     var committedText by remember { mutableStateOf("") }
-    // 命令片段插入面板
+    // Command snippet insertion panel
     var snippetOpen by remember { mutableStateOf(false) }
-    // Git 面板（FAB 与工具栏「⎇」键共用开关）
+    // Git panel (FAB and toolbar “⎇” key share the same switch)
     var gitPanelOpen by remember { mutableStateOf(false) }
-    // 右下角功能菜单展开状态（语音 / Git / 未来功能）
+    // Expanded state of the bottom-right feature menu (Voice / Git / Future Features)
     var toolMenuOpen by remember { mutableStateOf(false) }
 
-    // ---- 终端文件上传（菜单项：选目录 → 系统文件选择器 → SFTP 流式上传）----
+    // ---- Terminal File Upload (Menu item: Select Directory → System File Selector → SFTP Stream Upload)----
     val uploader = remember(controller) { TerminalFileUploader(controller, scope) }
     var uploadState by remember { mutableStateOf<UploadUiState>(UploadUiState.Idle) }
     uploader.onState = { st -> uploadState = st }
-    // 目标目录对话框：workdir 探测完成后填充（当前目录 + /tmp）
+    // Target Directory Dialog: Fill after workdir detection is complete (current directory + /tmp)
     var uploadDirDialog by remember { mutableStateOf(false) }
     var uploadTargets by remember { mutableStateOf<List<String>>(emptyList()) }
-    // 已选目标目录（文件选择器回调时使用）
+    // Selected target directory (used when the file selector callback is invoked)
     var uploadDir by remember { mutableStateOf("") }
-    // 系统文件选择器：多选，逐文件回调 → 入队串行上传
+    // System file selector: Multiple selection, file-by-file callback → Enqueue for serial upload
     val filePicker =
         rememberFilePicker(
             onPicked = { file ->
@@ -527,37 +527,37 @@ private fun TerminalBody(
             },
         )
 
-    // ---- 屏幕小窗：就地全屏状态（点击小窗展开，返回/✕ 收起）----
-    // 状态已提升到 TerminalScreen（全屏层在根层，见 TerminalScreen）
+    // ---- Floating Window: fullscreen mode (Tap to expand; Back/✕ to collapse)----
+    // Status has been elevated to TerminalScreen (the fullscreen layer is at the root level; see TerminalScreen)
 
-    // ---- 语音输入（画布悬浮麦克风 FAB，按住说话、松手发送）----
+    // ---- Voice Input (Floating Microphone FAB on the canvas; press and hold to speak, release to send)----
     val micPermission = rememberMicPermissionRequester()
     var voiceState by remember { mutableStateOf(VoiceUiState.IDLE) }
     var voiceSession by remember { mutableStateOf<AsrEngine?>(null) }
-    // 按下标志：权限弹窗/建连异步，松手先于授权回调时凭它取消启动
+    // Pressed flag: permission dialog / async connect; if the user releases before the authorization callback, this flag cancels the start
     var voicePressActive by remember { mutableStateOf(false) }
     var voiceStartMs by remember { mutableStateOf(0L) }
 
-    /** 实时音量 0..1（录音回调更新，波浪动画消费）。 */
+    /** Real-time volume 0..1 (updated by recording callback, consumed by wave animation). */
     var voiceLevel by remember { mutableFloatStateOf(0f) }
 
-    /** 实时转写文本（中间结果，边说边出字）。 */
+    /** Real-time text transcription (intermediate results; text appears as you speak). */
     var voicePartial by remember { mutableStateOf("") }
 
-    /** 录音已进行秒数（中央浮层计时）。 */
+    /** Seconds elapsed since recording began (central floating timer). */
     var voiceSeconds by remember { mutableIntStateOf(0) }
 
-    /** 画布区域尺寸（录音组拖动钳制边界）。 */
+    /** Canvas region dimensions (bounds constrained by the recording group’s drag). */
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
 
-    /** 录音组拖拽偏移（水平居中初始位 + 偏移；会话内保持；长按待机按钮可重置回中央）。 */
+    /** Audio group drag offset (initial position centered horizontally + offset; maintained within the session; long press the standby button to reset to the center). */
     var voiceDrag by remember { mutableStateOf(Offset.Zero) }
     val recorder = remember { MicrophoneRecorder() }
 
-    /** 语音输入最长时长（防呆，到点自动发送）。 */
+    /** Maximum duration for voice input (foolproof; automatically sends when time is up). */
     val voiceMaxMs = 60_000L
 
-    /** PCM16 小端 → 归一化 RMS 音量（录音线程调用，UI 经 scope.launch 更新）。 */
+    /** PCM16 little-endian → normalized RMS volume (called by the recording thread; UI is updated via `scope.launch`). */
     fun pcmLevel(pcm: ByteArray): Float {
         if (pcm.size < 2) return 0f
         var sum = 0.0
@@ -568,7 +568,7 @@ private fun TerminalBody(
             i += 2
         }
         val rms = kotlin.math.sqrt(sum / (pcm.size / 2))
-        // 静音底噪压到 0（波浪不随噪声抖动）；饱和段留一点余量
+        // Mute the background noise to 0 (the waveform should not experience any jitter due to noise); leave a little headroom in the saturated sections.
         return (((rms / 32768.0) - 0.02) * 1.2).toFloat().coerceIn(0f, 1f)
     }
 
@@ -594,7 +594,7 @@ private fun TerminalBody(
         recorder.stop()
         val duration = Clock.System.now().toEpochMilliseconds() - voiceStartMs
         if (duration < 300L) {
-            // 误触（点一下）：丢弃并提示
+            // Accidental click (one tap): Discard and display a tooltip
             session.abort()
             resetVoice()
             scope.launch { snackbar.showSnackbar(s.voice.holdToTalk) }
@@ -610,7 +610,7 @@ private fun TerminalBody(
             scope.launch { snackbar.showSnackbar(s.voice.disabled) }
             return
         }
-        // 取第一个启用的识别服务（provider 列表，可扩展）
+        // Use the first recognized service that has been enabled (from the provider list, which is extensible).
         val provider = settings.asrProviders.firstOrNull { it.enabled }
         if (provider == null) {
             scope.launch { snackbar.showSnackbar(s.voice.notConfigured) }
@@ -623,7 +623,7 @@ private fun TerminalBody(
         }
         voicePressActive = true
         micPermission.request { granted ->
-            // 授权弹窗期间用户已松手：不启动
+            // The user has released their finger during the authorization dialog: Do not launch
             if (!voicePressActive) return@request
             if (!granted) {
                 resetVoice()
@@ -645,7 +645,7 @@ private fun TerminalBody(
             session.onFinalText = { text ->
                 scope.launch {
                     resetVoice()
-                    // 正常发送：终端已有输入回显，不弹 toast（只有错误/超时/误触提示）
+                    // Normal submission: The terminal already displays input echo; do not show a toast (only display error, timeout, or accidental touch tooltips).
                     controller.sendText(text)
                 }
             }
@@ -658,9 +658,9 @@ private fun TerminalBody(
                 recorder.start(
                     onData = { pcm ->
                         session.sendPcm(pcm)
-                        // 音量波浪：RMS 每 200ms 更新一次，动画层插值平滑。
-                        // 录音线程直接写（snapshot 写线程安全）：launch 到主线程
-                        // 会有调度延迟，主线程忙时静音检测读到旧音量误判静音发送
+                        // Volume waveform: RMS updated every 200 ms, with smooth interpolation in the animation layer.
+                        // Write the recording thread directly (make the snapshot thread-safe): launch on the main thread
+                        // incurs scheduling latency; when the main thread is busy, the silence detector reads a stale volume and may falsely trigger a silence auto-send
                         voiceLevel = pcmLevel(pcm)
                     },
                     onError = { msg -> scope.launch { onVoiceError(msg) } },
@@ -670,7 +670,7 @@ private fun TerminalBody(
                 resetVoice()
             } else {
                 voiceStartMs = Clock.System.now().toEpochMilliseconds()
-                // 到点自动结束并发送（防呆：忘记松手/按住不动）
+                // Automatically stop and send when the timer runs out (foolproof: prevents forgetting to let go or holding down the button).
                 scope.launch {
                     delay(voiceMaxMs)
                     if (voiceSession === session && voiceState == VoiceUiState.LISTENING) {
@@ -682,7 +682,7 @@ private fun TerminalBody(
         }
     }
 
-    // 录音计时：LISTENING 期间每秒递增（浮层显示已录时长）
+    // Recording timer: Increments every second during LISTENING (a floating overlay shows the recorded duration)
     LaunchedEffect(voiceState) {
         if (voiceState == VoiceUiState.LISTENING) {
             voiceSeconds = 0
@@ -693,10 +693,10 @@ private fun TerminalBody(
         }
     }
 
-    // 对讲机模式：静音自动结束（免持）。连续静音 ~3.0s 且已录 >800ms 时
-    // 自动结束发送——边说边看屏幕不用再点结束；阈值放宽容忍轻声说话
-    // （RMS ~650 对应音量 0.02，正常说话 0.05-0.3）与句中 1-3s 停顿
-    // （2s 会把思考停顿误发送，用户反馈「说到一半就断了」）。
+    // Walkie-Talkie Mode: Automatically ends when muted (hands-free). When muted continuously for ~3.0s and more than 800ms of recording has been captured,
+    // Automatic end-of-send—no need to tap “End” while speaking and looking at the screen; relaxed threshold to tolerate soft speech
+    // (RMS ~650 corresponds to a volume of 0.02; normal speech is 0.05–0.3) and 1–3-second pauses within sentences
+    // (2s may accidentally send the message during a pause in thought; users have provided feedback stating that “it cuts off mid-sentence”).
     LaunchedEffect(voiceState) {
         if (voiceState == VoiceUiState.LISTENING) {
             var silentTicks = 0
@@ -718,12 +718,12 @@ private fun TerminalBody(
         }
     }
 
-    // 上传完成/失败提示（监听状态变化）
+    // Upload Success/Failure Tooltips (Listener Status Changes)
     LaunchedEffect(uploadState) {
         when (val st = uploadState) {
             is UploadUiState.Done -> {
                 if (st.count > 0) {
-                    // 自动把远端路径输入终端（多文件空格拼接，光标处即打即用）
+                    // Automatically input remote paths into the terminal (multiple files concatenated with spaces; ready to use at the cursor position)
                     if (st.paths.isNotEmpty()) {
                         controller.sendText(st.paths.joinToString(" "))
                     }
@@ -739,7 +739,7 @@ private fun TerminalBody(
         }
     }
 
-    // 上传目标目录选择对话框：当前目录（探测到才出现）/ 临时目录，卡片式选项
+    // Upload target directory selection dialog: Current directory (appears only if detected) / Temporary directory, card-style options
     if (uploadDirDialog) {
         AlertDialog(
             onDismissRequest = { uploadDirDialog = false },
@@ -779,23 +779,23 @@ private fun TerminalBody(
         )
     }
 
-    // 底部悬浮工具栏内容高度（不含导航条/键盘 padding），用于计算画布平移量
-    // （键盘弹起时展开行的覆盖增量）
+    // Height of the bottom floating toolbar content (excluding navigation bar and keyboard padding), used to calculate the canvas translate amount
+    // (Incremental coverage of the row when the keyboard pops up)
     var toolbarHeightPx by remember { mutableFloatStateOf(0f) }
-    // 工具栏常驻两行高度（不含展开行 3/4）：画布布局只按它算——展开/收起
-    // 不改画布尺寸，也就不触发 PTY resize（TUI 整体重排闪屏）；展开行覆盖画布
+    // The toolbar occupies two lines of height (excluding the expanded row, which takes up 3/4 of the height): the canvas layout is calculated based solely on this—expand/collapse
+    // Do not change the canvas size, so as not to trigger a PTY resize (a screen flash caused by the TUI’s overall reflow); expand rows to cover the canvas
     var toolbarBaseHeightPx by remember { mutableFloatStateOf(0f) }
-    // 工具栏整体遮盖高度（含导航条/键盘 padding）：连接指示器据此在
-    // 「画布−工具栏」可见区域内居中，视觉重心不上偏（同 HerdrInstallGuide）
+    // Total toolbar coverage height (including navigation bar and keyboard padding): The connection indicator is positioned accordingly at
+    // Center within the visible region of the “Canvas–toolbar”; do not shift the visual focus upward (as in HerdrInstallGuide).
     var toolbarOverlayPx by remember { mutableFloatStateOf(0f) }
     val inputFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
-    // 键盘是否弹出：ime inset 高于导航条即认为弹出（跨平台，isImeVisible 仅 Android 有）
+    // Keyboard visibility: If the IME inset extends above the navigation bar, it is considered visible (cross-platform; `isImeVisible` is Android-specific).
     val imeVisible =
         WindowInsets.ime.getBottom(LocalDensity.current) >
             WindowInsets.navigationBars.getBottom(LocalDensity.current)
-    // 点画布/键盘按钮：焦点变更与输入连接建立是异步的，立即 show() 常被忽略，
-    // 延迟一小拍再显式拉起键盘。
+    // Clicking canvas/keyboard buttons: Focus changes and input connection establishment are async; calling `show()` immediately is often ignored,
+    // Latency for a split second before explicitly bringing up the keyboard.
     val showKeyboard: () -> Unit = {
         inputFocusRequester.requestFocus()
         scope.launch {
@@ -804,9 +804,9 @@ private fun TerminalBody(
         }
     }
 
-    // OSC 10/11/12 应答用的默认色跟随当前终端主题：
-    // herdr 等 TUI 会查询默认前景/背景色来决定自身配色，
-    // 若硬编码暗色值，浅色主题下会把整个界面渲染成黑色。
+    // The default colors for OSC 10/11/12 responses follow the current terminal theme:
+    // TUI tools such as herdr query the default foreground and background colors to determine their own color schemes,
+    // If dark mode values are hard-coded, the entire UI will be rendered in black on light themes.
     LaunchedEffect(theme) {
         val b = controller.buffer
         b.defaultFgRgb = argbToRgb(theme.foreground)
@@ -814,8 +814,8 @@ private fun TerminalBody(
         b.defaultCursorRgb = argbToRgb(theme.cursor)
     }
 
-    // 终端页只注册一个返回处理器，按视觉层级从上到下收起。
-    // 避免依赖 Compose BackHandler 的注册顺序；新增终端内全屏层时必须加入此处。
+    // Only one back handler is registered on the terminal screen; items are collapsed from top to bottom according to the visual hierarchy.
+    // Avoid depending on the registration order of Compose BackHandler; this must be included when adding a fullscreen layer in the terminal.
     PlatformBackHandler(enabled = true) {
         when (
             terminalBackTarget(
@@ -844,13 +844,13 @@ private fun TerminalBody(
         }
     }
 
-    // OSC 52：远端程序（nvim/yazi/tmux）写系统剪贴板（静默写入，不弹提示，
-    // 避免 herdr 拖拽/滚动误触复制时反复打扰）
+    // OSC 52: Writing to the system clipboard from a remote program (nvim/yazi/tmux) (silent write, no tooltip,
+    // (Avoid repeated interruptions caused by accidental copying while dragging or scrolling in Herdr.)
     controller.onRemoteClipboard = { text ->
         clipboard.setText(AnnotatedString(text))
     }
 
-    // 光标闪烁：连接建立后周期性切换可见性并重绘
+    // Cursor blinking: Periodically toggles visibility and redraws after a connection is established
     LaunchedEffect(controller.status, settings.cursorBlink) {
         while (controller.status == ConnStatus.CONNECTED) {
             delay(530)
@@ -860,7 +860,7 @@ private fun TerminalBody(
         }
     }
 
-    // 连接成功触感反馈（刚进入 CONNECTED 的那一次）
+    // Haptic feedback for a successful connection (the first time “CONNECTED” appears)
     var prevStatus by remember { mutableStateOf(controller.status) }
     LaunchedEffect(controller.status) {
         if (controller.status == ConnStatus.CONNECTED && prevStatus != ConnStatus.CONNECTED) {
@@ -869,21 +869,21 @@ private fun TerminalBody(
         prevStatus = controller.status
     }
 
-    // 顶部安全区由 TerminalScreen 统一避让，主体紧接会话栏。
+    // The top safe area is inset uniformly by TerminalScreen; the body follows the session bar directly.
     Column(Modifier.fillMaxSize()) {
-        // 会话主体：切换 tab 时按会话唯一 id 整体重组（输入框/局部状态独立）
+        // Session Body: When toggling tabs, perform reassembly of the entire session based on the unique session ID (input fields and local state remain independent).
         key(controller.sessionId) {
-            // 等 TerminalView 量到真实画布尺寸后再建连，避免 PTY 先以 80x24 起、
-            // 让 herdr 等远端复用器附着瞬间按错误窗口尺寸布局。
-            // 放 key 块内：每个会话独立，切换/新建 tab 都会重新建连。
+            // Wait until TerminalView has measured the actual canvas size before establishing the connection, to avoid PTY starting at 80x24,
+            // and herdr and similar remote relayout tools do not readjust to a wrong window size.
+            // Place within the `key` block: Each session is independent; toggling tabs or creating a new tab will re-establish the connection.
             var connectSent by remember { mutableStateOf(false) }
-            // 工具栏展开行 3/4（会话内保持）：状态上提至调用方，画布按常驻高度
-            // 布局、展开行覆盖画布（不 resize 不闪）；记忆在 key 块内随会话独立
-            // 工具栏展开行 3/4（会话内保持）：状态上提至调用方，画布按常驻高度
-            // 布局、展开行覆盖画布（不 resize 不闪）；记忆在 key 块内随会话独立
+            // Toolbar expanded to row 3/4 (persistent within the session): Status raised to the caller; canvas set to fixed height
+            // layout and expanded rows cover the canvas (no resize, no flicker); the state is remembered inside the key block, per session
+            // Toolbar expanded to row 3/4 (persistent within the session): Status raised to the caller; canvas set to fixed height
+            // layout and expanded rows cover the canvas (no resize, no flicker); the state is remembered inside the key block, per session
             var toolbarExpanded by remember { mutableStateOf(false) }
 
-            // 顶部 banner 文案：错误/断开/失联（连接中走画布居中指示器，见下）
+            // Top banner text: Error/Disconnect/Offline (with a centered indicator on the canvas during the connection; see below)
             val bannerText =
                 when {
                     controller.linkLostSeconds >= LINK_LOST_THRESHOLD_SECONDS ->
@@ -892,37 +892,37 @@ private fun TerminalBody(
                     controller.status == ConnStatus.ERROR -> s.terminalFailed
                     else -> null
                 }
-            // 状态标志：浮层 banner 用（关闭/重连按钮的显隐）
+            // Status indicators: Used for overlay banners (showing/hiding the "Close" and "Reconnect" buttons)
             val bannerIsError = controller.status == ConnStatus.ERROR || controller.status == ConnStatus.CLOSED
-            // ✕ 仅当 banner 实际显示 errorMessage 文案时才出现：连接中/失联文案
-            // 优先级更高，此时清 errorMessage 不改变文案、徒增困惑
+            // ✕ appears only when the banner actually shows the errorMessage text: the "Connecting..." / "Connection lost" text
+            // This has higher priority; in this case, clearing `errorMessage` does not change the text and only adds to the confusion.
             val bannerDismissable =
                 controller.errorMessage != null &&
                     controller.status != ConnStatus.CONNECTING &&
                     controller.linkLostSeconds < LINK_LOST_THRESHOLD_SECONDS
             val bannerReconnectable = controller.status == ConnStatus.ERROR || controller.status == ConnStatus.CLOSED
 
-            // 终端画布 + 悬浮工具栏：画布底边与工具栏顶边对齐（不被工具栏盖住）。
-            // 画布按「常驻两行」高度布局（[toolbarBaseHeightPx]）：展开行 3/4 覆盖
-            // 画布底部而非压缩画布——不触发 PTY resize，herdr 等 TUI 不重排不闪屏。
-            // 键盘弹起时不挤压画布（adjustNothing），工具栏上移会遮住画布底部，
-            // 由 TerminalView 向上平移保证光标可见；平移量除键盘外也计入展开行
-            // 覆盖高度（键盘收起即归位，顶部 herdr 菜单等始终可见）。
-            // 末尾 12dp 是画布与工具栏之间的视觉间距余量。
+            // Terminal canvas + floating toolbar: Ensure the bottom edge of the canvas aligns with the top edge of the toolbar (so it is not obscured by the toolbar).
+            // The canvas is laid out with a “two-line” height ([toolbarBaseHeightPx]): expanded rows cover 3/4 of the height.
+            // At the bottom of the canvas rather than compressing the canvas—does not trigger PTY resize, and TUIs such as herdr do not reflow or cause screen flickering.
+            // When the keyboard pops up, do not squeeze the canvas (adjustNothing); moving the toolbar upward will obscure the bottom of the canvas,
+            // Translate up from TerminalView to ensure the cursor is visible; the translation amount includes rows that have been expanded in addition to keyboard input.
+            // Coverage height (the keyboard returns to its original position when closed; the top menu and other elements remain visible at all times).
+            // The final 12dp is the visual spacing margin between the canvas and the toolbar.
             val density = LocalDensity.current
-            // 导航条高度（px，键盘收起时的值）：工具栏被 navigationBarsPadding 抬高，
-            // 而 TerminalView 的让位基于 Box 底（延伸到屏底）——不补 nav 会重叠
-            // nav-9dp（手势导航约 25dp → 终端底行被盖住大半）。remember 固定首次
-            // 值：键盘弹起时 navigationBars inset 可能变化（报 0），固定值防止画布
-            // 随键盘 resize（TUI 重排闪屏）
+            // Navigation bar height (px, value when the keyboard is hidden): The toolbar is raised by `navigationBarsPadding`,
+            // TerminalView’s positioning is based on the bottom of the Box (extending to the bottom of the screen)—if the nav bar isn’t padded, it will overlap.
+            // nav-9dp (gesture navigation ~25dp → the terminal’s bottom row would be mostly covered). Use remember to pin the first measured
+            // Value: The `navigationBars inset` may change (report 0) when the keyboard pops up; a fixed value prevents the canvas from
+            // from resizing with the keyboard (TUI re-layout flicker)
             val navInsets = WindowInsets.navigationBars
             val navBarsBottomPx = remember { navInsets.getBottom(density) }
             val coveredBottomPx =
                 WindowInsets.ime.getBottom(density).toFloat() +
                     with(density) { 12.dp.toPx() } +
-                    // 展开行 3/4 的覆盖高度（展开时 >0；仅键盘弹起时平移生效）
+                    // Expand to 3/4 of the row height (when expanded, >0; translate only when the keyboard is popped up)
                     (toolbarHeightPx - toolbarBaseHeightPx)
-            // 画布四周留出小间距，文字不贴屏幕边缘；行列按内缩后宽度自动重算
+            // Leave a small margin around the canvas; text does not touch the screen edges; rows/columns are recomputed from the inset width
             Box(
                 Modifier
                     .weight(1f)
@@ -932,14 +932,14 @@ private fun TerminalBody(
             ) {
                 when {
                     controller.herdrNeedsInstall || controller.herdrInstalling -> {
-                        // 底部让出工具栏高度：卡片在「画布−工具栏」区域内居中，视觉重心不上偏
+                        // Leave space at the bottom for the toolbar height: Center the card within the “canvas–toolbar” region so that the visual center of gravity is not shifted upward.
                         HerdrInstallGuide(controller, with(density) { (toolbarHeightPx + navBarsBottomPx).toDp() })
                     }
                     controller.moshNeedsInstall || controller.moshInstalling -> {
                         MoshInstallGuide(controller, with(density) { (toolbarHeightPx + navBarsBottomPx).toDp() })
                     }
-                    // 屏幕推流服务缺失：终端画布中央显示安装引导（小窗同步显示
-                    // 提示；打开屏幕即可见，无需先进全屏——v1.6.0 用户反馈）
+                    // Screen streaming service missing: Installation guide shown in the center of the terminal canvas (with a floating window showing the same content in sync)
+                    // Tooltip: Visible as soon as you open the screen; no need to go to fullscreen first—(v1.6.0 user feedback)
                     screenPip?.serviceMissing == true -> {
                         ScreenServiceGuide(
                             installing = screenPip.installing,
@@ -963,15 +963,15 @@ private fun TerminalBody(
                             coveredBottomPx = coveredBottomPx,
                             keyboardVisible = imeVisible,
                             onReady = { cols, rows ->
-                                // 等工具栏高度量到后（sizeStable）建连：画布尺寸已扣除工具栏区域，
-                                // 避免先用"含被盖住区域"的错误行数起 PTY
+                                // Once the toolbar height is measured (sizeStable), establish a connection: the canvas size has been adjusted to account for the toolbar region,
+                                // avoid starting the PTY with the wrong row count (the one that includes the covered region)
                                 if (!connectSent && toolbarBaseHeightPx > 0f) {
                                     connectSent = true
                                     controller.connect(cols, rows)
                                 }
                             },
-                            // 首帧工具栏未量到时画布偏高是中间尺寸：跳过 resize/onReady，
-                            // 避免错误行数起 PTY 后再 resize（TUI 整体重排跳动）
+                            // If the canvas is too tall when the first-frame toolbar hasn’t been measured yet (for medium sizes): skip resize/onReady,
+                            // avoid starting the PTY with the wrong row count and then resizing (the whole TUI re-lays out and jumps)
                             sizeStable = toolbarBaseHeightPx > 0f,
                             onCopy = { text ->
                                 clipboard.setText(AnnotatedString(text))
@@ -981,10 +981,10 @@ private fun TerminalBody(
                                 Modifier
                                     .fillMaxSize()
                                     .padding(horizontal = 6.dp, vertical = 4.dp)
-                                    // 只让出常驻两行高度：展开行 3/4 覆盖画布（不压缩、
-                                    // 不 resize、不重排），展开收起零闪屏。
-                                    // 让位补导航条：工具栏被 navigationBarsPadding 抬高，
-                                    // 不补则终端底行被工具栏盖住（见 navBarsBottomPx）
+                                    // Allocate only two rows of height: expand the rows to cover 3/4 of the canvas (without compression,
+                                    // (No resizing or reflow; expand and collapse without screen flickering.)
+                                    // Make room for the navigation bar: The toolbar is raised by `navigationBarsPadding`,
+                                    // If not padded, the bottom row of the terminal will be obscured by the toolbar (see navBarsBottomPx).
                                     .padding(
                                         bottom =
                                             with(density) {
@@ -996,9 +996,9 @@ private fun TerminalBody(
                     }
                 }
 
-                // 连接中：可见画布内居中指示器（首连/重连共用），淡入淡出——连接完成
-                // 平滑消失，不留顶部浮层痕迹（错误/断开/失联仍走顶部 banner）。
-                // 颜色随终端主题：应用浅色主题时不在深色画布上浮出亮色胶囊
+                // Connection: A centered indicator is visible on the canvas (shared for initial connection and reconnect), fading in and out—connection complete
+                // Fade out smoothly without leaving a trace of the top overlay (errors, disconnections, or loss of connection still trigger the top banner).
+                // Color follows the terminal theme: when a light theme is applied, do not display bright-colored capsules on a dark canvas
                 ConnectingIndicator(
                     visible = controller.status == ConnStatus.CONNECTING,
                     text =
@@ -1020,7 +1020,7 @@ private fun TerminalBody(
                     modifier = Modifier.align(Alignment.Center),
                 )
 
-                // 顶部浮层 banner：盖在画布上（不占布局空间、不把画布顶下来）
+                // Top-level floating banner: Overlays the canvas (does not occupy layout space or push the canvas down)
                 bannerText?.let { message ->
                     ErrorBanner(
                         message = message,
@@ -1043,9 +1043,9 @@ private fun TerminalBody(
 
                 TermishSnackbarHost(snackbar, Modifier.align(Alignment.TopCenter))
 
-                // Git 悬浮面板：右侧悬浮按钮（可拖动）+ 状态/diff 面板（跟随终端主题）。
-                // git 命令走独立 exec 通道（SSH 复用已认证连接 / mosh 控制面连接），
-                // 不注入交互终端；工具栏「⎇」键可展开面板。
+                // Git Floating Panel: Floating button on the right (draggable) + status/diff panel (matches terminal theme).
+                // Git commands run through a separate exec channel (SSH reuses an authenticated connection / mosh control plane connection),
+                // Do not perform injection into the interactive terminal; use the “⎇” key on the toolbar to expand the panel.
                 GitOverlay(
                     connected = controller.status == ConnStatus.CONNECTED,
                     inAltScreen = controller.buffer.altScreen,
@@ -1058,10 +1058,10 @@ private fun TerminalBody(
                     modifier = Modifier.align(Alignment.Center).fillMaxSize(),
                 )
 
-                // 屏幕小窗（画中画）：右上角悬浮远程画面，点击 = 就地全屏
-                // （全屏覆盖层在 TerminalScreen 根层，见 TerminalScreen）。
-                // ⚠️ 收起动画期间不显示小窗（等 expandAnim 归零）：否则小窗与
-                // 全屏动画层同时存在，画面在两者间切换闪一下（用户反馈）
+                // Floating Window (Picture-in-Picture): A remote screen floats in the upper-right corner; tap = to go fullscreen in place
+                // (The fullscreen overlay is located in the TerminalScreen root layer; see TerminalScreen.)
+                // ⚠️ Do not show the floating window during the collapse animation (wait until `expandAnim` reaches zero): otherwise, the floating window will overlap with
+                // Fullscreen animation layers exist simultaneously, causing the screen to flicker briefly when toggling between them (user feedback).
                 if (!pipFullscreen && !pipCollapsing) {
                     screenPip?.let { pipState ->
                         ScreenPiP(
@@ -1080,8 +1080,8 @@ private fun TerminalBody(
                     }
                 }
 
-                // 右下角功能菜单：+ 展开（上传 / 文件管理 / Git，可扩展）。
-                // 语音已移至屏幕正中常驻按钮，不进菜单。屏幕全屏时隐藏。
+                // Function menu in the lower-right corner: + Expand (Upload / File Management / Git; expandable).
+                // The voice feature has been moved to a permanent button in the center of the screen and does not appear in the menu. It is hidden when the screen is in fullscreen mode.
                 if (!pipFullscreen && voiceState == VoiceUiState.IDLE) {
                     CanvasToolMenu(
                         menuOpen = toolMenuOpen,
@@ -1130,8 +1130,8 @@ private fun TerminalBody(
                                     icon = Icons.Filled.Upload,
                                     onClick = {
                                         toolMenuOpen = false
-                                        // 探测当前目录（复用 Git 探测：tmux / /proc / 提示符），
-                                        // 失败则只给 /tmp 选项
+                                        // Detect the current directory (reuse Git detection: tmux / /proc / prompt),
+                                        // In case of failure, only provide the /tmp option
                                         scope.launch {
                                             val wd =
                                                 runCatching {
@@ -1172,8 +1172,8 @@ private fun TerminalBody(
                                     icon = Icons.Filled.FolderOpen,
                                     onClick = {
                                         toolMenuOpen = false
-                                        // 探测终端当前工作目录（复用 Git 探测链），
-                                        // 打开 SFTP 文件管理时直接定位到该目录
+                                        // Detect the terminal’s current working directory (reuse the Git detection chain),
+                                        // Navigate directly to this directory when opening the SFTP file manager
                                         scope.launch {
                                             val wd =
                                                 runCatching {
@@ -1197,11 +1197,11 @@ private fun TerminalBody(
                     )
                 }
 
-                // 语音输入：屏幕**水平正中**常驻按钮（垂直在底部工具栏上方，
-                // 不遮挡终端中部输出）。待机 = 品牌绿大按钮（点一下开始）；
-                // 录音/识别中 = 同位置红按钮 + 浮层（转写/声波/计时），整组可拖动
-                // （向上拖到顶、不进入工具栏）。两态同位，点击后原地切换不跳动。
-                // 屏幕全屏（pipFullscreen）时隐藏，避免盖住远程画面。
+                // Voice input: The button is permanently located **horizontally centered** on the screen (vertically above the bottom toolbar,
+                // (Do not obscure the output in the middle of the terminal.) Standby = the big green button (click once to start);
+                // Recording/Recognition in Progress = Red button at the same location + overlay (transcription/sound wave/timer); the entire group is draggable
+                // (Drag up to the top; do not enter the toolbar). The two states are in the same position; tapping toggles between them in place without jumping.
+                // Hide when in fullscreen mode (pipFullscreen) to avoid obscuring the remote screen.
                 if (!pipFullscreen && settings.voiceInputEnabled && voiceState == VoiceUiState.IDLE) {
                     var startSize by remember { mutableStateOf(IntSize.Zero) }
                     val density = LocalDensity.current
@@ -1211,7 +1211,7 @@ private fun TerminalBody(
                             .padding(bottom = with(density) { (toolbarBaseHeightPx + navBarsBottomPx).toDp() + 20.dp })
                             .offset { IntOffset(voiceDrag.x.roundToInt(), voiceDrag.y.roundToInt()) }
                             .onSizeChanged { startSize = it }
-                            // 拖动：位移钳制在画布内（不超出、不进入工具栏）
+                            // Drag: Restrict movement to within the canvas (do not extend beyond or enter the toolbar).
                             .pointerInput(canvasSize, startSize) {
                                 detectDragGestures { change, drag ->
                                     change.consume()
@@ -1236,13 +1236,13 @@ private fun TerminalBody(
                     ) {
                         VoiceStartButton(
                             onClick = { beginVoice() },
-                            // 长按：重置回屏幕水平中央默认位置
+                            // Long press: Reset to the default position in the center of the screen horizontally
                             onLongClick = {
                                 voiceDrag = Offset.Zero
                                 scope.launch { snackbar.showSnackbar(s.voice.resetDone) }
                             },
                         )
-                        // 拖动过之后：右上角出现小重置角标（点击回中央）
+                        // After dragging: A small reset icon appears in the upper-right corner (tap to center).
                         if (voiceDrag != Offset.Zero) {
                             VoiceResetBadge(
                                 onClick = {
@@ -1280,7 +1280,7 @@ private fun TerminalBody(
                                                 -(canvasSize.width - w) / 2f + margin,
                                                 (canvasSize.width - w) / 2f - margin,
                                             ),
-                                            // 初始在底部（水平居中）：允许向上拖到顶，不允许拖进工具栏
+                                            // Initially at the bottom (horizontally centered): Allows dragging up to the top, but does not allow dragging into the toolbar
                                             (voiceDrag.y + drag.y).coerceIn(
                                                 -(canvasSize.height - h - with(density) { 24.dp.toPx() }),
                                                 0f,
@@ -1310,7 +1310,7 @@ private fun TerminalBody(
                     }
                 }
 
-                // 上传进度浮层：右下角菜单上方（文件名 + 进度条 + 百分比）
+                // Upload progress overlay: Above the menu in the lower-right corner (file name + progress bar + percentage)
                 if (uploadState is UploadUiState.Uploading) {
                     val up = uploadState as UploadUiState.Uploading
                     TransferProgressCard(
@@ -1332,9 +1332,9 @@ private fun TerminalBody(
                     )
                 }
 
-                // 底部悬浮键盘工具栏：不透明背景 + 顶部分隔线，与系统键盘/终端内容拉开层次。
-                // 外层负责避让导航条/键盘；内层单独测内容高度（padding 会算进
-                // 外层总高，直接测外层会把键盘高度重复计入平移量）。
+                // Bottom-floating keyboard toolbar: opaque background + top divider to create visual separation from the system keyboard/terminal content.
+                // The outer layer is responsible for avoiding the navigation bar and keyboard; the inner layer measures the content height separately (padding is included in the calculation).
+                // (Total height of the outer layer; measuring the outer layer directly will count the keyboard height twice when the layer is translated.)
                 Column(
                     Modifier
                         .align(Alignment.BottomCenter)
@@ -1342,14 +1342,14 @@ private fun TerminalBody(
                         .background(theme.background())
                         .navigationBarsPadding()
                         .imePadding()
-                        // 测整体遮盖高度（含 padding；键盘弹起时工具栏随 imePadding
-                        // 上移，遮盖高度随之增大，指示器居中区自动收缩到键盘之上）
+                        // Measure the total coverage height (including padding; when the keyboard pops up, the toolbar follows imePadding
+                        // (As it moves upward, the coverage height increases, and the center section of the indicator automatically contracts above the keyboard.)
                         .onSizeChanged { toolbarOverlayPx = it.height.toFloat() },
                 ) {
                     Column(Modifier.onSizeChanged { toolbarHeightPx = it.height.toFloat() }) {
                         HorizontalDivider(color = theme.foreground().copy(alpha = 0.2f))
                         Spacer(Modifier.height(6.dp))
-                        // 键盘工具栏常驻：手机系统键盘无 CTRL/ESC/方向键，关掉终端不可用
+                        // Keyboard toolbar always visible: Phone system keyboards lack CTRL/ESC/arrow keys; unavailable when the terminal is closed
                         KeyToolbar(
                             ctrlActive = ctrlActive,
                             altActive = altActive,
@@ -1357,14 +1357,14 @@ private fun TerminalBody(
                             onToggleAlt = { altActive = !altActive },
                             expanded = toolbarExpanded,
                             onExpandedChange = { toolbarExpanded = it },
-                            // 回报高度必须含 KeyToolbar 全部自身 padding（含底部 10dp）
-                            // ——画布按它让位，缺了哪层 padding 就会「害羞」地盖住终端底行
+                            // The height of the return must include all of KeyToolbar’s own padding (including the 10dp bottom padding).
+                            // ——The canvas adjusts to make room for it; if any layer of padding is missing, it will quietly cover the bottom row of the terminal.
                             onBaseHeightChanged = { toolbarBaseHeightPx = it.toFloat() },
                             onKey = { key ->
                                 if (settings.hapticFeedback) hapticTick()
                                 controller.sendSpecialKey(key)
-                                // 任何按键发出后消耗粘性修饰键，避免 CTRL 残留污染后续输入
-                                // （残留会导致下个字母变成 Ctrl+D/C 等而意外退出会话）
+                                // After any key is pressed, clear any sticky modifier keys to prevent CTRL from contaminating subsequent input.
+                                // (Residual characters may cause the next letter to be interpreted as Ctrl+D/C, etc., resulting in an unexpected exit from the session.)
                                 ctrlActive = false
                                 altActive = false
                             },
@@ -1383,8 +1383,8 @@ private fun TerminalBody(
                             onPaste = {
                                 val text = clipboard.getText()?.text
                                 if (!text.isNullOrEmpty()) {
-                                    // bracketed paste：远端开启 2004 时包裹转义序列，
-                                    // vim/nvim 等不会把粘贴内容当手打（避免自动缩进错乱）
+                                    // bracketed paste: When 2004 is enabled on the remote server, escape sequences are wrapped,
+                                    // Tools like Vim and nvim will not treat pasted content as typed text (to avoid incorrect automatic indentation).
                                     val payload =
                                         if (controller.buffer.bracketedPaste) {
                                             "\u001b[200~$text\u001b[201~"
@@ -1400,7 +1400,7 @@ private fun TerminalBody(
                             onChar = { text -> controller.sendBytes(text.encodeToByteArray()) },
                             theme = theme,
                         )
-                        // 命令片段插入面板（键盘工具栏「{}」触发）
+                        // Command Snippet Panel (triggered by the “{}” key on the keyboard toolbar)
                         if (snippetOpen) {
                             SnippetInsertSheet(
                                 repository = repository,
@@ -1413,21 +1413,21 @@ private fun TerminalBody(
                                 onDismiss = { snippetOpen = false },
                             )
                         }
-                        // 隐藏输入字段：仅作为输入法接入口，不渲染可见 UI。
-                        // 打字内容以终端回显为准（远端 echo 才是真实状态，本地显示反而重复干扰）。
+                        // Hidden input field: Serves only as an input method interface; does not render a visible UI.
+                        // The content entered should be based on the terminal echo (the remote echo reflects the actual state, while the local display may cause unnecessary duplication and interference).
                         BasicTextField(
                             value = inputValue,
                             onValueChange = { new ->
                                 if (new.composition != null) {
-                                    // 输入法组合中（拼音等）：只更新视图，不发送
+                                    // For input method compositions (such as Pinyin): Update the view only; do not send.
                                     inputValue = new
                                     return@BasicTextField
                                 }
                                 val oldText = committedText
                                 val newText = new.text
                                 if (newText != oldText) {
-                                    // 公共前缀 diff：纯尾部增删是精确操作；
-                                    // 中间编辑无法映射到远端光标，按删尾重发处理
+                                    // Common prefix "diff": Pure additions or deletions at the end are precise operations;
+                                    // Edits in the middle cannot be mapped to the remote cursor; handle by trimming the tail and resending
                                     var p = 0
                                     val maxP = minOf(oldText.length, newText.length)
                                     while (p < maxP && oldText[p] == newText[p]) p++
@@ -1440,7 +1440,7 @@ private fun TerminalBody(
                                     }
                                 }
                                 committedText = newText
-                                // Enter 后或缓冲过长时清空输入框
+                                // Clear the input field after pressing Enter or if buffering is too long.
                                 if (newText.contains('\n') || newText.length > 64) {
                                     committedText = ""
                                     inputValue = TextFieldValue("")
@@ -1453,10 +1453,10 @@ private fun TerminalBody(
                                     .size(1.dp)
                                     .alpha(0f)
                                     .focusRequester(inputFocusRequester)
-                                    // 退格：输入框有内容时不拦截（平台删除 → onValueChange diff 发送，
-                                    // 光标/选区由系统维护，不会错乱）；仅输入框为空时（Enter 后/快速命令后）
-                                    // 拦截并直接发 0x7f，否则远端行有内容却删不掉。
-                                    // 输入法组合态除外：组合文本尚未发给远端，让 IME 自己删。
+                                    // Backspace: Do not intercept when the input field contains content (platform delete → onValueChange diff sent,
+                                    // (The cursor/selection is managed by the system and will not become disorganized); only when the input field is empty (after pressing Enter or after a quick command)
+                                    // Intercept and send 0x7f directly; otherwise, content on the remote row cannot be deleted even though it exists.
+                                    // Excluding IME composing states: The combined text has not yet been sent to the remote server; let the IME handle the deletion itself.
                                     .onPreviewKeyEvent { ev ->
                                         if (ev.type == KeyEventType.KeyDown &&
                                             ev.key == Key.Backspace &&
@@ -1469,10 +1469,10 @@ private fun TerminalBody(
                                             false
                                         }
                                     }
-                                    // 兜底：焦点真正到手后再 show()，解决部分机型 requestFocus
-                                    // 后立即 show 被忽略（键盘拉不起来）的问题
+                                    // Fallback: Call `show()` only after focus is actually obtained; this resolves the `requestFocus` issue on certain device models.
+                                    // the immediate show() being ignored (the keyboard fails to come up)
                                     .onFocusChanged {
-                                        // DECSET 1004：聚焦/失焦事件（vim/tmux 据此刷新界面状态）
+                                        // DECSET 1004: Focus/Unfocus Events (vim/tmux refreshes the UI state accordingly)
                                         if (controller.buffer.focusEvents) {
                                             controller.sendBytes(
                                                 if (it.isFocused) {
@@ -1488,12 +1488,12 @@ private fun TerminalBody(
                             cursorBrush = SolidColor(Color.Transparent),
                             keyboardOptions =
                                 KeyboardOptions(
-                                    // 用 Text 而不是 Ascii：Ascii 会让输入法禁用中文候选
+                                    // Use Text instead of Ascii: Ascii makes the input method disable Chinese candidate suggestions
                                     keyboardType = KeyboardType.Text,
                                     capitalization = KeyboardCapitalization.None,
                                     autoCorrectEnabled = false,
                                 ),
-                            // 多行模式以捕获输入法 Enter（\n → CR）
+                            // Multi-line mode to catch the Enter key from the input method (\n → CR)
                             singleLine = false,
                         )
                     }
@@ -1504,8 +1504,8 @@ private fun TerminalBody(
 }
 
 /**
- * 终端页多会话 tab 栏：返回 + 可滑动的会话 tab（系统 logo + user@host + X）
- * + 添加按钮（Connect / Connect via SFTP，均有图标）。
+ * Terminal screen multi-session tab bar: Back button + swipeable session tabs (system logo + user@host + X)
+ * + Add buttons (Connect / Connect via SFTP; both have icons).
  */
 @Composable
 private fun TerminalTabBar(
@@ -1524,14 +1524,14 @@ private fun TerminalTabBar(
     var addOpen by remember { mutableStateOf(false) }
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
-    // 滚动容器与各 tab 的布局位置：点击 tab 时滚动到居中
+    // Layout positions of the scroll container and each tab: Scroll to the center when a tab is tapped
     val containerX = remember { mutableStateOf(0f) }
     val containerWidth = remember { mutableStateOf(0f) }
     val chipLayout = remember { mutableStateMapOf<String, Pair<Float, Float>>() }
 
     fun scrollToCenter(sessionId: String) {
         val (x, w) = chipLayout[sessionId] ?: return
-        // chip 在内容中的偏移 = 渲染位置 - 容器位置 + 当前滚动量
+        // chip's offset within the content = rendering position - container position + current scroll position
         val offsetInContent = x - containerX.value + scroll.value
         val target = offsetInContent - (containerWidth.value - w) / 2
         scope.launch {
@@ -1539,9 +1539,9 @@ private fun TerminalTabBar(
         }
     }
 
-    // 当前 tab 变化（从首页进入 / 切换 / 新会话选中）时自动滚到正中：
-    // chip 布局与滚动范围都是异步测量（onGloballyPositioned / horizontalScroll），
-    // 首帧可能还没量到，轮询等几帧全部就绪后再滚（等不到就放弃，不阻塞）
+    // Automatically scroll to the center when the current tab changes (entering from the home page / toggling tabs / selecting a new session):
+    // Both chip layout and scroll range are measured async (onGloballyPositioned / horizontalScroll),
+    // The first frame may not have been measured yet; poll until several frames are ready before proceeding (if not ready, abandon the operation; do not engage in blocking).
     LaunchedEffect(current.id) {
         var attempts = 0
         while (attempts < 20 &&
@@ -1568,9 +1568,9 @@ private fun TerminalTabBar(
                     tint = barForeground,
                 )
             }
-            // 会话 tab：水平滑动。可视宽度由外层 Box 测量（horizontalScroll 的
-            // Row 会按内容无限宽测量，onSizeChanged 拿到的是内容总宽而非视口宽，
-            // 居中公式会被撑爆）
+            // Session tab: Swipe horizontally. The visible width is measured by the outer Box (horizontalScroll’s
+            // The `Row` will measure itself to an unlimited width based on its content; `onSizeChanged` returns the total width of the content rather than the viewport width,
+            // (Centered formulas will overflow.)
             Box(
                 Modifier
                     .weight(1f)
@@ -1590,8 +1590,8 @@ private fun TerminalTabBar(
                                 is SessionTab.Sftp -> tab.host
                                 is SessionTab.Screen -> tab.host
                             }
-                        // 同一主机的终端会话按**当前 tab 列表顺序**编号（1、2、3…）：
-                        // 只看当前存活 tab，删除后自动重排（第 2 个删了，原第 3 个变 2）
+                        // Terminal sessions on the same host are numbered according to the **order of the current tab list** (1, 2, 3…):
+                        // Consider only the currently active tabs; automatically reorder after deletion (if the second one is deleted, the original third becomes the second).
                         val hostTerminalTabs =
                             tabs.filter {
                                 (it as? SessionTab.Terminal)?.controller?.host?.id == host.id
@@ -1601,7 +1601,7 @@ private fun TerminalTabBar(
                             (tab as? SessionTab.Terminal)?.let {
                                 statusColor(it.controller.status, it.controller.linkLostSeconds)
                             }
-                        // 断开/失败的会话 tab 置灰（状态点保留：灰点=已断开，红点=失败）
+                        // Disconnected/failure sessions tabs are grayed out (status indicators remain: gray dot = disconnected, red dot = failure)
                         val inactive =
                             (tab as? SessionTab.Terminal)?.let {
                                 val st = it.controller.status
@@ -1666,10 +1666,10 @@ private fun TerminalTabBar(
 }
 
 /**
- * 会话 tab 标题：**优先显示用户自定义名称**；未起名时（保存时 name 回退为
- * hostname）回退 `user@host`——自定义名称是用户心智里的标识，IP/域名是备选。
- * 同一主机存在多个会话时（[showSeq]），标题追加**当前 tab 列表序号** `(n)`
- * （按存活 tab 顺序 1、2、3…编号，删除后自动重排）。
+ * Session tab title: **Show user-defined names first**; if no name is specified (the "name" field reverts to
+ * (hostname) Fallback to `user@host`—custom names serve as identifiers in the user’s mind, while IP addresses and domain names are alternatives.
+ * When multiple sessions exist on the same host ([showSeq]), append **the current tab list number** `(n)` to the title.
+ * (Numbered in order of remaining tabs: 1, 2, 3…; automatically renumbered after deleting them).
  */
 internal fun sessionTabTitle(
     host: Host,
@@ -1685,17 +1685,17 @@ internal fun sessionTabTitle(
     return if (showSeq) "$base ($seq)" else base
 }
 
-/** 单个会话 tab：系统小头像 + 标题 + 关闭 X；当前 tab 高亮并显示连接状态点。 */
+/** Single session tab: System avatar + title + close X; the current tab is highlighted and shows a connection status dot. */
 @Composable
 private fun SessionTabChip(
     host: Host,
-    /** 同主机会话序号：仅 [showSeq] 时显示 `(n)`。 */
+    /** Host session number: Show `(n)` only when [showSeq] is set. */
     seq: Int = 0,
     showSeq: Boolean = false,
-    /** 同主机混合终端/Herdr/SFTP 时直接可见，避免多个同名 tab 无法区分。 */
+    /** With mixed terminal types on the same host (Terminal/Herdr/SFTP) this is visible at a glance, avoiding indistinguishable same-name tabs. */
     typeLabel: String,
     statusDotColor: Color?,
-    /** 断开/失败的会话：文字与背景降透明度（状态点仍保留区分）。 */
+    /** Disconnected/failed sessions: Reduce the opacity of text and background (status dots remain distinguishable). */
     inactive: Boolean = false,
     selected: Boolean,
     foreground: Color,
@@ -1720,7 +1720,7 @@ private fun SessionTabChip(
             },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 系统小头像
+        // System Avatar
         Box(
             Modifier.size(18.dp).clip(RoundedCornerShape(5.dp)).background(systemColor(sys)),
             contentAlignment = Alignment.Center,
@@ -1761,7 +1761,7 @@ private fun sendTyped(
     if (alt) controller.sendBytes(byteArrayOf(0x1b))
     for (ch in text) {
         if (ch == '\n') {
-            // 终端 Enter 发送 CR（回车）
+            // Press Enter in the terminal to send a CR (carriage return).
             controller.sendBytes(byteArrayOf(0x0d))
         } else if (ctrl && ch in 'a'..'z') {
             controller.sendBytes(byteArrayOf((ch.code and 0x1f).toByte()))
@@ -1771,8 +1771,8 @@ private fun sendTyped(
     }
 }
 
-/** herdr 引导安装卡片：画布中央展示，远端未安装时引导安装 + 实时安装日志。
- *  @param bottomInset 底部让出高度（工具栏），卡片在其中居中以保持视觉重心。 */
+/** herdr installation guidance card: Displayed in the center of the canvas; guides users to install if not already installed on the remote device + real-time installation log.
+ *  @param bottomInset Bottom height (toolbar); the card is centered within this height to maintain visual balance. */
 @Composable
 private fun HerdrInstallGuide(
     controller: TerminalController,
@@ -1825,7 +1825,7 @@ private fun HerdrInstallGuide(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    // 安装实时日志：显示最后 8 行，挂住时可见无新进展
+                    // Install real-time logging: Show the last 8 rows; visible when the process is hung and no new progress is being made.
                     val log = controller.herdrInstallLog
                     if (log.isNotBlank()) {
                         Text(
@@ -1853,8 +1853,8 @@ private fun HerdrInstallGuide(
     }
 }
 
-/** Mosh 引导安装卡片：远端未装 mosh-server 时引导安装（包管理器），可降级 SSH。
- *  @param bottomInset 底部让出高度（工具栏），卡片在其中居中以保持视觉重心。 */
+/** Mosh Installation Guide Card: Guides the installation of `mosh-server` on the remote machine (via a package manager) and allows for a fallback to SSH.
+ *  @param bottomInset Bottom height (toolbar); the card is centered within this height to maintain visual balance. */
 @Composable
 private fun MoshInstallGuide(
     controller: TerminalController,
@@ -1895,7 +1895,7 @@ private fun MoshInstallGuide(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )
-                // 具体引导失败原因（非「未安装」场景：locale/依赖/端口占用等）
+                // Provide specific guidance on the cause of failure (excluding “not installed” scenarios: locale, dependencies, port conflicts, etc.)
                 controller.moshInstallReason?.let { reason ->
                     Text(
                         reason,
@@ -1916,7 +1916,7 @@ private fun MoshInstallGuide(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    // 安装实时日志：显示最后 8 行，挂住时可见无新进展
+                    // Install real-time logging: Show the last 8 rows; visible when the process is hung and no new progress is being made.
                     val log = controller.moshInstallLog
                     if (log.isNotBlank()) {
                         Text(
@@ -1935,7 +1935,7 @@ private fun MoshInstallGuide(
                         )
                     }
                 } else {
-                    // sudo 需要密码：输入框（密码仅本次安装使用，经加密 SSH 通道传输）
+                    // sudo requires a password: input field (the password is used only for this installation and is transmitted via an encrypted SSH channel)
                     val sudoPwd = remember { mutableStateOf("") }
                     if (controller.moshNeedsSudoPassword) {
                         OutlinedTextField(
@@ -1964,7 +1964,7 @@ private fun MoshInstallGuide(
                     ) {
                         Text(s.moshInstall)
                     }
-                    // 降级选项：用户可选择不安装，继续用 SSH
+                    // Fallback option: Users can choose not to install it and continue using SSH
                     TextButton(onClick = { controller.degradeMoshToSsh() }) {
                         Text(s.moshDegradeToSsh)
                     }
@@ -1974,7 +1974,7 @@ private fun MoshInstallGuide(
     }
 }
 
-/** 顶部浮层错误/状态 banner：直角横幅盖在画布上（不占布局空间、不把画布顶下来）。 */
+/** Top-level error/status banner: A rectangular banner overlaying the canvas (does not occupy layout space or push the canvas down). */
 @Composable
 private fun ErrorBanner(
     message: String,

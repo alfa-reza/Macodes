@@ -84,7 +84,7 @@ fun HostEditScreen(
     existing: Host?,
     onSave: (Host, password: String, privateKey: String) -> Unit,
     onCancel: () -> Unit,
-    /** 命令片段入口：点击打开片段管理/创建页（全局库，跨主机复用）。 */
+    /** Command snippet entry: Tap to open the snippet management/create page (global library, reuses across hosts). */
     repository: HostRepository = HostRepository(),
 ) {
     val s = LocalAppStrings.current
@@ -97,7 +97,7 @@ fun HostEditScreen(
     var password by remember { mutableStateOf("") }
     var privateKey by remember { mutableStateOf("") }
     var tags by remember { mutableStateOf(existing?.tags ?: emptyList()) }
-    // 命令片段管理页覆盖层（主机编辑页入口）
+    // Command Snippet Management Page Overlay (Entry Point for Host Editor Page)
     var showSnippets by remember { mutableStateOf(false) }
     var startupCommand by remember { mutableStateOf(existing?.startupCommand ?: "") }
     var moshThemeSync by remember { mutableStateOf(existing?.moshThemeSync ?: false) }
@@ -111,10 +111,10 @@ fun HostEditScreen(
                 actions = {
                     TextButton(onClick = {
                         val id = existing?.id ?: newId()
-                        // 服务器记录字段（探测系统 / TOFU 指纹 / 最近连接）取仓库
-                        // 最新值：列表页 hosts 状态可能滞后（指纹是连接时才写入的，
-                        // 系统探测失败时无回调刷新），用 existing 快照会把已授信
-                        // 指纹抹回 null → 重连重复弹「确认服务器身份」
+                        // Server record fields (detected system / TOFU fingerprint / last connection) are taken from the repository's latest values:
+                        // Latest value: The status on the hosts list page may be delayed (fingerprints are only written when a connection is established,
+                        // (No callback refresh in case of system failure); using an existing snapshot will retain the already authorized
+                        // Reset fingerprint to null → Repeatedly prompts “Confirm Server Identity” upon reconnecting
                         val latest = repository.getHost(id)
                         val host =
                             Host(
@@ -123,8 +123,8 @@ fun HostEditScreen(
                                 hostname = hostname.trim(),
                                 port = port.toIntOrNull() ?: 22,
                                 username = username.ifBlank { "root" },
-                                // 系统由连接后自动探测写入（Termius 式），编辑页不手填；
-                                // 保留已探测到的值，不覆盖。
+                                // The system automatically detects and writes these upon connection (Termius-style); do not enter them manually on the edit page;
+                                // Retain detected values; do not overwrite them.
                                 system = latest?.system ?: existing?.system ?: "",
                                 authMethod = authMethod,
                                 connectionMode = connectionMode,
@@ -145,8 +145,8 @@ fun HostEditScreen(
             )
         },
     ) { padding ->
-        // adjustNothing 下键盘不缩放窗口：消费 ime inset 把整个表单顶起，
-        // 否则底部字段（mosh 端口/启动命令）被键盘盖住（与终端页同一套机制）。
+        // When `adjustNothing` is enabled, the keyboard does not scale the window: the IME inset pushes the entire form upward,
+        // Otherwise, the bottom fields (mosh port/launch command) are obscured by the keyboard (using the same mechanism as the terminal screen).
         Column(
             Modifier
                 .fillMaxSize()
@@ -229,15 +229,15 @@ fun HostEditScreen(
                 )
             }
 
-            // 主机标签：chip 输入框（回车/逗号变成可删除的 tag，避免自由文本碎片化）
+            // Host tag: chip input field (Enter/comma turns into a deletable tag to avoid free-text fragmentation)
             TagInputField(
                 tags = tags,
                 onTagsChange = { tags = it },
                 label = s.editTags,
                 modifier = Modifier.fillMaxWidth(),
             )
-            // 命令片段入口：主机级快速命令已废弃（跨主机复用靠全局片段库），
-            // 编辑页只留入口，点击进入片段管理/创建页
+            // Command snippet entry: Host-level quick commands have been deprecated (reuse across hosts via the global snippet library),
+            // The edit page should only display an entry point; tapping on it takes you to the snippet management/create page.
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -303,11 +303,11 @@ fun HostEditScreen(
         }
     }
 
-    // 覆盖层打开时拦截系统返回：先关片段页回主机编辑表单，
-    // 而不是穿透到 AppRoot 直接跳首页（表单会被连带丢弃）
+    // Intercept system responses when the overlay is open: first close the overlay page and back to the host to edit the form,
+    // Instead of navigating directly to the AppRoot and jumping to the home page (which would cause the form to be discarded).
     PlatformBackHandler(enabled = showSnippets) { showSnippets = false }
 
-    // 命令片段覆盖层：入口点击进入（全局库管理/创建，返回继续编辑主机）
+    // Command snippet overlay: Tap here to enter (Global Library Management/Create; back to continue editing the host)
     AnimatedVisibility(
         visible = showSnippets,
         enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(animationSpec = tween(240)),
@@ -321,11 +321,11 @@ fun HostEditScreen(
 }
 
 /**
- * 标签 chip 输入框：输入后按回车/逗号 → 变成可删除的 tag 气泡（Gmail 收件人式）。
- * - 回车/逗号提交当前输入为一个 tag（支持一次粘贴多个逗号分隔的 tag）
- * - 输入框为空时按退格删除最后一个 tag
- * - IME 组合态（拼音等）不提交，只有 committed 文本才变 tag
- * - 自动去重（大小写不敏感）
+ * "chip" tag input field: After typing, press Enter or a comma → it turns into a tag bubble that you can delete (like Gmail recipients).
+ * - Press Enter or a comma to commit the current input as a tag (supports pasting multiple comma-separated tags at once)
+ * - When the input field is empty, press the Backspace key to delete the last tag
+ * - Do not commit IME composing states (such as Pinyin); only committed text will be converted to a tag.
+ * - Automatically remove duplicates (case-insensitive)
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -342,10 +342,10 @@ private fun TagInputField(
     val focused by interactionSource.collectIsFocusedAsState()
     val fieldShape = RoundedCornerShape(4.dp)
 
-    // 读取 live state（软键盘 onDone 回调时机晚于最后输入，捕获 val 可能拿到旧值）
+    // Reading the live state (the onDone callback for the soft keyboard occurs after the last input, so val may be caught and return an outdated value)
     fun commit() {
         val current = state.text
-        // 支持一次输入/粘贴多个（逗号分隔）；去重（忽略大小写）
+        // Supports input or pasting multiple terms at once (comma-separated); removes duplicates (ignores case).
         val parts = current.split(',', '\n').map { it.trim().removePrefix("#") }.filter { it.isNotEmpty() }
         val merged = tags.toMutableList()
         for (p in parts) {
@@ -392,7 +392,7 @@ private fun TagInputField(
             BasicTextField(
                 value = state,
                 onValueChange = { new ->
-                    // 组合态（拼音候选）：只更新视图，不提交
+                    // Composing state (pinyin candidates): view updates only, do not commit
                     if (new.composition != null) {
                         state = new
                         return@BasicTextField
@@ -402,11 +402,11 @@ private fun TagInputField(
                         commit()
                     }
                 },
-                // 单行：光标不换行、placeholder 不折行；宽度自适应内容
-                // （固定 120dp 时中文 placeholder 会折行成两行，撑高输入框）
+                // Single line: Do not perform any line breaks for the cursor or placeholder; the width should adapt to the content.
+                // (When set to 120dp, the Chinese placeholder wraps to two rows, stretching the height of the input field.)
                 singleLine = true,
-                // 软键盘回车走 IME action（单行框不产生 key event），
-                // onPreviewKeyEvent 只兜硬件键盘
+                // Pressing Enter on the on-screen keyboard triggers the IME action (single-line text boxes do not generate key events),
+                // onPreviewKeyEvent only handles hardware keyboards
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { commit() }),
                 interactionSource = interactionSource,
@@ -423,7 +423,7 @@ private fun TagInputField(
                                         true
                                     }
                                     Key.Backspace -> {
-                                        // 输入为空时退格 = 删除最后一个 tag
+                                        // If the input is empty, pressing the Backspace key deletes the last tag.
                                         if (state.text.isEmpty() && tags.isNotEmpty()) {
                                             onTagsChange(tags.dropLast(1))
                                             true
@@ -437,7 +437,7 @@ private fun TagInputField(
                                 false
                             }
                         },
-                // placeholder 与输入文本共用同一 textStyle：行高一致，光标/文字对齐
+                // Placeholders and input text share the same `textStyle`: consistent line height, cursor/text alignment
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 decorationBox = { inner ->

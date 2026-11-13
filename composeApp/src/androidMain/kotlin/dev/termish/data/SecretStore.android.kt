@@ -14,7 +14,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /**
- * Android 安全存储：Android Keystore 主密钥 + AES/GCM 加密，密文存 SharedPreferences。
+ * Android Security Storage: Android Keystore master key + AES/GCM encryption; ciphertext stored in SharedPreferences.
  */
 actual object SecretStore {
     private const val KEYSTORE = "AndroidKeyStore"

@@ -5,9 +5,9 @@ import platform.UIKit.UIApplicationDidEnterBackgroundNotification
 import platform.UIKit.UIApplicationWillEnterForegroundNotification
 
 /**
- * iOS：监听系统前后台通知。退到桌面（挂起）时记录活跃会话，
- * 回到前台时触发自动重连——socket 已被系统掐断，但服务端 herdr/tmux
- * 会话还在，重连后现场原样恢复。
+ * iOS: Listen for system foreground and background notifications. Record active sessions when returning to the home screen (suspend),
+ * trigger auto-reconnect on return to the foreground — the socket was killed by the system, but the server-side herdr/tmux
+ * The session is still active; the session will resume exactly as it was after reconnecting.
  */
 actual fun observeAppLifecycle(listener: (foreground: Boolean) -> Unit): () -> Unit {
     val center = NSNotificationCenter.defaultCenter

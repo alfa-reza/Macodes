@@ -47,7 +47,7 @@ private fun installUncaughtHook() {
     }
 }
 
-@Suppress("ktlint:standard:function-naming") // Swift 互操作入口（MainViewControllerKt.MainViewController()）
+@Suppress("ktlint:standard:function-naming") // Swift Interoperability Entry Point (MainViewControllerKt.MainViewController())
 fun MainViewController(): UIViewController {
     installUncaughtHook()
     return ComposeUIViewController { App() }

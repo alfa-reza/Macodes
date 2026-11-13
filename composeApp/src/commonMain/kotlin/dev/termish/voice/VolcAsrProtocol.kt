@@ -12,34 +12,34 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * 火山引擎「大模型流式语音识别 API」二进制 WebSocket 协议（纯 Kotlin，零平台依赖）。
+ * Volcano Engine “Large Model Streaming Speech Recognition API” binary WebSocket protocol (pure Kotlin, zero platform dependencies).
  *
- * 文档：https://docs.volcengine.com/docs/6561/2630027 （双向流式语音识别 WebSocket，bigmodel_async）
+ * Documentation: https://docs.volcengine.com/docs/6561/2630027 (bidirectional streaming speech recognition WebSocket, bigmodel_async)
  *
- * 帧格式（整数一律大端）：
- *   - 客户端请求：Header(4B) + Payload size(4B) + Payload
- *   - 服务端响应：Header(4B) + Sequence(4B) + Payload size(4B) + Payload
+ * Frame format (integers are always big-endian):
+ *   - Client request: Header (4B) + Payload size (4B) + Payload
+ *   - Service response: Header (4B) + Sequence (4B) + Payload size (4B) + Payload
  *
- * Header 单字节位域：
- *   byte0: Protocol version(4b)=0001 | Header size(4b)=0001（实际 header 字节数 = 值 × 4）
+ * Header single-byte bit fields:
+ *   byte0: Protocol version (4b) = 0001 | Header size (4b) = 0001 (actual header byte count = value × 4)
  *   byte1: Message type(4b) | Message type specific flags(4b)
  *   byte2: Serialization(4b) | Compression(4b)
  *   byte3: Reserved(8b)
  *
- * Message type：0001 = full client request；0010 = audio only request；
- *             1001 = full server response；1111 = 服务端错误。
- * flags：0000 = 普通包；0010 = 最后一包（负包）。
+ * Message type: 0001 = full client request; 0010 = audio only request;
+ *             1001 = full server response; 1111 = server error.
+ * flags: 0000 = regular package; 0010 = last package (negative package).
  */
 object VolcAsrProtocol {
     private val responseJson = Json { ignoreUnknownKeys = true }
 
-    /** 双向流式（优化版）接口地址。 */
+    /** Bidirectional streaming (optimized version) interface address. */
     const val WSS_URL = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async"
 
-    /** 默认资源 ID：豆包流式语音识别模型 2.0 小时版（新版控制台推荐）。 */
+    /** Default resource ID: Doubao Streaming Speech Recognition Model 2.0 Hourly Edition (recommended by the new console). */
     const val DEFAULT_RESOURCE_ID = "volc.seedasr.sauc.duration"
 
-    /** 所有可用资源 ID（设置页选择用）。 */
+    /** All available resource IDs (selection from the settings page). */
     val RESOURCE_IDS =
         listOf(
             "volc.seedasr.sauc.duration",
@@ -48,15 +48,15 @@ object VolcAsrProtocol {
             "volc.bigasr.sauc.concurrent",
         )
 
-    // ---- header 字节 ----
+    // ---- header bytes ----
 
-    /** full client request：JSON 序列化、不压缩。 */
+    /** Full client request: JSON-serialized, uncompressed. */
     fun fullRequestHeader(): ByteArray = byteArrayOf(0x11, 0x10, 0x10, 0x00)
 
-    /** audio only request；[last] = 最后一包（负包，flags=0010）。 */
+    /** Audio-only request; [last] = the last packet (negative packet, flags=0010). */
     fun audioHeader(last: Boolean): ByteArray = if (last) byteArrayOf(0x11, 0x22, 0x00, 0x00) else byteArrayOf(0x11, 0x20, 0x00, 0x00)
 
-    /** 组帧：header + 大端 payload size + payload。 */
+    /** Frame structure: header + big-endian payload size + payload. */
     fun frame(
         header: ByteArray,
         payload: ByteArray,
@@ -73,13 +73,13 @@ object VolcAsrProtocol {
     }
 
     /**
-     * full client request 的 JSON payload：音频元数据 + 请求参数。
-     * 音频统一 pcm_s16le / 16kHz / 单声道（录音端保证该格式）。
+     * Full client request JSON payload: audio metadata + request parameters.
+     * Unify audio to pcm_s16le / 16 kHz / mono (ensure this format is used during recording).
      */
     fun fullRequestJson(uid: String): String {
         val params =
             buildJsonObject {
-                // enable_punc 默认 true（标点让命令/文本更可读）；enable_itn 默认 true
+                // enable_punc defaults to true (punctuation makes commands/text more readable); enable_itn defaults to true
                 put("model_name", "bigmodel")
                 put("enable_punc", true)
                 put("enable_itn", true)
@@ -93,9 +93,9 @@ object VolcAsrProtocol {
         }
     }
 
-    // ---- 响应解析 ----
+    // ---- Response Parsing ----
 
-    /** 消息类型（byte1 高 4 位）。 */
+    /** Message type (the upper 4 bits of byte1). */
     fun messageType(bytes: ByteArray): Int = (bytes[1].toInt() ushr 4) and 0xF
 
     private fun be32(
@@ -109,15 +109,15 @@ object VolcAsrProtocol {
 
     @Serializable
     data class AsrResponse(
-        /** 成功时字段缺失（实测 bigmodel_async 无 code）；非 0 为错误。 */
+        /** Field is missing on success (tested: `bigmodel_async` has no code); a non-zero value indicates an error. */
         val code: Int? = null,
         val event: Int? = null,
         @SerialName("is_last_package") val isLastPackage: Boolean = false,
         @SerialName("payload_sequence") val payloadSequence: Int = 0,
         @SerialName("audio_info") val audioInfo: JsonElement? = null,
         /**
-         * 实测 bigmodel_async：result 为**顶层对象** {text, utterances, additions}；
-         * 老接口（bigmodel）在 payload_msg.result（list）——两者都兼容。
+         * Tested with bigmodel_async: the result is a **top-level object** {text, utterances, additions};
+         * The old interface (bigmodel) is in `payload_msg.result` (list)—both are compatible.
          */
         val result: JsonElement? = null,
         @SerialName("payload_msg") val payloadMsg: AsrPayloadMsg? = null,
@@ -126,22 +126,22 @@ object VolcAsrProtocol {
     @Serializable
     data class AsrPayloadMsg(
         val message: String? = null,
-        /** 老接口（bigmodel）的分句 list；JsonElement 兼容对象/list 两种结构。 */
+        /** List of clauses in the legacy interface (bigmodel); JsonElement supports both object and list structures. */
         val result: JsonElement? = null,
     )
 
-    /** 解析结果：最终包标记（帧 flags=3 或响应 is_last_package）。 */
+    /** Parse result: Final package marker (frame flags=3 or response is_last_package). */
     data class ParsedServerFrame(
         val isLastPackage: Boolean,
         val response: AsrResponse,
     )
 
     /**
-     * 解析完整服务端帧（type=1001）。
-     * 帧布局：Header(4B) + [Sequence(4B)] + Payload size(4B) + Payload。
-     * sequence 是否出现由 header flags 决定：flags=0 无 sequence（首个应答），
-     * flags=1/3 有 sequence（后续包）——实测 bigmodel_async 两种都发。
-     * 最终包帧 flags=0x3（byte1=0x93），响应体里没有 is_last_package 字段。
+     * Parse the complete service frame (type=1001).
+     * Frame layout: Header (4B) + [Sequence (4B)] + Payload size (4B) + Payload.
+     * Whether "sequence" appears is determined by the header flags: flags=0 means no "sequence" (first response),
+     * flags=1/3 includes sequence (subsequent packages) — tested: bigmodel_async sends both.
+     * The final packet frame has flags=0x3 (byte1=0x93), and the response body does not contain the `is_last_package` field.
      */
     fun parseServerFrame(bytes: ByteArray): ParsedServerFrame {
         val flags = bytes[1].toInt() and 0x0f
@@ -155,9 +155,9 @@ object VolcAsrProtocol {
     }
 
     /**
-     * 从识别响应中取最终文本。
-     * 实测结构：顶层 result 为对象 {text: "..."}（bigmodel_async）；老接口为
-     * payload_msg.result 分句 list——两者都兼容（list 按顺序拼接全部元素）。
+     * Extract the final text from the recognition response.
+     * Tested structure: The top-level `result` is an object `{text: "..."}` (`bigmodel_async`); the old interface is
+     * payload_msg.result clause list—both are compatible (the list concatenates all elements in order).
      */
     fun finalText(resp: AsrResponse): String? {
         val result = resp.result ?: resp.payloadMsg?.result ?: return null
@@ -175,9 +175,9 @@ object VolcAsrProtocol {
     }
 
     /**
-     * 解析服务端错误帧（type=1111）为可读文案。
-     * 帧布局：Header(4B) + Error code(4B) + Error size(4B) + Error message(UTF8)；
-     * 部分实现为 code + payload，这里两种都容错。
+     * Parse the server-side error frame (type=1111) into readable text.
+     * Frame layout: Header (4B) + Error code (4B) + Error size (4B) + Error message (UTF-8);
+     * Some implementations use code + payload; both shapes are tolerated here.
      */
     fun parseErrorFrame(bytes: ByteArray): String {
         val code = be32(bytes, 4)

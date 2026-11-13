@@ -1,18 +1,18 @@
 package dev.termish.util
 
 /**
- * 会话保活钩子：SSH 连接建立/断开时调用。
- * Android 实现为前台服务 + PARTIAL_WAKE_LOCK，防止切后台被系统回收断连；
- * iOS 为空操作。
+ * Session keep-alive hook: Called when an SSH connection is established or disconnected.
+ * The Android implementation uses a foreground service + PARTIAL_WAKE_LOCK to prevent the connection from being terminated when the app is moved to the background and the process is recycled by the system;
+ * No action required for iOS.
  */
 enum class ForegroundSshRecovery {
-    /** 保活机制正常，无需额外处理。 */
+    /** The keep-alive mechanism operates normally; no additional handling is required. */
     KEEP,
 
-    /** 保活机制中断，但 socket 可能仍健康；先探测，失败才重连。 */
+    /** The keep-alive mechanism has been interrupted, but the socket may still be healthy; check first, and only reconnect if there is a failure. */
     VERIFY,
 
-    /** 平台挂起必然使 socket 失效；直接重建连接。 */
+    /** Suspending the platform will inevitably cause the socket to become invalid; rebuild the connection immediately. */
     REBUILD,
 }
 
@@ -22,15 +22,15 @@ expect object SessionKeepAlive {
     fun onSessionEnd(sessionId: String)
 
     /**
-     * 保活服务是否真的在运行。Android 前台服务被系统或厂商省电策略停掉后
-     * 返回 false，供上层重新登记仍活跃的会话；
-     * iOS 无保活服务，恒为 true（保持原行为）。
+     * Is the background service actually running? After an Android foreground service is stopped by the system or a manufacturer’s power-saving policy,
+     * Returns false to allow the calling layer to re-register sessions that are still active;
+     * For iOS services without keep-alive, set to true (maintain original behavior).
      */
     fun isActive(): Boolean
 
     /**
-     * 回到前台时如何处理仍显示为已连接的 SSH socket。
-     * iOS 后台挂起后直接重建；Android 仅在保活服务停止时先做端到端探测。
+     * How to handle an SSH socket that still shows as having a connection when returning to the foreground.
+     * On iOS, rebuild immediately after the background process is suspended; on Android, perform an end-to-end check only when the keep-alive service stops.
      */
     fun foregroundSshRecovery(): ForegroundSshRecovery
 }

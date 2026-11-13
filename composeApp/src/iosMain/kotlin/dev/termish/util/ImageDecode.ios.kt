@@ -17,7 +17,7 @@ actual fun decodeImage(
 ): ImageBitmap? =
     runCatching {
         if (!isSvg) return@runCatching Image.makeFromEncoded(bytes).toComposeImageBitmap()
-        // Skia 的默认 SVGDOM 不提供外部资源解析器，也不执行脚本。
+        // Skia’s default SVGDOM does not provide an external resource parser, nor does it execute scripts.
         Data.makeFromBytes(bytes).use { data ->
             SVGDOM(data).use { svg ->
                 val root = svg.root ?: return@runCatching null

@@ -1,6 +1,6 @@
 package dev.termish.ssh
 
-/** JVM（Android）引擎工厂。 */
+/** JVM (Android) engine factory. */
 actual fun createSshSession(
     connection: SshConnection,
     callbacks: SshCallbacks,

@@ -13,7 +13,7 @@ import platform.Foundation.NSUserDomainMask
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
 
-/** iOS：Kotlin/Native 调试构建符号（release 自动关闭）。 */
+/** iOS: Kotlin/Native debug build symbols (automatically disabled in release builds). */
 actual val termLogEnabled: Boolean = kotlin.native.Platform.isDebugBinary
 
 actual fun platformLog(
@@ -21,14 +21,14 @@ actual fun platformLog(
     tag: String,
     msg: String,
 ) {
-    // K/N 的 NSLog vararg 不会把 Kotlin String 桥接为 NSString：%@ 会拿到字符串内部数据指针并崩溃。
-    // 用 %s + C 字符串指针，避开 ObjC 对象桥接。
+    // K/N’s NSLog vararg does not bridge Kotlin Strings to NSStrings: %@ will access the internal data pointer of the string and cause a crash.
+    // Use %s + C character pointers to avoid Objective-C object bridging.
     memScoped {
         NSLog("[%s/%s] %s", level.toString().cstr.ptr, tag.cstr.ptr, msg.cstr.ptr)
     }
 }
 
-/** 日志目录：Documents/logs（iTunes 文件共享可见，方便导出）。 */
+/** Log directory: Documents/logs (visible in iTunes File Sharing for easy export). */
 actual fun logFileDirectory(): String? {
     val docs =
         NSFileManager.defaultManager
@@ -41,7 +41,7 @@ actual fun logFileDirectory(): String? {
     return dir
 }
 
-/** iOS：UIActivityViewController 分享日志文件。 */
+/** iOS: UIActivityViewController for sharing log files. */
 actual fun shareDiagnosticLogs() {
     val dir = logFileDirectory() ?: return
     val url = NSURL.fileURLWithPath("$dir/termish.log")

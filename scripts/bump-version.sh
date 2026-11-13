@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 #
-# 一键升级 Termish 版本号：Android / iOS 一起升。
+# One-click Termish version upgrade: Upgrade both Android and iOS at the same time.
 #
-# 用法:
-#   ./scripts/bump-version.sh 0.3.0            # 版本 0.3.0，构建号自动 +1
-#   ./scripts/bump-version.sh 0.3.0 42         # 版本 0.3.0，构建号固定 42
-#   ./scripts/bump-version.sh --dry-run 0.3.0  # 只预览改动，不写文件
+# Usage:
+#   ./scripts/bump-version.sh 0.3.0 # Version 0.3.0, build number automatically incremented by 1
+#   ./scripts/bump-version.sh 0.3.0 42 # Version 0.3.0, build number fixed at 42
+#   ./scripts/bump-version.sh --dry-run 0.3.0  # Preview changes only; do not write to files
 #
-# 更新位置:
+# Update location:
 #   - composeApp/build.gradle.kts
 #       Android: versionName / versionCode
 #   - iosApp/iosApp.xcodeproj/project.pbxproj
-#       MARKETING_VERSION / CURRENT_PROJECT_VERSION（Debug + Release 两处）
+#       MARKETING_VERSION / CURRENT_PROJECT_VERSION (in two places: Debug and Release)
 #   - iosApp/iosApp/Info.plist
 #       CFBundleShortVersionString / CFBundleVersion
 #   - CHANGELOG.md
-#       把 [Unreleased] 段落落盘为 [X.Y.Z] - <当天日期>，并重建文末版本链接块
-#       （有 git remote 时用 compare/releases 真实链接，否则保留 TODO 注释占位）
+#       Save the [Unreleased] paragraph as [X.Y.Z] - <TODAY's date>, and rebuild the version link block at the end of the document.
+#       (If a Git remote exists, use the actual `compare/releases` link; otherwise, retain the `TODO` comment as a placeholder.)
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -46,7 +46,7 @@ INFO_PLIST="iosApp/iosApp/Info.plist"
 CHANGELOG="CHANGELOG.md"
 TODAY=$(date +%F)
 
-# 当前 Android versionCode，用于默认构建号 +1
+# Current Android versionCode, used for the default build number +1
 CURRENT_CODE=$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\).*/\1/p' "$GRADLE" | head -1)
 if [ -z "$CURRENT_CODE" ]; then
   echo "未能在 $GRADLE 找到 versionCode" >&2
@@ -65,7 +65,7 @@ apply() {
   local label="$1" file="$2" expr="$3"
   local tmp
   tmp=$(mktemp)
-  # 先写到临时文件再替换：同一套 sed 表达式兼容 macOS/Linux
+  # Write to a temporary file first, then replace: The same set of sed expressions works on both macOS and Linux
   sed "$expr" "$file" > "$tmp"
   if diff -q "$file" "$tmp" > /dev/null; then
     rm -f "$tmp"
@@ -89,9 +89,9 @@ apply "iOS CFBundleShortVersionString -> $VERSION" "$INFO_PLIST" "/CFBundleShort
 apply "iOS CFBundleVersion -> $BUILD" "$INFO_PLIST" "/CFBundleVersion/{n;s/<string>[^<]*<\\/string>/<string>$BUILD<\\/string>/;}"
 
 # ---------------------------------------------------------------------------
-# CHANGELOG 联动：把 [Unreleased] 累积的内容落盘为 [X.Y.Z] - <今天>，
-# 并重建文末版本链接块。幂等：已有 [X.Y.Z] 段落则跳过（重复 bump 安全）。
-# CI 打 vX.Y.Z tag 时会校验该段落存在（见 build.yml 版本一致性检查）。
+# CHANGELOG Integration: Save the accumulated [Unreleased] content to disk as [X.Y.Z] - <TODAY>,
+# Also rebuild the version link block at the end of the text. Idempotent: If the [X.Y.Z] paragraph already exists, skip it (repeated bumps are safe).
+# CI will verify the presence of this paragraph when applying the vX.Y.Z tag (see the version consistency check in build.yml).
 # ---------------------------------------------------------------------------
 update_changelog() {
   [ -f "$CHANGELOG" ] || return 0
@@ -106,12 +106,12 @@ update_changelog() {
 
   local tmp
   tmp=$(mktemp)
-  # 单趟 awk：① [Unreleased] 正文暂存 → 落盘到新版本段落；② 文末旧链接块
-  # 全部丢弃（后面统一重建，保证新增版本的 compare 链接不漏）
+  # Single-pass awk: ① [Unreleased] Stage the main text → write it to disk in a new version paragraph; ② Old link block at the end of the text
+  # Discard all of them (they will be rebuilt later to ensure that no "compare" links are missing in new versions).
   awk -v ver="$VERSION" -v today="$TODAY" '
     /^## \[Unreleased\][[:space:]]*$/ && state == 0 { print; state = 1; next }
     state == 1 && /^## \[/ {
-      # 先输出新版本段头，再回放暂存的正文（裁掉尾部多余空行，段间留一空行）
+      # First output the new version header, then restore the stage body (trimming any extra blank lines at the end and leaving one blank line between paragraphs).
       while (n > 0 && body[n - 1] ~ /^[[:space:]]*$/) n--
       printf "\n## [%s] - %s\n", ver, today
       for (i = 0; i < n; i++) print body[i]
@@ -121,10 +121,10 @@ update_changelog() {
       next
     }
     state == 1 { body[n++] = $0; next }
-    /^\[[^]]+\]:/ { next }  # 旧链接定义行：末尾统一重建
+    /^\[[^]]+\]:/ { next }  # Old link definition rows: Rebuild them uniformly at the end.
     { print }
     END {
-      # [Unreleased] 是文件里最后一段（无后续 ## [）时也要落盘
+      # [Unreleased] is the last section of the file (it should be written to disk even if there are no subsequent ## [ sections).
       if (state == 1) {
         while (n > 0 && body[n - 1] ~ /^[[:space:]]*$/) n--
         printf "\n## [%s] - %s\n", ver, today
@@ -134,13 +134,13 @@ update_changelog() {
     }
   ' "$CHANGELOG" > "$tmp"
 
-  # Unreleased 正文为空时提醒（空发版通常是忘了记 changelog），但不阻断
+  # Display a reminder when the "Unreleased" body is empty (empty releases are usually due to forgetting to add a changelog), but do not block the process.
   if ! awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' "$CHANGELOG" | grep -q '[^[:space:]]'; then
     echo "  [警告] [Unreleased] 正文为空——确认本次发版无需记录 changelog" >&2
   fi
 
-  # 重建版本链接块：版本按文档序（新→旧）；每个版本 compare 到上一旧版本，
-  # 最旧版本链到 releases/tag。无 git remote 时保留 TODO 占位（与现状一致）
+  # Rebuild the version link block: List versions in document order (newest → oldest); for each version, compare it to the previous version,
+  # The oldest version should link to `releases/tag`. If there is no `git remote`, retain the `TODO` placeholder (consistent with the current state).
   local base=""
   local remote
   if remote=$(git remote get-url origin 2>/dev/null); then

@@ -2,15 +2,15 @@ package dev.termish.util
 
 import androidx.compose.runtime.Composable
 
-/** 网络事件类型：完全断开 vs 默认网络实例变化。 */
+/** Network events: Complete disconnection vs. changes to the default network instance. */
 enum class NetworkChangeKind {
-    /** 网络断开（同 IP 的网络抖动；mosh 可自行恢复，无需重建）。 */
+    /** Network disconnection (network jitter on the same IP; mosh can resume without needing to be rebuilt). */
     LOST,
 
-    /** 默认网络变化（Wi-Fi/蜂窝切换、同类型网络更换或 VPN 开关）。 */
+    /** Default network changes (Wi-Fi/cellular toggling, switching between networks of the same type, or switching on/off VPN). */
     DEFAULT_NETWORK_CHANGED,
 }
 
-/** 监听网络变化；返回注销函数。iOS 暂为 no-op。 */
+/** A network change listener; returns a cancellation function. Currently a no-op on iOS. */
 @Composable
 expect fun observeNetworkChange(onChange: (NetworkChangeKind) -> Unit): () -> Unit

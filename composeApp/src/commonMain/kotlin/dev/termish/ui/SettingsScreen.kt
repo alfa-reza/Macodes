@@ -65,7 +65,7 @@ import dev.termish.util.BackgroundProtectionState
 import dev.termish.util.TermLog
 import dev.termish.util.openApplicationSettings
 
-// ---- 关于区外链（官网 / 联系邮箱） ----
+// ---- About External Links (Official Website / Contact Email) ----
 private const val WEBSITE_URL = "https://termish.dev"
 private const val WEBSITE_HOST = "termish.dev"
 private const val CONTACT_EMAIL = "ttermish@gmail.com"
@@ -94,19 +94,19 @@ private fun languageLabel(
 @Composable
 fun SettingsScreen(
     settings: AppSettings,
-    /** 任何修改立即回调（即改即存，无保存按钮）。 */
+    /** Any modifications are called back immediately (i.e., modifications are saved as soon as they are made; there is no "Save" button). */
     onChange: (AppSettings) -> Unit,
-    /** 片段/标签管理页读写仓库。 */
+    /** The Snippets/Tags management tab reads from and writes to the library. */
     repository: HostRepository = HostRepository(),
     notificationPermissionState: NotificationPermissionState,
     notificationPermissionController: NotificationPermissionController,
     onNotificationPermissionStateChange: (NotificationPermissionState) -> Unit,
     backgroundProtectionState: BackgroundProtectionState,
-    /** 当前打开的二级页（AppRoot 统一管理：返回链 + 全屏隐藏 tab）。 */
+    /** Currently open subpages (centralized management by AppRoot: backlink + hidden tab in fullscreen mode). */
     subPage: SettingsSubPage? = null,
-    /** 打开/关闭二级页（null = 关闭）。 */
+    /** Toggle the secondary panel (null = off). */
     onOpenSub: (SettingsSubPage?) -> Unit = {},
-    /** tab 内嵌模式下不显示返回箭头。 */
+    /** Do not show the back arrow in tab-indented mode. */
     showBack: Boolean = false,
     onBack: (() -> Unit)? = null,
 ) {
@@ -130,7 +130,7 @@ fun SettingsScreen(
     var notificationEnabled by remember { mutableStateOf(settings.notificationEnabled) }
     var notificationDisabledEvents by remember { mutableStateOf(settings.notificationDisabledEvents) }
     var voiceInputEnabled by remember { mutableStateOf(settings.voiceInputEnabled) }
-    // 识别服务列表（可插拔 provider）；密钥按 provider 存 SecretStore
+    // Recognition service list (pluggable providers); keys stored per provider in SecretStore
     var asrProviders by remember { mutableStateOf(settings.asrProviders) }
 
     fun persist() =
@@ -160,7 +160,7 @@ fun SettingsScreen(
         Column(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
         ) {
-            // 通用组（原外观 + 原通用合并）：应用主题 / 语言 / 触感反馈
+            // General Group (Original Appearance + Original General Merged): App Theme / Language / Haptic Feedback
             SettingsGroup(s.settingsGroupGeneral) {
                 SettingsOptionItem(s.settingsAppTheme, themeModeLabel(theme, s)) { showThemeDialog = true }
                 HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
@@ -277,8 +277,8 @@ fun SettingsScreen(
                 }
             }
 
-            // 关于：设置页底部固定生态位（业界惯例：Termius/Blink 等均在底部放
-            // 版本 + 官网/文档/仓库入口）。点击跳浏览器，Android / iOS 统一走 LocalUriHandler。
+            // About: Set a fixed position at the bottom of the settings page (industry convention: Termius, Blink, and others all place this at the bottom)
+            // Version + official website/documentation/repository links). Tap to open in a browser; Android and iOS both use LocalUriHandler.
             SettingsGroup(s.settingsGroupAbout) {
                 SettingsOptionItem(s.settingsVersion, APP_VERSION) {}
                 HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
@@ -305,8 +305,8 @@ fun SettingsScreen(
             onDismiss = { showThemeDialog = false },
         )
     }
-    // 二级页面覆盖层：iOS 风格右滑进入/退出（Termius 二级页面同款动效）；
-    // 开关状态由 AppRoot 统一管理（返回链 + 全屏隐藏 tab）
+    // Secondary screen overlay: iOS-style swipe right to enter/exit (same animation as Termius’s secondary screens);
+    // Switch states are centrally managed by AppRoot (back chain + fullscreen tab that is hidden)
     AnimatedVisibility(
         visible = subPage == SettingsSubPage.TERMINAL,
         enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(animationSpec = tween(240)),
@@ -323,7 +323,7 @@ fun SettingsScreen(
             onBack = { onOpenSub(null) },
         )
     }
-    // 通知设置二级页（动画同终端主题页：右滑进入/退出）
+    // Notification settings subpage (animation same as terminal theme page: swipe right to enter/exit)
     AnimatedVisibility(
         visible = subPage == SettingsSubPage.NOTIFICATION,
         enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(animationSpec = tween(240)),
@@ -358,7 +358,7 @@ fun SettingsScreen(
             onBack = { onOpenSub(null) },
         )
     }
-    // 命令片段管理二级页（全局库 + 标签组管理入口）
+    // Command Snippet Management Subpage (Global Library + Tag Group Management Entry Point)
     AnimatedVisibility(
         visible = subPage == SettingsSubPage.SNIPPETS,
         enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(animationSpec = tween(240)),
@@ -369,7 +369,7 @@ fun SettingsScreen(
             onBack = { onOpenSub(null) },
         )
     }
-    // 语音输入设置二级页（火山引擎流式语音识别：开关 / API Key / 资源 ID）
+    // Voice Input Settings Subpage (Volcano Engine Streamed Speech Recognition: Switch / API Key / Resource ID)
     AnimatedVisibility(
         visible = subPage == SettingsSubPage.VOICE,
         enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(animationSpec = tween(240)),
@@ -390,7 +390,7 @@ fun SettingsScreen(
             },
             onUpdateProvider = { p, key ->
                 asrProviders = asrProviders.map { if (it.id == p.id) p else it }
-                // 密钥为空 = 保持不变；非空 = 覆盖
+                // If the key is empty, leave it unchanged; if it is not empty, overwrite it.
                 if (key.isNotBlank()) {
                     SecretStore.set(SECRET_SERVICE, asrKeyAccount(p.id), key)
                 }
@@ -431,8 +431,8 @@ fun SettingsScreen(
         )
     }
     if (showTerminalTypeDialog) {
-        // TERM 选项：xterm-256color 默认（匹配模拟器 256 色能力）；
-        // 其余为兼容备选（服务器按 terminfo 降级，不新增渲染能力需求）
+        // TERM option: xterm-256color (default; matches the emulator’s 256-color capability);
+        // The rest are compatibility alternatives (the server will fallback according to terminfo; no new rendering capabilities are required).
         val options = listOf("xterm-256color", "xterm", "vt100", "linux")
         SettingsChoiceDialog(
             title = s.settingsTerminalType,
@@ -447,7 +447,7 @@ fun SettingsScreen(
     }
 }
 
-/** 卡片分组：外间距 + 圆角 + 组标题。 */
+/** Card grouping: outer spacing + corner radius + group title. */
 @Composable
 private fun SettingsGroup(
     title: String,
@@ -470,7 +470,7 @@ private fun SettingsGroup(
     }
 }
 
-/** 选项型设置行：标题 + 当前值 + 右箭头。 */
+/** Rows containing option settings: Header + current value + right arrow. */
 @Composable
 private fun SettingsOptionItem(
     title: String,
@@ -500,7 +500,7 @@ private fun SettingsOptionItem(
     }
 }
 
-/** 数值型设置行：标题 + 当前值，下方滑杆。 */
+/** For numeric settings rows: Header + current value, followed by a slider. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsSliderItem(
@@ -511,9 +511,9 @@ private fun SettingsSliderItem(
     valueRange: ClosedFloatingPointRange<Float>,
     enabled: Boolean = true,
 ) {
-    // top 14dp 与其他行一致；bottom 7dp 补偿 Slider 内部 thumb 下方空间
-    // （thumb 18dp 在 32dp 内居中，下缘距 Slider 底约 7dp）——
-    // 视觉上 thumb 下缘到下一行的空白与其他行文本底到下一行一致
+    // top 14dp aligns with other rows; bottom 7dp compensates for the space below the thumb inside the Slider
+    // (Center the 18dp thumb within the 32dp area, with its bottom edge approximately 7dp from the bottom of the Slider) ——
+    // Visually, the spacing from the bottom edge of “thumb” to the next row should match the spacing from the bottom of text on other rows to the next row.
     Column(Modifier.fillMaxWidth().padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 7.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -528,9 +528,9 @@ private fun SettingsSliderItem(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.5f else 0.3f),
             )
         }
-        // 圆头细轨滑杆（默认竖条 thumb 在列表里太突兀）；
-        // height(32.dp)：默认 48dp 触摸目标让行高 ~96dp，远超其他行——
-        // 设置页滑杆压缩高度与 OptionItem 行高接近（仍可拖动）
+        // Rounded-end thin-track slider (the default vertical thumb looks too out of place in the list);
+        // height(32.dp): the default 48dp touch target would make rows ~96dp tall, far taller than other rows—
+        // Set the height of the slider on the settings page to be close to the line height of the OptionItem (while still allowing it to be dragged).
         Slider(
             value = value,
             onValueChange = onValueChange,
@@ -566,15 +566,15 @@ private fun SettingsSliderItem(
     }
 }
 
-/** 开关型设置行。 */
+/** Switch-type settings rows. */
 @Composable
 private fun SettingsSwitchItem(
     title: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    // vertical 8dp：行高 = Switch 32dp + 16 = 48dp，与 OptionItem（文本 20 + 28）一致——
-    // 否则 Switch 行距比其他行大 12dp（用户反馈上下间距偏大）
+    // Vertical 8dp: Line height = Switch 32dp + 16 = 48dp, consistent with OptionItem (text 20 + 28)——
+    // Otherwise, the row spacing for "Switch" is 12dp larger than other rows (user feedback indicates excessive vertical spacing).
     Row(
         Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) }.padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -589,7 +589,7 @@ private fun SettingsSwitchItem(
     }
 }
 
-/** 单选弹窗：点选即生效并关闭。 */
+/** Single-selection dialog: Click to apply the selection and close the dialog. */
 @Composable
 private fun SettingsChoiceDialog(
     title: String,

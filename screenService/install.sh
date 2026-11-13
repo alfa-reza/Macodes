@@ -12,15 +12,15 @@ cleanup_legacy_screen_files() {
   done
   rmdir "$APP_DIR/__pycache__" 2>/dev/null || true
 }
-# ---- ffmpeg：缺失时安装（查找路径与读流脚本一致，避免装完仍被非交互
-# PATH 误报缺失）。macOS 走 brew/静态包；Linux 需 apt（sudo）——
-# 检测不到且无 apt 权限时给出明确提示（日志可见）----
+# ---- ffmpeg: Install if missing (find the path that matches the stream-reading script to avoid non-interactive errors after installation)
+# (PATH false positive missing). macOS uses brew/static packages; Linux requires apt (sudo) ——
+# Provide a clear tooltip (visible in the log) when the command cannot be detected and there are no apt permissions. ----
 FF=""
 for cand in $(command -v ffmpeg 2>/dev/null) "$HOME/bin/ffmpeg" /opt/homebrew/bin/ffmpeg /usr/local/bin/ffmpeg /usr/bin/ffmpeg; do
   if [ -n "$cand" ] && [ -x "$cand" ]; then FF="$cand"; break; fi
 done
-# Linux 系统依赖共用同一授权入口。不能只在缺 ffmpeg 时定义，否则
-# 最终画面可看但被误报为“不支持远程控制”。
+# Linux systems depend on a shared authorization entry point. It cannot be defined only when ffmpeg is missing; otherwise,
+# The final screen is visible but is incorrectly flagged as “Remote control not supported.”
 if [ "$OS" = "Linux" ]; then
   ADMIN_AVAILABLE=1
   if [ "$(id -u)" = "0" ]; then
@@ -39,7 +39,7 @@ if [ -z "$FF" ]; then
   if command -v brew >/dev/null 2>&1; then
     echo "==> 正在通过 Homebrew 安装 ffmpeg（约几分钟）"
     brew install ffmpeg
-    # brew 装完重新定位（PATH 受限会话里 command -v 仍可能失败，兜底 brew 前缀）
+    # After installing via brew, re-set the path (command -v may still cause failure in sessions with restricted PATH; use the "brew" prefix as a fallback).
     FF="$(command -v ffmpeg 2>/dev/null)"
     [ -z "$FF" ] && FF="/opt/homebrew/bin/ffmpeg"
     [ -x "$FF" ] || FF="/usr/local/bin/ffmpeg"
@@ -54,8 +54,8 @@ if [ -z "$FF" ]; then
     FF="$HOME/bin/ffmpeg"
   fi
   else
-    # Linux：root 或免密 sudo 时自动安装；App 已提供密码时走 sudo -S；
-    # 缺少可用授权方式时输出与发行版匹配的手动命令。
+    # Linux: Installs automatically when running as root or with password-less sudo; if the app has provided a password, use `sudo -S`;
+    # If no valid authorization method is available, output the manual command that matches the distribution.
     if [ "$ADMIN_AVAILABLE" != "1" ]; then
       if command -v apt-get >/dev/null 2>&1; then
         echo "==> Linux 需要管理员权限：请先在终端执行 sudo apt-get update && sudo apt-get install -y ffmpeg，然后重试" >&2
@@ -70,8 +70,8 @@ if [ -z "$FF" ]; then
     fi
     if command -v apt-get >/dev/null 2>&1; then
       echo "==> 正在通过 apt 安装 ffmpeg"
-      # update + install 放进同一次 sudo：即使远端禁用 sudo 时间戳缓存，
-      # 也只读取一次密码，不会在第二条命令等待额外输入。
+      # Combine `update` and `install` into a single `sudo` command: even if the remote server has disabled the `sudo` time cache,
+      # It also reads the password only once and will not wait for additional input on the second command.
       run_admin sh -c 'apt-get update -qq && apt-get install -y -qq ffmpeg'
     elif command -v dnf >/dev/null 2>&1; then
       echo "==> 正在通过 dnf 安装 ffmpeg"
@@ -95,8 +95,8 @@ case "$FF_PATH" in
   *) FF_PATH="$(pwd)/$FF_PATH" ;;
 esac
 echo "==> ffmpeg: $FF_PATH"
-# 每个远端账号独立的 256-bit bearer token：回环 TCP 也会被同机
-# 其它 OS 用户访问，不能把“只监听 127.0.0.1”当作认证边界。
+# A unique 256-bit bearer token for each remote account: even a loopback TCP connection on the same machine
+# For users accessing from other operating systems, “a listener that listens only on 127.0.0.1” should not be treated as an authentication boundary.
 TOKEN_FILE="$HOME/.termish-screen.token"
 TOKEN=""
 if [ -f "$TOKEN_FILE" ]; then
@@ -221,9 +221,9 @@ if [ "$OS" = "Darwin" ]; then
 else
   printf 'rust\n' > "$APP_DIR/screen-service.backend"
 fi
-# ---- 服务启动：macOS 用 LaunchAgent（GUI 域录屏权限）；
-# Linux 用 systemd 用户服务（桌面自启动兜底），机器重启后随图形登录
-# 自动恢复。旧版仅 nohup，进程在本次 SSH 断开后能活、重启后必丢。----
+# ---- Service launch: macOS uses LaunchAgent (GUI screen recording permission);
+# Linux uses systemd user services (with desktop autostart as a fallback); runs after a system reboot upon graphical login
+# Automatic resume. Older versions only used `nohup`; processes would survive after the SSH session was disconnected but would be lost after a reboot. ----
 if [ "$OS" = "Darwin" ]; then
 mkdir -p "$HOME/Library/LaunchAgents"
 if ! /usr/bin/python3 - "$PLIST" "$RELAY" "$APP_DIR/screen-service.json" <<'TERMISH_PLIST'
@@ -243,15 +243,15 @@ then
 fi
 launchctl bootout gui/$(id -u) "$PLIST" 2>/dev/null || true
 sleep 1
-# relay 启动时会按自身 PID 文件清理上一轮孤儿 ffmpeg；这里不能
-# pkill 全部 ffmpeg，否则会误杀用户自己的转码/录制任务。
+# When relay launches, it cleans up orphaned ffmpeg processes from the previous round based on its own PID file; this cannot
+# pkill all ffmpeg processes; otherwise, it may mistakenly terminate the user’s own transcoding or recording tasks.
 if ! launchctl bootstrap gui/$(id -u) "$PLIST"; then
   restore_macos_service
   exit 1
 fi
 sleep 1
-# 验证用 launchctl（不碰连接：探测连接-断开会打断 relay 的当前服务周期；
-# 也不用 pgrep：安装脚本自身的 zsh 命令行含脚本文本会误匹配）
+# Verify using launchctl (do not touch the connection: detecting a connection—disconnecting will interrupt the relay’s current service cycle;
+# (Also, do not use pgrep: the script’s own zsh command line containing the script text may cause false matches.)
 if launchctl print gui/$(id -u)/dev.termish.screen 2>/dev/null | grep -q "state = running" \
   && lsof -nP -iTCP:$((PORT + 2)) -sTCP:LISTEN >/dev/null 2>&1; then
   echo @RELAY_VERSION@ > "$HOME/.termish-screen.version"
@@ -267,15 +267,15 @@ else
   exit 1
 fi
 else
-# Linux：重启 relay，并注册用户级持久服务。
-# ⚠️ 不用 pkill -f：安装脚本自身（sh -c）命令行含
-# 脚本文本，-f 全匹配会把自己杀掉（macOS 分支同款坑，用户反馈：
-# Ubuntu 引导安装失败）——用 PID 文件精确清理
+# Linux: Restart the relay and register the user-level persistent service.
+# ⚠️ Do not use `pkill -f`: The install script’s own (sh -c) command line contains
+# Script text: The -f option for exact matching will crash the program (same issue on the macOS branch; user feedback:
+# (Ubuntu boot installation failure) — Use PID files for precise cleanup
 RELAY_PID="$HOME/.termish-screen.pid"
 stop_termish_relay_pid() {
   OLD_PID="$1"
-  # 安装脚本启用了 set -e；PID 文件失效是正常升级场景，函数必须
-  # 显式成功返回，否则会在写入新 relay 后、启动它之前提前退出。
+  # The install script enables `set -e`; PID file corruption is a normal part of the upgrade process, and the function must
+  # Explicitly return success; otherwise, the process will exit early after writing the new relay but before launching it.
   case "$OLD_PID" in ''|*[!0-9]*) return 0 ;; esac
   [ -r "/proc/$OLD_PID/cmdline" ] || return 0
   OLD_CMD="$(tr '\0' ' ' < "/proc/$OLD_PID/cmdline" 2>/dev/null)"
@@ -288,8 +288,8 @@ if [ -f "$RELAY_PID" ]; then
   stop_termish_relay_pid "$(cat "$RELAY_PID" 2>/dev/null)"
   rm -f "$RELAY_PID"
 fi
-# v31 及更早版本可能没有可靠 PID 文件，或失败的新进程覆盖过 PID。
-# 从监听端口找到旧进程后仍逐项核对 cmdline 必须包含当前 relay 绝对路径，
+# Versions v31 and earlier may not have reliable PID files, or a process failure may have overwritten the PID.
+# After locating the old process from the listener port, still verify item by item that the command line must include the absolute path to the current relay,
 LISTENER_PID=""
 if command -v lsof >/dev/null 2>&1; then
   LISTENER_PID="$(lsof -t -iTCP:$PORT -sTCP:LISTEN 2>/dev/null | head -1)"
@@ -298,16 +298,16 @@ elif command -v fuser >/dev/null 2>&1; then
 fi
 stop_termish_relay_pid "$LISTENER_PID"
 sleep 0.5
-# 启动包装器每次运行都重新探测 DISPLAY/XAUTHORITY。Xwayland 的 display
-# 号和授权文件会在重启后变化，不能把安装当时的值固化进 service unit。
+# The launch wrapper re-detects DISPLAY/XAUTHORITY on every run. Xwayland's display
+# The serial number and authorization files will change after a restart; the values from the time of installation must not be hard-coded into the service unit.
 RUNNER="$HOME/.termish-screen-launch.sh"
 LOG="$HOME/.termish-screen.log"
 cat > "$RUNNER" <<'TERMISH_EOF'
 #!/bin/sh
 NATIVE="$HOME/Library/Application Support/termish/screen-service"
 LOG="$HOME/.termish-screen.log"
-# relay 只记录异常、码率调档和编码器自愈；仍限制日志体积，避免长期
-# 常驻后无限增长。保留最后 1 MiB 足够排查最近一次会话。
+# relay logs record exceptions, bitrate adjustments, and encoder self-healing; log size is still limited to avoid long-term
+# Once stored, it grows indefinitely. Retain the last 1 MiB to allow for troubleshooting the most recent session.
 if [ -f "$LOG" ] && [ "$(wc -c < "$LOG" 2>/dev/null || echo 0)" -gt 5242880 ]; then
   tail -c 1048576 "$LOG" > "$LOG.tmp" 2>/dev/null && mv "$LOG.tmp" "$LOG"
 fi
@@ -317,8 +317,8 @@ while :; do
   XPID=""
   GRAPHICAL=0
   LOCAL_SESSION_TYPE=""
-  # logind 是会话类型的权威来源。Wayland 也会启动 Xwayland，若先
-  # 看进程会误走 x11grab 并输出黑色根窗口。
+  # logind is the authoritative source for session types. Wayland also launches Xwayland; if
+  # Checking the process may mistakenly trigger x11grab and output a black root window.
   if command -v loginctl >/dev/null 2>&1; then
     for sid in $(loginctl list-sessions --no-legend 2>/dev/null | awk -v uid="$(id -u)" '$2 == uid { print $1 }'); do
       SESSION_TYPE="$(loginctl show-session "$sid" -p Type --value 2>/dev/null)"
@@ -335,7 +335,7 @@ while :; do
     done
   fi
   if command -v pgrep >/dev/null 2>&1; then
-    # 只选择当前用户的图形服务器；GDM greeter 属于另一用户。
+    # Select only the current user’s graphics server; the GDM greeter belongs to another user.
     XPID="$(pgrep -u "$(id -u)" -x Xwayland 2>/dev/null | head -1)"
     if [ -z "$XPID" ]; then
       XPID="$(pgrep -u "$(id -u)" -x Xorg 2>/dev/null | head -1)"
@@ -417,8 +417,8 @@ WantedBy=default.target
 TERMISH_EOF
   export XDG_RUNTIME_DIR="$USER_RUNTIME"
   export DBUS_SESSION_BUS_ADDRESS="unix:path=$USER_RUNTIME/bus"
-  # enable --now 不会重启已运行的旧 unit；升级 relay 时必须显式 restart，
-  # 会话总线存在不代表 systemd 用户管理器可用；失败时继续桌面自启动。
+  # `enable --now` will not restart existing running units; you must explicitly restart when upgrading Relay,
+  # The presence of a session bus does not imply that the systemd user manager is available; in case of failure, proceed with desktop autostart.
   if systemctl --user daemon-reload \
     && systemctl --user enable dev.termish.screen.service \
     && systemctl --user restart dev.termish.screen.service; then
@@ -428,8 +428,8 @@ TERMISH_EOF
   fi
 fi
 if [ "$SERVICE_STARTED" != "1" ]; then
-  # 没有可用的 systemd user bus（部分精简桌面）时，通过 XDG autostart
-  # 保证下次图形登录自动启动；当前安装仍用 nohup 立即拉起。
+  # When the systemd user bus is not available (on some minimal desktops), pass XDG autostart
+  # Ensure that graphical login starts automatically next time; for the current installation, use `nohup` to launch it immediately.
   mkdir -p "$HOME/.config/autostart"
   cat > "$HOME/.config/autostart/dev.termish.screen.desktop" <<'TERMISH_EOF'
 [Desktop Entry]
@@ -444,7 +444,7 @@ TERMISH_EOF
   echo "==> 桌面自启动服务：已启用（重启后自动恢复）"
 fi
 sleep 1.5
-# 验证控制面与回环视频端口都在监听；不建立探测连接（会触发 ffmpeg）。
+# Verify that both the control plane and the loopback video port are listeners; do not establish a probe connection (which would trigger ffmpeg).
 if (lsof -nP -iTCP:$PORT -sTCP:LISTEN >/dev/null 2>&1 || ss -ltn 2>/dev/null | grep -q ":$PORT ") \
   && (lsof -nP -iTCP:$((PORT + 2)) -sTCP:LISTEN >/dev/null 2>&1 || ss -ltn 2>/dev/null | grep -q ":$((PORT + 2)) "); then
   echo @RELAY_VERSION@ > "$HOME/.termish-screen.version"

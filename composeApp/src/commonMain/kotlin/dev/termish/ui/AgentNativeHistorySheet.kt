@@ -39,7 +39,7 @@ import dev.termish.ui.theme.Sizes
 import dev.termish.ui.theme.Spacing
 import dev.termish.util.monospaceFontFamily
 
-/** Agent 自有历史发现与导入 UI；从主工作区拆出，隔离扫描/搜索/导入状态。 */
+/** Agent’s built-in history discovery and import UI; separated from the main workspace to isolate scan/search/import statuses. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun NativeHistorySheet(

@@ -3,25 +3,25 @@ package dev.termish.util
 import kotlin.concurrent.Volatile
 
 /**
- * 统一日志层。全链路打点（连接/重连/网络/通知/生命周期），
- * 调试定位问题不再需要临时 println。
+ * Unified log layer. End-to-end tracing (connection/reconnect/network/notification/lifecycle),
+ * You no longer need to use temporary `println` statements to debug and pinpoint issues.
  *
- * - [termLogEnabled] 平台按构建类型控制：Android debuggable、
- *   iOS DEBUG 符号
- * - [diagnosticsEnabled] 诊断模式：release 也可运行时开启（设置页），
- *   同时写日志文件（[logFileDirectory]），供导出排查线上问题
- * - 消息为惰性参数：开关关闭时 lambda 不执行，字符串拼接零开销
- * - 用法：TermLog.i("ssh") { "连接开始 $host:$port" }
+ * - [termLogEnabled] Platform-specific control based on build type: Android debuggable,
+ *   iOS DEBUG Symbols
+ * - [diagnosticsEnabled] Diagnostics mode: Can also be enabled at runtime in release mode (settings page),
+ *   Also write to the log file ([logFileDirectory]) for exporting to troubleshoot production issues.
+ * - Messages are lazy parameters: the lambda does not execute when the switch is off, and string concatenation incurs zero overhead
+ * - Usage: TermLog.i("ssh") { "Connection starting $host:$port" }
  */
 object TermLog {
-    /** 诊断模式（设置页开关）：release 也打点并写文件。 */
+    /** Diagnostic mode (switch on the settings page): "release" also logs and writes to files. */
     @Volatile
     var diagnosticsEnabled: Boolean = false
 
-    /** 是否输出（构建调试 或 诊断模式）。 */
+    /** Whether to output (build, debug, or diagnostics mode). */
     val enabled: Boolean get() = termLogEnabled || diagnosticsEnabled
 
-    /** 当前日志文件路径（诊断模式开启且文件输出可用时非空）。 */
+    /** Current log file path (not empty when diagnostics mode is enabled and file output is available). */
     val logFilePath: String? get() = if (diagnosticsEnabled) currentLogFile else null
 
     fun d(
@@ -58,7 +58,7 @@ object TermLog {
         if (diagnosticsEnabled) writeFile(level, tag, text)
     }
 
-    /** 追加写日志文件（1MB 轮转：termish.log → termish.log.old）。失败静默。 */
+    /** Add logging to a log file (1MB rotation: termish.log → termish.log.old). Failure is silent. */
     private fun writeFile(
         level: Char,
         tag: String,
@@ -80,18 +80,18 @@ object TermLog {
     }
 }
 
-/** 平台构建是否为调试（release 关闭打点）。 */
+/** Is the platform build in debug mode (disable logging for release builds)? */
 expect val termLogEnabled: Boolean
 
-/** 平台日志输出：Android logcat / iOS NSLog。 */
+/** Platform log output: Android logcat / iOS NSLog. */
 expect fun platformLog(
     level: Char,
     tag: String,
     msg: String,
 )
 
-/** 日志文件目录（诊断模式写文件用）；不可用时返回 null。 */
+/** Log file directory (used for writing files in diagnostics mode); returns null if unavailable. */
 expect fun logFileDirectory(): String?
 
-/** 分享/导出诊断日志（Android 系统分享 / iOS UIActivityViewController）。 */
+/** Share/export diagnostics logs (Android system sharing / iOS UIActivityViewController). */
 expect fun shareDiagnosticLogs()

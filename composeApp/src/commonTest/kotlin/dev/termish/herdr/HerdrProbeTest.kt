@@ -7,24 +7,24 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * HerdrProbe 探测：$HOME 前缀候选命中后必须解析成绝对路径返回。
+ * HerdrProbe detection: After a match for the $HOME prefix, it must be parsed to an absolute path and returned.
  *
- * 根因（真机踩坑 1）：探测命令经远端 shell 执行会展开 $HOME，字面候选能命中；
- * 但下游 mosh 引导 `-- '<bin>'` 的单引号阻止展开，mosh-server 子进程又是直接
- * execvp（不过 shell），字面 `$HOME/...` 报
- * `execvp: $HOME/...: No such file or directory`。
+ * Root cause (physical-device pitfall 1): the probe command runs via the remote shell, which expands $HOME, so literal candidates match;
+ * However, the single quotes in the downstream `mosh` command `-- '<BIN>'` prevent expansion, and the `mosh-server` process is directly
+ * execvp (not via the shell), the literal `$HOME/...` errors with
+ * `execvp: $HOME/...: No such file or directory`.
  *
- * 根因（真机踩坑 2）：探测用 `--version` 而非 `api snapshot`——snapshot 需要
- * daemon 已运行（Linux 实测：server_not_running 时 exit 1 + error JSON），
- * 刚装完/从未启动的主机会被误判成「未安装」（装完仍报失败）。
+ * Root Cause (Physical Device Pitfall 2): Use `--version` instead of `api snapshot` for detection—snapshot requires
+ * daemon is running (tested on Linux: returns exit 1 + error JSON when `server_not_running`),
+ * A host that has just been installed or has never been launched may be incorrectly identified as “not installed” (resulting in a failure even after installation).
  */
 class HerdrProbeTest {
     private val versionOutput = "herdr 0.8.0"
 
     @Test
     fun snapPackagedHerdrIsSkipped() {
-        // Ubuntu snap 版（PATH 命中 /snap/bin/herdr）：沙箱受限，跳过该候选，
-        // 继续探测 $HOME/.local/bin 的官方脚本版
+        // Ubuntu snap build (PATH hit /snap/bin/herdr): sandbox restrictions, skip this candidate,
+        // Continue searching for the official script version in $HOME/.local/bin
         val commands = mutableListOf<String>()
         val result =
             HerdrProbe.probe { cmd ->
@@ -45,7 +45,7 @@ class HerdrProbeTest {
 
     @Test
     fun homeCandidateResolvedToAbsolutePath() {
-        // exec PATH 缺 ~/.local/bin（裸 herdr 失败）→ $HOME 候选命中 → 解析成绝对路径
+        // exec PATH missing ~/.local/bin (plain `herdr` fails) → $HOME candidate hits → resolve to absolute path
         val commands = mutableListOf<String>()
         val result =
             HerdrProbe.probe { cmd ->
@@ -59,8 +59,8 @@ class HerdrProbeTest {
                 }
             }!!
         assertEquals("/root/.local/bin/herdr", result.bin)
-        // 解析发生在命中之后、且只多一次 echo（候选顺序不变）；PATH 候选
-        // 先经 command -v 判 snap（返回 null = 无 PATH 命中或非 snap）
+        // Resolution happens after the hit, with only one extra `echo` (candidate order unchanged); PATH candidates
+        // First, use `command -v` to check for a snap (returns `null` if there is no match in the PATH or if it is not a snap)
         assertEquals(
             listOf(
                 "command -v herdr",
@@ -74,8 +74,8 @@ class HerdrProbeTest {
 
     @Test
     fun homeCandidateResolvedAfterBareCandidateMissesOtherAbsolutes() {
-        // 全候选顺序：herdr → $HOME → /usr/local/bin（都不中）→ /opt/homebrew 命中，
-        // 绝对路径候选无需解析（不应发起 echo）
+        // Full candidate order: herdr → $HOME → /usr/local/bin (no match) → /opt/homebrew hit,
+        // Absolute-path candidates need no resolution (no `echo` should be issued)
         val commands = mutableListOf<String>()
         val result =
             HerdrProbe.probe { cmd ->
@@ -83,7 +83,7 @@ class HerdrProbeTest {
                 if (cmd == "/opt/homebrew/bin/herdr --version") versionOutput else null
             }!!
         assertEquals("/opt/homebrew/bin/herdr", result.bin)
-        // PATH 候选前多一次 command -v（snap 判定）
+        // One extra `command -v` before PATH candidates (snap check)
         assertEquals(
             listOf("command -v herdr") + HerdrApi.BIN_CANDIDATES.map { "$it --version" },
             commands,
@@ -92,7 +92,7 @@ class HerdrProbeTest {
 
     @Test
     fun bareCandidateHitNeedsNoResolution() {
-        // PATH 直接可用的常规场景：原样返回，不额外探测
+        // Common scenarios where PATH is directly applicable: Back as-is without additional checks.
         val commands = mutableListOf<String>()
         val result =
             HerdrProbe.probe { cmd ->
@@ -109,8 +109,8 @@ class HerdrProbeTest {
 
     @Test
     fun daemonNotRunningIsStillInstalled() {
-        // 回归（Linux 实测）：api snapshot 在 daemon 未运行时返回 error JSON + exit 1。
-        // 探测已改用 --version——「装了但没启动」必须命中，不能误判成未安装
+        // Regression (tested on Linux): The API snapshot sends an error JSON and exits with status 1 when the daemon is not running.
+        // The check has been changed to use --version—the "installed but not launched" condition must be met; it must not be mistakenly identified as not installed.
         val snapshotServerError = """{"id":"x","error":{"code":"server_not_running","message":"no herdr server is running"}}"""
         val result =
             HerdrProbe.probe { cmd ->
@@ -125,7 +125,7 @@ class HerdrProbeTest {
 
     @Test
     fun homeEchoFailureFallsBackToRawCandidate() {
-        // echo $HOME 失败（异常环境）：退回原样尽力而为，不阻断连接
+        // echo $HOME failure (exception): Return the original value—do the best you can without terminating the connection
         val result =
             HerdrProbe.probe { cmd ->
                 when (cmd) {
@@ -146,11 +146,11 @@ class HerdrProbeTest {
         assertTrue(HerdrProbe.isVersionOutput("herdr 0.8.0"))
         assertTrue(HerdrProbe.isVersionOutput("\nherdr 0.8.0\n"))
         assertTrue(HerdrProbe.isVersionOutput("herdr 1.2.3-beta+abc"))
-        // 同名异物/usage 输出不误判命中
+        // Ensure that homonyms or similar terms do not trigger false positives in the output.
         assertFalse(HerdrProbe.isVersionOutput("usage: herdr [options]"))
         assertFalse(HerdrProbe.isVersionOutput("herdr"))
         assertFalse(HerdrProbe.isVersionOutput(""))
-        // snapshot 的 error JSON 不是版本输出
+        // The error JSON for "snapshot" is not version output
         assertFalse(HerdrProbe.isVersionOutput("""{"id":"x","error":{"code":"server_not_running"}}"""))
     }
 }

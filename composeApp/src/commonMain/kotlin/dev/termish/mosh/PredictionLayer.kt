@@ -1,23 +1,23 @@
 package dev.termish.mosh
 
 /**
- * 本地预测回显（对应协议预测引擎的简化版）。
+ * Local prediction echo (a simplified version of the protocol prediction engine).
  *
- * 原生 mosh-client 打字"即时"的关键：高 RTT 链路上，每个击键先在本地
- * framebuffer 上预测渲染，服务器确认后校正。确认语义对齐 mosh：
- * - 触发用 send_interval（SRTT/2 clamp 20..250ms）：>30ms 开 / <=20ms 关，
- *   带迟滞（mosh SRTT_TRIGGER_LOW/HIGH）；下划线标记（flagging）>80ms 开、
- *   <=50ms 关（mosh FLAG_TRIGGER_LOW/HIGH）
- * - 预测跨确认帧存活：echo_ack 未覆盖承载帧时，在每个新确认态上重放预测，
- *   避免"字符出现→确认帧不含回显→消失→回显帧到→再出现"的回退闪烁
- * - echo_ack >= 承载帧（mosh ECHO_TIMEOUT=50ms 后的 late ack）即收编：
- *   回显（或"无回显"的事实，如密码输入）已包含在确认态里
- * - echo_ack >= 承载帧（mosh ECHO_TIMEOUT=50ms 后的 late ack）即收编：
- *   回显（或"无回显"的事实，如密码输入）已包含在确认态里
- * - 备用屏（vim/tmux/herdr 等全屏程序）只预测可打印字符：pane 内 shell /
- *   vim 插入模式的回显路径受益；控制字节语义因程序而异不预测（mosh 原生
- *   则全量预测 + per-cell 收编）；普通屏含不支持的控制字节放弃本段；
- *   大粘贴（>128 字节，mosh 阈值 100）不预测
+ * The key to "instant" typing in the native mosh-client: On high-RTT connections, each keystroke is first processed locally
+ * Prediction of rendering on the framebuffer; correction after server confirmation. Ensure semantic alignment with mosh:
+ * - Triggered using `send_interval` (SRTT/2 clamped to 20–250 ms): >30 ms to turn on / <=20 ms to turn off,
+ *   With hysteresis (mosh SRTT_TRIGGER_LOW/HIGH); underline marking (flagging) >80 ms on,
+ *   <=50ms threshold (mosh FLAG_TRIGGER_LOW/HIGH)
+ * - Prediction of survival across acknowledgment frames: When `echo_ack` does not override the carrier frame, replay the prediction on each new confirmation state,
+ *   Avoid the flickering effect where "a character appears → the frame is confirmed to contain no echo → it disappears → the echo frame arrives → and it reappears."
+ * - echo_ack >= the carrying frame (late ACK after mosh ECHO_TIMEOUT=50ms) is incorporated:
+ *   Echo (or the fact that there is “no echo,” such as during password input) is already included in the confirmation state.
+ * - echo_ack >= the carrying frame (late ACK after mosh ECHO_TIMEOUT=50ms) is incorporated:
+ *   Echo (or the fact that there is “no echo,” such as during password input) is already included in the confirmation state.
+ * - For secondary screens (fullscreen programs like vim, tmux, herdr, etc.), only perform character prediction for printable characters: shell within a pane /
+ *   Benefit from the echo path in Vim insert mode; control byte semantics vary by program and are not subject to prediction (mosh native)
+ *   (then full prediction + per-cell integration); skip this section for standard screens containing unsupported control bytes;
+ *   Large pastes (>128 bytes; mosh threshold 100) do not receive any prediction.
  */
 internal class PredictionLayer(
     private val nowMs: () -> Long,
@@ -25,17 +25,17 @@ internal class PredictionLayer(
     private var confirmed: ShadowTerminal? = null
     private var predicted: ShadowTerminal? = null
 
-    /** 尚未被 echo_ack 覆盖的输入字节（重放预测用）。 */
+    /** Input bytes not yet covered by echo_ack (used for replay prediction). */
     private var pending = ByteArray(0)
 
-    /** pending 尾部字节所在发送帧的估计（输入时刻 lastSentNum+1）；
-     *  echoAck >= 它即视为回显已到（同帧或更早帧里的前缀字节必然也已确认）。 */
+    /** Estimated transmission frame containing the trailing bytes of "pending" (at the input time: lastSentNum+1);
+     *  echoAck >= the carrying frame counts as acknowledged (the prefix bytes in the same or an earlier frame must also have been acked). */
     private var pendingCarriedBy: ULong = 0uL
     private var predictedAt = 0L
     private var srttTrigger = false
     private var flagging = false
 
-    // mosh terminaloverlay.h 的触发阈值（均作用于 send_interval，非裸 SRTT）
+    // Trigger thresholds for mosh terminaloverlay.h (all apply to `send_interval`, not bare SRTT)
     private val srttTriggerLow = 20L
     private val srttTriggerHigh = 30L
     private val flagTriggerLow = 50L
@@ -43,7 +43,7 @@ internal class PredictionLayer(
     private val glitchTimeout = 3000L
     private val maxPending = 128
 
-    /** 会话收到新确认状态时调用：echo_ack 收编 + 存活预测跨帧重放。 */
+    /** Called when a session receives a new confirmation status: echo_ack incorporation + survival prediction cross-frame replay. */
     fun onConfirmed(shadow: ShadowTerminal) {
         confirmed = shadow
         if (pending.isEmpty()) {
@@ -55,24 +55,24 @@ internal class PredictionLayer(
             predicted = null
             return
         }
-        // 预测尚未被确认：在新确认态上重建（COW 分叉 O(行数) + 重放 O(pending)），
-        // 与 mosh 把存活 overlay 重新 apply 到每个新帧等价
+        // Predictions not yet confirmed: Rebuild on the new confirmed state (COW branching O(number of rows) + replay O(pending)),
+        // Equivalent to mosh reapplying the surviving overlay to each new frame
         predicted = shadow.predictInput(pending, flagging)
     }
 
     /**
-     * 用户输入到达时调用（在发给 SSP 之前）。返回是否产生了可显示的预测。
+     * Call when user input arrives (before sending it to SSP). Return whether a prediction that can be shown was generated.
      */
     fun onUserInput(
         bytes: ByteArray,
         sendIntervalMs: Long,
         lastSentNum: ULong,
     ): Boolean {
-        // 触发迟滞（预测触发迟滞）
+        // Trigger hysteresis (prediction trigger hysteresis)
         if (sendIntervalMs > srttTriggerHigh) {
             srttTrigger = true
         } else if (sendIntervalMs <= srttTriggerLow && predicted == null) {
-            srttTrigger = false // mosh：仅在没有活跃预测时才允许关闭
+            srttTrigger = false // mosh: Allowing shutdown only when there are no active predictions
         }
         if (sendIntervalMs > flagTriggerHigh) {
             flagging = true
@@ -87,7 +87,7 @@ internal class PredictionLayer(
         pending += bytes
         pendingCarriedBy = lastSentNum + 1u
         if (pending.size > maxPending) {
-            // 大粘贴：放弃预测（mosh process_user_input 里 paste 直接 reset）
+            // Mass paste: Abandon prediction (in `mosh process_user_input`, `paste` directly triggers a reset)
             pending = ByteArray(0)
             predicted = null
             return false
@@ -98,8 +98,8 @@ internal class PredictionLayer(
                 v < 0x20 || v == 0x7f
             }
         ) {
-            // alt 屏只预测可打印字符段：控制字节在全屏程序里语义各异
-            // （vim 普通模式 x 是删字符不是退格），等回显；pending 保留待收编
+            // alt: Predict only printable character segments: control bytes have different meanings in fullscreen programs
+            // (In Vim normal mode, “x” deletes a character, not a backspace); wait for the echo; pending—to be incorporated later
             predicted = null
             return false
         }
@@ -110,25 +110,25 @@ internal class PredictionLayer(
             predictedAt = nowMs()
             return true
         }
-        // 含不支持的控制字节：本段不预测（pending 保留，等 echo_ack 收编）
+        // Contains unsupported control bytes: This section does not make predictions (pending—reserved until echo_ack is incorporated).
         return false
     }
 
-    /** 窗口尺寸变化：几何失效，丢弃预测等确认态（mosh process_resize → reset）。 */
+    /** Window resizing: geometric failure, discarded predictions, and other confirmation states (mosh process_resize → reset). */
     fun reset() {
         predicted = null
         pending = ByteArray(0)
     }
 
-    /** 预测悬挂过久：丢弃预测回确认态（下次输入重新开始）。 */
+    /** Prediction hangs for too long: Discard the prediction and return to the confirmation state (restart with the next input). */
     fun dropPrediction() {
         predicted = null
         pending = ByteArray(0)
     }
 
-    /** 当前应展示的状态：有预测显示预测，否则确认态。 */
+    /** Current status to show: Show “Prediction” if a prediction is available; otherwise, show “Confirmed.” */
     fun currentForDisplay(): ShadowTerminal? = predicted ?: confirmed
 
-    /** 预测悬挂过久（服务器一直未确认/期间有输出）→ 丢弃并回确认态。 */
+    /** If a prediction remains pending for too long (the server has not yet confirmed it or there has been output in the meantime) → Discard it and return to the confirmed state. */
     fun glitchTimedOut(): Boolean = predicted != null && nowMs() - predictedAt > glitchTimeout
 }

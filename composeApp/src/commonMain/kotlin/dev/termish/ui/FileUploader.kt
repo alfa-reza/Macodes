@@ -37,11 +37,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** 上传会话状态（驱动右下角进度浮层）。 */
+/** Upload session state (drives the progress overlay in the lower-right corner). */
 sealed interface UploadUiState {
     data object Idle : UploadUiState
 
-    /** 上传中：当前文件进度。 */
+    /** Upload: Current file progress. */
     data class Uploading(
         val name: String,
         val sent: Long,
@@ -50,23 +50,23 @@ sealed interface UploadUiState {
         val totalCount: Int,
     ) : UploadUiState
 
-    /** 全部完成（paths = 成功上传的远端路径，用于自动输入终端）。 */
+    /** All done (paths = remote paths of successfully uploaded files, used to auto-input into the terminal). */
     data class Done(
         val count: Int,
         val paths: List<String>,
     ) : UploadUiState
 
-    /** 失败（含原因，UI 提示后回 Idle）。 */
+    /** Failure (including cause; returns to Idle after a tooltip). */
     data class Failed(
         val message: String,
     ) : UploadUiState
 }
 
 /**
- * 终端文件上传器：复用已认证连接参数（密码/私钥/主机）新建 SFTP 连接，
- * 与交互会话解耦（mosh 模式同样适用——SFTP 走独立 SSH 连接）。
- * 多选文件进队列**串行**上传（整批复用一个 SFTP 会话，传完关闭）；
- * 流式上传：本地文件逐块读、逐块写，任意大小不整体驻内存。
+ * Terminal File Uploader: Reuse existing authentication parameters (password/private key/host) to create a new SFTP connection,
+ * Decouple from interactive sessions (the "mosh" mode also applies—SFTP uses a separate SSH connection).
+ * Upload multiple selected files to the queue in a **sequential** manner (reusing a single SFTP session for the entire batch; close the session after completion);
+ * Streaming upload: Local files are read and written in blocks; files of any size are not loaded entirely into memory.
  */
 class TerminalFileUploader(
     private val controller: TerminalController,
@@ -79,7 +79,7 @@ class TerminalFileUploader(
     private val queue = ArrayDeque<PickedFile>()
     private var job: Job? = null
 
-    /** 入队并启动（若未在传）串行上传。 */
+    /** Enqueue and launch (if not already in progress) a serial upload. */
     fun enqueue(
         file: PickedFile,
         targetDir: String,
@@ -193,7 +193,7 @@ class TerminalFileUploader(
         }
 }
 
-/** 上传目标目录选项卡片：图标 + 主标题 + 路径副标题 + 右箭头，点按区域明确。 */
+/** Upload Target Directory card: Icon + main title + path subtitle + right arrow; clearly defined tap region. */
 @Composable
 fun UploadDirOptionCard(
     icon: ImageVector,
@@ -254,18 +254,18 @@ fun UploadDirOptionCard(
 }
 
 /**
- * 传输进度浮层（终端上传 / SFTP 下载共用）：surface 圆角卡片 + 品牌绿进度条。
- * 文件名 + 百分比 + 副标题（如「上传中 1/3」「下载中…」）。
+ * Transfer Progress Overlay (shared for terminal uploads and SFTP downloads): Surface card with corner radius + brand-green progress bar.
+ * File name + percentage + subtitle (e.g., “Uploading 1/3,” “Downloading…”).
  */
 @Composable
 fun TransferProgressCard(
-    /** 文件名。 */
+    /** File names. */
     title: String,
-    /** 进度 0..1（未知总大小传 0，进度条不推进）。 */
+    /** Progress 0..1 (if the total size is unknown, set to 0; the progress bar will not advance). */
     progress: Float,
-    /** 百分比文案（如 "42%"；未知留空）。 */
+    /** Percentage values (e.g., "42%"; leave blank if unknown). */
     percent: String,
-    /** 副标题（如「上传中 1/3」「下载中…」）。 */
+    /** Subtitles (e.g., “Uploading 1/3,” “Downloading…”). */
     subtitle: String,
     modifier: Modifier = Modifier,
 ) {

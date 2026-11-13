@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** 本地预测回显（speculative local echo）回归测试。 */
+/** Speculative local prediction regression test. */
 class PredictionTest {
     private var now = 0L
 
@@ -22,8 +22,8 @@ class PredictionTest {
         val shown = l.currentForDisplay()!!
         val cell = shown.buffer.lineAt(0).cells[0]
         assertEquals('a'.code, cell.codePoint)
-        assertTrue(cell.attrs and CellAttr.UNDERLINE != 0) // send_interval>80 → flagging 下划线
-        // 确认态本身不受影响
+        assertTrue(cell.attrs and CellAttr.UNDERLINE != 0) // send_interval>80 → flagging with an underscore
+        // the confirmation state itself is unaffected
         assertEquals(
             ' '.code,
             base.buffer
@@ -38,7 +38,7 @@ class PredictionTest {
         val base = ShadowTerminal.create(80, 24)
         val l = layer()
         l.onConfirmed(base)
-        // 30 < send_interval <= 50：预测启用（>30）但不下划线（<=50，mosh FLAG_TRIGGER）
+        // 30 < send_interval <= 50: Prediction that it will be enabled (>30) but not underlined (<=50, mosh FLAG_TRIGGER)
         assertTrue(l.onUserInput("a".encodeToByteArray(), 40, 0u))
         val cell =
             l
@@ -57,8 +57,8 @@ class PredictionTest {
         l.onConfirmed(base)
         l.onUserInput("a".encodeToByteArray(), 100, 0u)
 
-        assertFalse(l.onUserInput(byteArrayOf(0x08), 100, 0u)) // BS 控制字符不支持 → 本段不预测
-        assertTrue(l.currentForDisplay() === base) // 回确认态
+        assertFalse(l.onUserInput(byteArrayOf(0x08), 100, 0u)) // BS control characters not supported → This section does not receive any prediction
+        assertTrue(l.currentForDisplay() === base) // Back to confirmation mode
     }
 
     @Test
@@ -67,7 +67,7 @@ class PredictionTest {
         val l = layer()
         l.onConfirmed(base)
         l.onUserInput("ab".encodeToByteArray(), 100, 0u)
-        assertTrue(l.onUserInput(byteArrayOf(0x7f), 100, 0u)) // 删 b
+        assertTrue(l.onUserInput(byteArrayOf(0x7f), 100, 0u)) // Delete b
 
         val shown = l.currentForDisplay()!!
         assertEquals(
@@ -83,8 +83,8 @@ class PredictionTest {
                 .lineAt(0)
                 .cells[1]
                 .codePoint,
-        ) // b 被抹掉
-        assertEquals(1, shown.buffer.cursorCol) // 光标回退
+        ) // b Deleted
+        assertEquals(1, shown.buffer.cursorCol) // Cursor Back
     }
 
     @Test
@@ -93,7 +93,7 @@ class PredictionTest {
         val l = layer()
         l.onConfirmed(base)
         l.onUserInput("ls".encodeToByteArray(), 100, 0u)
-        assertTrue(l.onUserInput(byteArrayOf(0x0d), 100, 0u)) // Enter → 回显 \r\n
+        assertTrue(l.onUserInput(byteArrayOf(0x0d), 100, 0u)) // Enter → Carriage Return \r\n
 
         val shown = l.currentForDisplay()!!
         assertEquals(1, shown.buffer.cursorRow)
@@ -115,7 +115,7 @@ class PredictionTest {
         val base = ShadowTerminal.create(80, 24)
         val l = layer()
         l.onConfirmed(base)
-        // send_interval<=20（SRTT_TRIGGER_LOW）：低延迟链路不预测
+        // send_interval<=20 (SRTT_TRIGGER_LOW): No prediction for low-latency links
         assertFalse(l.onUserInput("a".encodeToByteArray(), 20, 0u))
     }
 
@@ -125,7 +125,7 @@ class PredictionTest {
         base.buffer.enterAltScreen(true)
         val l = layer()
         l.onConfirmed(base)
-        // alt 屏（vim/tmux pane 内的 shell 等回显路径）：可打印字符仍预测
+        // alt Screen (shell echo path within a Vim/tmux pane, etc.): Printable characters still receive prediction
         assertTrue(l.onUserInput("a".encodeToByteArray(), 100, 0u))
         assertEquals(
             'a'.code,
@@ -136,20 +136,20 @@ class PredictionTest {
                 .cells[0]
                 .codePoint,
         )
-        // 控制字节不预测：全屏程序里语义各异，等回显
+        // Do not perform prediction on control bytes: their meanings vary across fullscreen programs; wait for the echo.
         assertFalse(l.onUserInput(byteArrayOf(0x7f), 100, 0u))
     }
 
     @Test
     fun predictionSurvivesConfirmedFrameWithoutEchoAck() {
         val base = ShadowTerminal.create(80, 24)
-        val next = base.fork() // echoAck 仍为 0（未覆盖输入承载帧 1）
+        val next = base.fork() // echoAck is still 0 (input carry frame 1 not overwritten)
         val l = layer()
         l.onConfirmed(base)
         l.onUserInput("a".encodeToByteArray(), 100, 0u)
 
         l.onConfirmed(next)
-        // 无回显确认的帧到达：预测跨帧存活（不再整段丢弃 → 无回退闪烁）
+        // Frames arriving without confirmation: Prediction of cross-frame survival (no longer discard entire segments → no rollback flickering)
         val shown = l.currentForDisplay()!!
         assertTrue(shown !== next)
         assertEquals(
@@ -165,13 +165,13 @@ class PredictionTest {
     fun echoAckAdvancingDropsPrediction() {
         val base = ShadowTerminal.create(80, 24)
         val next = base.fork()
-        next.echoAck = 1u // 已覆盖承载帧（lastSentNum 0 + 1）
+        next.echoAck = 1u // Carry frame covered (lastSentNum 0 + 1)
         val l = layer()
         l.onConfirmed(base)
         l.onUserInput("a".encodeToByteArray(), 100, 0u)
 
         l.onConfirmed(next)
-        assertTrue(l.currentForDisplay() === next) // 回显已到 → 收编切回确认态
+        assertTrue(l.currentForDisplay() === next) // Echo received → Revert to state of confirmation
     }
 
     @Test
@@ -183,11 +183,11 @@ class PredictionTest {
         l.onUserInput("a".encodeToByteArray(), 100, 0u)
         assertFalse(l.glitchTimedOut())
 
-        now = 5000 // 超过 3s 悬挂
+        now = 5000 // Idle for more than 3 seconds
         assertTrue(l.glitchTimedOut())
         l.dropPrediction()
         assertTrue(l.currentForDisplay() === base)
-        assertFalse(l.glitchTimedOut()) // 丢弃后不重复触发
+        assertFalse(l.glitchTimedOut()) // Do not trigger again after discarding.
     }
 
     @Test

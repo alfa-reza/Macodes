@@ -18,8 +18,8 @@ import dev.termish.generated.resources.ubuntu_mono_regular
 import org.jetbrains.compose.resources.Font
 
 /**
- * 终端等宽字体选项。每个字体必须带 regular + bold 两个字重
- * （终端有粗体渲染），且为等宽字体（度量一致性是终端正确渲染的前提）。
+ * Terminal monospace font options. Each font must include both regular and bold font weights.
+ * (Bold rendering is supported in the terminal), and use a monospaced font (consistency in sizing is a prerequisite for correct rendering in the terminal).
  */
 @Immutable
 enum class TerminalFont(
@@ -39,22 +39,22 @@ enum class TerminalFont(
 }
 
 /**
- * 当前终端字体（AppRoot 按设置提供）。monospaceFontFamily() 从它读取，
- * 切换字体后全树（画布/工具栏/页头）自动重组。
+ * The current terminal font (provided by AppRoot based on settings). monospaceFontFamily() reads from it,
+ * After toggling fonts, the entire tree (canvas/toolbar/page header) automatically undergoes reassembly.
  */
 val LocalTerminalFont = staticCompositionLocalOf { TerminalFont.JETBRAINS }
 
 /**
- * 终端等宽字体：使用随应用打包的字体（OFL / Ubuntu Font Licence）。
+ * Terminal monospaced font: Use the font bundled with the app (OFL / Ubuntu Font License).
  *
- * 为什么不能依赖系统字体：
- * - Android 上 `FontFamily.Monospace` / `Typeface.MONOSPACE` 在部分 OEM
- *   （ColorOS、MIUI、EMUI 等）会解析到并非严格等宽的字体，且不同机型的
- *   字形宽度不一致，导致按"格子宽度"绘制的终端文字/光标整体错位
- *   （典型现象：模拟器正常，真机光标跑到行尾之外）。
- * - iOS 各版本系统 monospace 字体度量也有差异。
+ * Why you shouldn’t depend on system fonts:
+ * - On Android, `FontFamily.Monospace` / `Typeface.MONOSPACE` on some OEMs
+ *   (ColorOS, MIUI, EMUI, etc.) will parse fonts that are not strictly monospaced, and different device models’
+ *   Inconsistent glyph widths cause terminal text and the cursor—which are drawn based on “grid width”—to be misaligned overall.
+ *   (Typical issue: Works normal on the emulator, but on a physical device, the cursor moves beyond the end of the row.)
+ * - Monospace font metrics also vary across different versions of the iOS system.
  *
- * 内置字体后，测量（行列计算）与绘制用的是同一个字体文件，三端行为一致。
+ * After the font is embedded, the same font file is used to measure (perform row and column calculations) and draw, ensuring consistent behavior across all three platforms.
  */
 @Composable
 fun monospaceFontFamily(): FontFamily {
@@ -80,7 +80,7 @@ fun monospaceFontFamily(): FontFamily {
                 Font(Res.font.ubuntu_mono_regular, FontWeight.Normal),
                 Font(Res.font.ubuntu_mono_bold, FontWeight.Bold),
             )
-        // PT Mono 仅单字重：Bold 请求由 regular 合成（Compose 伪粗），可接受
+        // PT Mono has only a single weight: Bold requests are synthesized from regular (Compose faux-bold), which is acceptable
         TerminalFont.PT_MONO ->
             FontFamily(
                 Font(Res.font.pt_mono_regular, FontWeight.Normal),
@@ -90,11 +90,11 @@ fun monospaceFontFamily(): FontFamily {
 }
 
 /**
- * 宽字符（中文等 CJK）使用的字体族。
+ * Font families used for wide characters (such as Chinese and other CJK characters).
  *
- * JetBrains Mono 不含 CJK 字形。Android 系统会自动回退，返回默认族即可；
- * iOS 上 CMP 对自定义字体的缺字回退不可靠（FontFamily.Default/SansSerif 都无效），
- * 必须显式加载内置的 Noto Sans SC 才能渲染中文。
+ * JetBrains Mono does not include CJK glyphs. The system will automatically fall back to the default font family;
+ * CMP’s fallback for missing characters in custom fonts on iOS is unreliable (both FontFamily.Default and SansSerif are invalid),
+ * The built-in Noto Sans SC font must be explicitly loaded to render Chinese characters.
  */
 @Composable
 expect fun cjkFontFamily(): FontFamily

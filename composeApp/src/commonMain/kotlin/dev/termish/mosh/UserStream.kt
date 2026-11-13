@@ -1,8 +1,8 @@
 package dev.termish.mosh
 
 /**
- * SSP 本地状态（对应协议用户流）：待送达服务器的用户输入流。
- * diff = 队列后缀；subtract = 丢弃对端已知的前缀。
+ * SSP Local State (corresponding to the protocol user stream): The stream of user input awaiting delivery to the server.
+ * diff = queue suffix; subtract = discard the prefix known to the other end.
  */
 internal class UserStream {
     sealed class Event {
@@ -40,7 +40,7 @@ internal class UserStream {
         height: Int,
     ) = actions.addLast(Event.Resize(width, height))
 
-    /** 从 existing 是 this 的前缀出发生成 diff（UserMessage protobuf 编码）。 */
+    /** Generate a diff starting from the fact that `existing` is a prefix of `this` (UserMessage protobuf encoding). */
     fun diffFrom(existing: UserStream): ByteArray {
         var idx = 0
         for (e in existing.actions) {
@@ -48,7 +48,7 @@ internal class UserStream {
             idx++
         }
         val events = ArrayList<UserEventOut>()
-        // 增长式字节缓冲：避免逐字节 "pending += b" 造成的 O(n²) 拷贝（大粘贴场景）
+        // Growth-based byte buffering: Avoid O(n²) copying caused by byte-by-byte "pending += b" (in large copy-and-paste scenarios)
         var buf = ByteArray(64)
         var len = 0
 
@@ -74,7 +74,7 @@ internal class UserStream {
         return encodeUserMessage(events)
     }
 
-    /** 丢弃与 prefix 相同的前缀（对端已确认收到的部分）。 */
+    /** Discard prefixes that match the prefix (parts that the other end has confirmed receipt of). */
     fun subtract(prefix: UserStream) {
         repeat(prefix.actions.size) {
             check(actions.isNotEmpty() && actions.first() == prefix.actions[it]) {

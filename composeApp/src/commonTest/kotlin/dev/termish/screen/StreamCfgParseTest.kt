@@ -5,8 +5,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * 远端推流参数回读解析：SCREEN_CFG_FPS / SCREEN_CFG_SCALE 行 → UI 档位。
- * conf 缺失/脏值不覆盖客户端本地默认档位。
+ * Parsing remote streaming parameters: SCREEN_CFG_FPS / SCREEN_CFG_SCALE rows → UI settings.
+ * Missing or invalid `conf` values do not override the client’s local default settings.
  */
 class StreamCfgParseTest {
     @Test
@@ -27,7 +27,7 @@ class StreamCfgParseTest {
 
     @Test
     fun garbageValuesIgnored() {
-        // fps 非数字 / scale 空值：不覆盖（null），档位保持本地默认
+        // fps is not a number / scale is null: do not override (null); keep the local default value
         val out = "SCREEN_CFG_FPS:abc\nSCREEN_CFG_SCALE:\n"
         val (fps, scale) = ScreenSession.parseStreamCfg(out)
         assertNull(fps)
@@ -41,7 +41,7 @@ class StreamCfgParseTest {
         assertEquals(2, ScreenSession.qualityIndexFor("1920:-2"))
         assertEquals(3, ScreenSession.qualityIndexFor("native"))
         assertEquals(3, ScreenSession.qualityIndexFor("2560:-2"))
-        assertEquals(1, ScreenSession.qualityIndexFor("1600:-2")) // 未知按标清
+        assertEquals(1, ScreenSession.qualityIndexFor("1600:-2")) // Unknown: treat as SD (standard definition)
         assertEquals("native", ScreenSession.scaleForQuality(3))
     }
 

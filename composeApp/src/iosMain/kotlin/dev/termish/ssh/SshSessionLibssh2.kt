@@ -98,11 +98,11 @@ import platform.posix.socket
 import platform.posix.usleep
 import sftp_write.termish_channel_write
 
-/** keyboard-interactive 回调的全局处理器（staticCFunction 不能捕获变量）。 */
+/** Global handler for keyboard-interactive callbacks (staticCFunction cannot capture variables). */
 @Volatile
 private var kbiHandler: (suspend (AuthPrompt) -> List<String>?)? = null
 
-/** kbiHandler 是进程级单例：多会话并发 KBI 认证时串行化，避免 prompt 路由到错误会话。 */
+/** kbiHandler is a process-level singleton: it serializes multi-session concurrency in KBI authentication to prevent prompts from being routed to an error session. */
 private val kbiMutex = Mutex()
 
 @OptIn(ExperimentalForeignApi::class)
@@ -148,7 +148,7 @@ private val kbiCallback =
     }
 
 /**
- * iOS 引擎：libssh2（静态链接 OpenSSL）。见 scripts/build-ios-native.sh。
+ * iOS engine: libssh2 (statically linked with OpenSSL). See scripts/build-ios-native.sh.
  */
 @OptIn(ExperimentalForeignApi::class)
 class SshSessionLibssh2(
@@ -162,18 +162,18 @@ class SshSessionLibssh2(
     @Volatile
     private var closed = false
 
-    /** 读循环协程：close 时先等它退出再释放 libssh2 资源，避免 use-after-free。 */
+    /** Read-loop coroutine: on close, wait for it to exit before releasing libssh2 resources, to avoid use-after-free. */
     private var readerJob: Job? = null
     private var lastKeepaliveMs: Long = 0
 
-    /** direct-tcpip / 流式 exec 等辅助通道，仅在 [serialDispatcher] 上读写。 */
+    /** Auxiliary channels such as direct-tcpip and stream exec read and write only on [serialDispatcher]. */
     private val auxiliaryChannels = mutableListOf<CPointer<LIBSSH2_CHANNEL>>()
 
     private var hostKeyInfo: HostKeyInfo? = null
     private var authFailureReason: String? = null
 
-    // 单线程串行调度器：libssh2 会话非线程安全，读循环 / 写 / resize / keepalive /
-    // cleanup 全部编组到同一线程，杜绝并发进入同一 LIBSSH2_SESSION。
+    // Single-threaded serial dispatcher: libssh2 sessions are not thread-safe; read loop / write / resize / keepalive /
+    // cleanup: Group all operations into a single thread to prevent concurrency in accessing the same LIBSSH2_SESSION.
     private val serialDispatcher = Dispatchers.Default.limitedParallelism(1)
     private val scope = CoroutineScope(serialDispatcher + SupervisorJob())
 
@@ -189,9 +189,9 @@ class SshSessionLibssh2(
     ): SessionInfo {
         val (s, banner) = connectAndAuthenticate()
 
-        // 握手/认证用阻塞模式完成；进入交互阶段切非阻塞：
-        // 读循环轮询能响应 close()，也能在同一线程定期发 keepalive
-        // （libssh2 会话非线程安全，keepalive 必须在读线程里发）。
+        // The handshake/authentication is performed in blocking mode; once the interactive phase begins, switch to non-blocking mode:
+        // The read loop can provide a response to `close()` and can also periodically send keepalive requests on the same thread.
+        // (libssh2 sessions are not thread-safe; keepalive requests must be sent from the read thread).
         libssh2_session_set_blocking(s, 0)
         if (connection.keepAliveSeconds > 0) {
             libssh2_keepalive_config(s, 1, connection.keepAliveSeconds.toUInt())
@@ -205,7 +205,7 @@ class SshSessionLibssh2(
                 }
         channel = ch
         val term = connection.terminalType
-        // cinterop 的 String 参数按 UTF-8 编码：长度必须传字节数（同 authenticate 的 username 约定）
+        // cinterop’s String parameters are encoded in UTF-8: the length must be specified in bytes (following the convention for the `username` parameter in `authenticate`).
         val termLen = term.encodeToByteArray().size
         if (retryUntilSuccess {
                 libssh2_channel_request_pty_ex(ch, term, termLen.toUInt(), null, 0u, columns, rows, 0, 0)
@@ -237,7 +237,7 @@ class SshSessionLibssh2(
             null
         }
 
-    /** 建立 TCP + SSH 握手 + 主机密钥校验 + 认证，返回会话与 banner。 */
+    /** Establish a TCP + SSH handshake + host key verification + authentication; return the session and banner. */
     private fun connectAndAuthenticate(): Pair<CPointer<LIBSSH2_SESSION>?, String> {
         sock = tcpConnect(connection.host, connection.port)
         callbacks.onTraceStep("tcp")
@@ -263,10 +263,10 @@ class SshSessionLibssh2(
         return s to banner
     }
 
-    // ---------- 认证 ----------
+    // ---------- Authentication ----------
 
     private fun authenticate(s: CPointer<LIBSSH2_SESSION>?): Boolean {
-        // cinterop 的 String 参数按 UTF-8 编码，长度必须是字节数，否则非 ASCII 凭据必败
+        // cinterop’s String parameters are encoded in UTF-8, and their length must be specified in bytes; otherwise, non-ASCII credentials will fail.
         val usernameBytes = connection.username.encodeToByteArray()
         var pubkeyError: String? = null
         connection.privateKeyPem?.let { pem ->
@@ -282,7 +282,7 @@ class SshSessionLibssh2(
                     pemLen,
                     "",
                 )
-            // 加密私钥：提示用户输入口令后带 passphrase 重试
+            // Encryption of private key: Prompt the user to input a password, then retry with "passphrase"
             if (rc != 0 && isEncryptedPem(pem)) {
                 val passphrase =
                     runBlocking {
@@ -325,9 +325,9 @@ class SshSessionLibssh2(
                 return true
             }
         }
-        // KBI 兜底（含二次验证场景）。kbiHandler 为全局单例，加互斥避免并发会话串话。
-        // 用完置空：staticCFunction 不能捕获变量导致全局持有 callbacks（→ controller
-        // → 10k 行 buffer），不清空则会话关闭后一直无法回收，直到下一次 KBI 覆盖
+        // KBI fallback (including secondary verification scenarios). kbiHandler is a global singleton; a mutex is used to prevent concurrency between sessions.
+        // Clear after use: staticCFunction cannot capture variables, so the process globally retains the callbacks (→ controller
+        // → 10k row buffer); if not cleared, it cannot be recycled after the session closes until the next KBI overwrite.
         val kbiOk =
             runBlocking {
                 kbiMutex.withLock {
@@ -358,9 +358,9 @@ class SshSessionLibssh2(
         return false
     }
 
-    // ---------- 数据收发 ----------
+    // ---------- Data Transmission and Reception ----------
 
-    /** 非阻塞模式下重试直到非 EAGAIN，返回最后一次返回码（0=成功）。 */
+    /** In non-blocking mode, retry until a non-EAGAIN error occurs, and return the last return code (0 = success). */
     private fun retryUntilSuccess(block: () -> Int): Int {
         val deadline = Clock.System.now().toEpochMilliseconds() + 10_000
         var rc: Int
@@ -372,7 +372,7 @@ class SshSessionLibssh2(
         }
     }
 
-    /** 非阻塞模式下打开通道（EAGAIN 重试）。 */
+    /** Open a channel in non-blocking mode (retry on EAGAIN). */
     private fun openChannel(s: CPointer<LIBSSH2_SESSION>?): CPointer<LIBSSH2_CHANNEL>? {
         val deadline = Clock.System.now().toEpochMilliseconds() + 10_000
         while (!closed && Clock.System.now().toEpochMilliseconds() < deadline) {
@@ -383,7 +383,7 @@ class SshSessionLibssh2(
         return null
     }
 
-    /** 到点发应用层 keepalive（必须在读线程调用，libssh2 会话非线程安全）。 */
+    /** Send application-layer keepalives at scheduled intervals (must be called from a read thread; libssh2 sessions are not thread-safe). */
     private fun maybeSendKeepalive(s: CPointer<LIBSSH2_SESSION>?) {
         if (connection.keepAliveSeconds <= 0) return
         val now = Clock.System.now().toEpochMilliseconds()
@@ -425,8 +425,8 @@ class SshSessionLibssh2(
     private fun handleClosed() {
         if (closed) return
         closed = true
-        // 远端断开也要释放 channel/session/socket，否则每次重连泄漏一个 fd + libssh2 对象。
-        // 本函数在读线程（serialDispatcher）上执行，与读写无并发。
+        // Be sure to release the channel/session/socket when the remote connection disconnects; otherwise, a file descriptor (fd) and a libssh2 object will be leaked each time the connection is reconnected.
+        // This function runs on the read thread (serialDispatcher) and does not have any concurrency with read/write operations.
         cleanup()
         callbacks.onClosed(null)
     }
@@ -442,8 +442,8 @@ class SshSessionLibssh2(
         }
     }
 
-    // iOS 暂未实现 exec+pty 通道（libssh2 串行线程模型下需额外通道管理）；
-    // 返回 null → 安装引导等调用方回退到 runCommand 路径。
+    // iOS does not currently implement the exec+pty channel (additional channel management is required under the libssh2 serial thread model);
+    // Returns null → the installer/bootstrap caller falls back to the runCommand path.
     override fun startExec(
         command: String,
         columns: Int,
@@ -492,17 +492,17 @@ class SshSessionLibssh2(
         }
 
     /**
-     * 将 libssh2 辅助通道包装为阻塞式公共接口。每次原生调用都经串行调度器，
-     * 但 EAGAIN 等待使用 suspend，让视频读与控制写可交替推进同一 SSH 会话。
+     * Wrap the libssh2 auxiliary channel into a blocking public interface. Each native call passes through a serial dispatcher,
+     * but the EAGAIN wait uses suspend, letting video reads and control writes advance alternately within the same SSH session.
      */
     private fun wrapAuxiliaryChannel(ch: CPointer<LIBSSH2_CHANNEL>): SshExecChannel =
         object : SshExecChannel {
             @Volatile
             private var channelClosed = false
 
-            // direct-tcpip 的控制消息是长度分帧协议。多个发送协程在 EAGAIN
-            // 期间若交错写入，会把帧头和 payload 拼坏；同一辅助通道必须保证
-            // 一整个 ByteArray 写完后下一包才能开始。
+            // The control messages for `direct-tcpip` use a length-based framing protocol. Multiple sending coroutines return `EAGAIN`
+            // If interleaved writes occur during this period, the frame header and payload will be corrupted; the same auxiliary channel must ensure
+            // You can only start the next batch after the entire ByteArray has been written.
             private val writeMutex = Mutex()
 
             override fun read(): ByteArray? = readStream(0)
@@ -578,21 +578,21 @@ class SshSessionLibssh2(
     override fun sendData(data: ByteArray) {
         if (closed || data.isEmpty()) return
         val copy = data.copyOf()
-        // 编组到串行线程：调用方在 UI 线程，不能在此直接触碰 libssh2 会话
+        // Mapped to the serial thread: The caller is on the UI thread and cannot directly access the libssh2 session here.
         scope.launch { writeAll(copy) }
     }
 
-    /** 在 serialDispatcher 线程上执行的非阻塞完整写入。 */
+    /** Non-blocking full write executed on the serialDispatcher thread. */
     private fun writeAll(data: ByteArray) {
         val ch = channel ?: return
-        // cinterop 把 write_ex 的 buf 映射为 String（按 UTF-8 编码 + 显式长度写入）。
-        // 终端输入均为本端编码的合法 UTF-8，decode 是无损的。
+        // cinterop maps the `buf` from `write_ex` to a String (written using UTF-8 encoding plus an explicit length).
+        // All terminal input is valid UTF-8 in the local encoding; decoding is lossless.
         val text = data.decodeToString()
-        var bytesDone = 0 // 已确认写出的字节数（按完整字符计）
+        var bytesDone = 0 // Confirmed number of bytes written (counted as full characters)
         var charOffset = 0
         var idleRounds = 0
         while (bytesDone < data.size && !closed) {
-            // length 参数 <= 剩余字符串实际字节数（bytesDone 只推进到字符边界）
+            // The `length` parameter must be less than or equal to the actual number of bytes in the remaining string (`bytesDone` only advances to the character bounds).
             val rc =
                 libssh2_channel_write_ex(
                     ch,
@@ -603,7 +603,7 @@ class SshSessionLibssh2(
             when {
                 rc > 0 -> {
                     var n = rc.toInt()
-                    // 只越过完整写出的字符：rc 可能停在 UTF-8 字符中间
+                    // Only skip fully written characters: "rc" may be interrupted by a UTF-8 character.
                     while (charOffset < text.length) {
                         val c = text[charOffset]
                         val charLen =
@@ -619,17 +619,17 @@ class SshSessionLibssh2(
                         charOffset += if (c.isHighSurrogate()) 2 else 1
                     }
                     if (n > 0) {
-                        // rc 落在字符中间：已写出的部分字节会随整字符重发而重复
-                        // （String API 无法从字节中间续写，概率极低，容忍）
+                        // rc falls in the middle of a character: bytes that have already been written will be duplicated when the entire character is resent
+                        // (The String API does not support appending to the middle of a byte array; this is extremely rare and is tolerated.)
                         bytesDone += n
                     }
                     idleRounds = 0
                 }
                 rc.toInt() == LIBSSH2_ERROR_EAGAIN -> {
-                    if (++idleRounds > 200) return // ~6s 写不出去，放弃
+                    if (++idleRounds > 200) return // ~6s and it still won’t write out; give up
                     usleep(30_000u)
                 }
-                else -> return // 真错误（连接可能已断开）
+                else -> return // True error (connection may have been disconnected)
             }
         }
     }
@@ -638,14 +638,14 @@ class SshSessionLibssh2(
         command: String,
         timeoutMs: Long,
     ): CommandResult {
-        // 非交互 exec 通道：用于 mosh-server 引导等一次性命令
+        // Non-interactive exec channel: Used for one-time commands such as booting mosh-server
         return try {
             val (s, _) = connectAndAuthenticate()
             libssh2_session_set_blocking(s, 0)
             val ch =
                 openChannel(s)
                     ?: throw SshException("打开 exec 通道失败")
-            // 命令可能含非 ASCII（文件名等）：长度传字节数，否则 UTF-8 截断
+            // Commands may contain non-ASCII characters (e.g., in file names): Specify the length in bytes; otherwise, perform truncation using UTF-8.
             val cmdLen = command.encodeToByteArray().size
 
             fun startExec(): Int = libssh2_channel_process_startup(ch, "exec", 4u, command, cmdLen.toUInt())
@@ -698,27 +698,27 @@ class SshSessionLibssh2(
         timeoutMs: Long,
     ): CommandOutput? =
         runBlocking {
-            // libssh2 会话非线程安全：读循环/keepalive 在串行线程运行，
-            // 控制面命令必须编组到同一线程，避免并发触碰 LIBSSH2_SESSION。
+            // libssh2 sessions are not thread-safe: the read loop/keepalive runs in a serial thread,
+            // Control-plane commands must be grouped into the same thread to avoid concurrency in accessing LIBSSH2_SESSION.
             withContext(serialDispatcher) { doRunCommand(command, timeoutMs) }
         }
 
-    /** 在已认证连接上打开 SFTP 通道（阻塞模式；调用方负责 shutdown + close）。 */
+    /** Open an SFTP channel over an authenticated connection (blocking mode; the caller is responsible for `shutdown` + `close`). */
     fun openSftp(): CPointer<LIBSSH2_SFTP>? {
         val (s, _) = connectAndAuthenticate()
         libssh2_session_set_blocking(s, 1)
-        // 阻塞模式 + keepalive_config：libssh2 自动发 keepalive（无需应用线程）
+        // Blocking mode + keepalive_config: libssh2 automatically sends keepalive packets (no app thread required)
         if (connection.keepAliveSeconds > 0) {
             libssh2_keepalive_config(s, 1, connection.keepAliveSeconds.toUInt())
         }
-        // 阻塞调用限时：断链/无响应 30s 返回错误 → 操作抛异常 → UI banner。
-        // （不设则无限挂死：iOS SFTP 断线后 list/download 永久阻塞，与终端
-        //  路径的 keepalive 检测相比，这是请求-响应式通道的兜底）
+        // Blocking call timeout: If the connection is broken or there is no response after 30 seconds, back with an error → the operation throws an exception → display a UI banner.
+        // (If left unchecked, it will hang indefinitely: After an iOS SFTP connection is lost, `list` and `download` operations are permanently blocked, similar to the terminal
+        //  (Compared to path-based keepalive detection, this serves as a fallback for request-response channels.)
         libssh2_session_set_timeout(s, 30_000L)
         return libssh2_sftp_init(s)
     }
 
-    /** 在已认证会话上开临时 exec 通道执行控制面命令，不重新认证、不打断交互 shell。 */
+    /** Open a temporary exec channel on an authenticated session to execute control-plane commands without re-authentication or interrupting the interactive shell. */
     private fun doRunCommand(
         command: String,
         timeoutMs: Long,
@@ -726,7 +726,7 @@ class SshSessionLibssh2(
         val s = session ?: return null
         if (closed) return null
         val ch = openChannel(s) ?: return null
-        // 命令可能含非 ASCII：长度传字节数（UTF-8 截断会让远端拿到半个字符）
+        // Commands may contain non-ASCII characters: Specify the length in bytes (UTF-8 truncation will result in the remote receiving only half a character).
         val cmdLen = command.encodeToByteArray().size
         return try {
             if (retryUntilSuccess {
@@ -738,8 +738,8 @@ class SshSessionLibssh2(
             val outChunks = ArrayList<ByteArray>()
             val errChunks = ArrayList<ByteArray>()
             val buf = ByteArray(16 * 1024)
-            // 交替读 stdout(0)/stderr(1)：单流读满会让另一流阻塞通道。
-            // 非阻塞模式下返回 0 = 该流 EOF；两流均 EOF 即命令输出结束。
+            // Alternate reading from stdout(0) and stderr(1): When one stream is full, it blocks the other stream's channel.
+            // In non-blocking mode, a return value of 0 indicates EOF on this stream; when both streams reach EOF, command output ends.
             var outEof = false
             var errEof = false
             val deadline = Clock.System.now().toEpochMilliseconds() + timeoutMs
@@ -796,8 +796,8 @@ class SshSessionLibssh2(
     override fun close() {
         if (closed) return
         closed = true
-        // 不在调用线程（通常是 UI 主线程）阻塞等待：cleanup 里 channel_close 在死链路上
-        // 可能 EAGAIN 循环数秒。异步编组到串行线程，先等读循环退出再释放资源。
+        // Do not allow the calling thread (usually the UI main thread) to block while waiting: `channel_close` in `cleanup` on a dead channel
+        // The EAGAIN loop may run for several seconds. Async operations are converted to a serial thread; wait for the read loop to exit before releasing resources.
         scope.launch {
             withTimeoutOrNull(2000) { readerJob?.join() }
             cleanup()
@@ -807,7 +807,7 @@ class SshSessionLibssh2(
 
     override fun isActive(): Boolean = !closed
 
-    // ---------- 工具 ----------
+    // ---------- Tools ----------
 
     private fun cleanup() {
         auxiliaryChannels.toList().forEach { ch ->
@@ -853,9 +853,9 @@ class SshSessionLibssh2(
                 return@memScoped HostKeyInfo(typeName, "SHA256:", "")
             }
             val keyBytes = keyPtr.readBytes(keyLen)
-            // libssh2_session_hostkey 返回的 blob 本身已含算法字符串前缀
-            // （与 libssh2_hostkey_hash(SHA256) 一致，即 OpenSSH 指纹口径），
-            // 直接对整个 blob 做 SHA256，不要再手工拼一次类型前缀
+            // The blob returned by `libssh2_session_hostkey` already contains the prefix of the algorithm string.
+            // (Consistent with libssh2_hostkey_hash(SHA256), i.e., the OpenSSH fingerprint standard),
+            // Calculate the SHA256 hash directly on the entire blob; do not manually concatenate the type prefix again.
             HostKeyInfo(typeName, "SHA256:" + base64Encode(Sha256.digest(keyBytes)).trimEnd('='), "")
         }
 
@@ -890,8 +890,8 @@ class SshSessionLibssh2(
             var cur = res.value
             var lastErr = 0
             var flags = 0
-            // 连接超时：与 sshj 的 setConnectTimeout 对齐（黑洞地址/防火墙丢包时快速失败，
-            // 而不是依赖内核 TCP 重试（macOS/iOS 上可达 60s+，UI 表现为一直转圈））
+            // Connection timeout: Alignment with sshj’s `setConnectTimeout` (quick failure in case of packet loss due to blackhole addresses or firewalls,
+            // Rather than depending on the kernel’s TCP retries (which can take 60 seconds or more on macOS/iOS, resulting in a continuously spinning loading icon in the UI).
             val timeoutMs = connection.connectTimeoutMillis.toInt()
             while (cur != null) {
                 val s = socket(cur.pointed.ai_family, cur.pointed.ai_socktype, cur.pointed.ai_protocol)
@@ -900,12 +900,12 @@ class SshSessionLibssh2(
                     cur = cur.pointed.ai_next
                     continue
                 }
-                // 非阻塞 connect：立即返回 EINPROGRESS，用 poll 等待可写 + 超时
+                // Non-blocking `connect`: Immediately returns `EINPROGRESS`; use `poll` to wait for writability + timeout
                 flags = fcntl(s, F_GETFL, 0)
                 fcntl(s, F_SETFL, flags or O_NONBLOCK)
                 val rc = connect(s, cur.pointed.ai_addr, cur.pointed.ai_addrlen)
                 if (rc == 0) {
-                    fd = s // 立即连上（回环/本机场景）
+                    fd = s // Connect immediately (loopback/local machine)
                     break
                 }
                 if (errno != EINPROGRESS) {
@@ -919,8 +919,8 @@ class SshSessionLibssh2(
                 pfd.events = POLLOUT.toShort()
                 val prc = poll(pfd.ptr, 1u, timeoutMs)
                 if (prc > 0 && (pfd.revents.toInt() and (POLLOUT or POLLERR or POLLHUP)) != 0) {
-                    // poll 就绪后二次 connect 判定结果：0 或 EISCONN 即连接成功
-                    // （POSIX 标准技巧，避免 getsockopt SO_ERROR 的跨平台类型负担）
+                    // Result of the second connect attempt after the poll is ready: 0 or EISCONN indicates success for a connection
+                    // (POSIX standard technique to avoid the cross-platform type overhead of `getsockopt SO_ERROR`)
                     val rc2 = connect(s, cur.pointed.ai_addr, cur.pointed.ai_addrlen)
                     if (rc2 == 0 || errno == EISCONN) {
                         fd = s
@@ -945,7 +945,7 @@ class SshSessionLibssh2(
                     }
                 throw SshException(msg)
             }
-            // 恢复阻塞模式：libssh2 后续读写依赖阻塞 socket
+            // Resume blocking mode: subsequent libssh2 reads/writes rely on a blocking socket
             fcntl(fd, F_SETFL, flags)
             fd
         }

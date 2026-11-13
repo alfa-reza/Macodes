@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.ui.Modifier
 
-/** 平台解码器失败类型：平台层只上报结构化原因，用户文案由 UI 语言包决定。 */
+/** Platform decoder failure types: The platform layer only reports structured causes; user-facing text is determined by the UI language pack. */
 sealed interface ScreenPlayerFailure {
     data class Initialization(
         val detail: String?,
@@ -21,7 +21,7 @@ sealed interface ScreenPlayerFailure {
     data object Unsupported : ScreenPlayerFailure
 }
 
-/** 播放管线累计指标；调用方用相邻快照的差值判断解码压力。 */
+/** Cumulative metrics for the playback pipeline; the caller uses the difference between adjacent snapshots to assess decoding load. */
 data class ScreenPlayerMetrics(
     val receivedFrames: Long = 0,
     val renderedFrames: Long = 0,
@@ -31,53 +31,53 @@ data class ScreenPlayerMetrics(
 )
 
 /**
- * 平台视频播放器（远程画面渲染层）：
- * - Android：MediaCodec 直解 + SurfaceView 直上屏（ToDesk 式直通管线）。
- * - iOS：AVSampleBufferDisplayLayer + VideoToolbox 硬解直上屏。
+ * Platform Video Player (Remote Screen Rendering Layer):
+ * - Android: MediaCodec direct decoding + SurfaceView direct-to-screen (ToDesk-style direct pipeline).
+ * - iOS: AVSampleBufferDisplayLayer + VideoToolbox for hardware-accelerated direct display.
  *
- * 用法：TCP 协议切出的完整 H.264 帧 [feed]；首帧渲染回调 [onReady]；
- * 播放错误回调 [onError]；UI 用 [ScreenVideoSurface] 渲染画面。
+ * Usage: Complete H.264 frames extracted via the TCP protocol [feed]; first-frame rendering callback [onReady];
+ * Playback error callback [onError]; the UI renders the screen using [ScreenVideoSurface].
  */
 expect class ScreenPlayer(
     targetFps: Int,
     onReady: () -> Unit,
     onError: (ScreenPlayerFailure) -> Unit,
 ) {
-    /** 启动解码与渲染管线（幂等；重复调用忽略）。 */
+    /** Launch the decoding and rendering pipeline (idempotent; repeated calls are ignored). */
     fun start()
 
-    /** 喂入一个完整帧；平台播放器使用有界队列，消费慢时丢旧保新。 */
+    /** Feed in a complete frame; the platform player uses a bounded queue, discarding older items to make room for new ones when consumption is slow. */
     fun feed(data: ByteArray)
 
-    /** 释放播放器与服务。 */
+    /** Release the player and service. */
     fun stop()
 
-    /** 视频实际尺寸（解码器上报，UI 按宽高比布局 + 远程操作坐标映射）。 */
+    /** Actual video dimensions (reported by the decoder; UI layout based on aspect ratio + remote coordinate mapping). */
     val videoDims: MutableState<Pair<Int, Int>?>
 
-    /** 最近一帧成功提交到显示层的时间；用于区分网络有帧与解码渲染卡死。 */
+    /** The time when the most recent frame was successfully submitted to the display layer; used to distinguish between network frame loss and decoding/rendering freezes. */
     val lastRenderedAtMillis: Long
 
-    /** 当前是否有实际渲染面；切到其它会话时无 Surface 不属于播放器卡死。 */
+    /** Check if there is currently an active rendering surface; the absence of a Surface when switching to another session does not indicate that the player has frozen. */
     val renderSurfaceAttached: Boolean
 
-    /** 获取无副作用的累计性能快照。 */
+    /** Obtain a side-effect-free cumulative performance snapshot. */
     fun metrics(): ScreenPlayerMetrics
 }
 
-/** 视频渲染面（Android = SurfaceView；iOS = AVSampleBufferDisplayLayer）。 */
+/** Video rendering surface (Android = SurfaceView; iOS = AVSampleBufferDisplayLayer). */
 @Composable
 expect fun ScreenVideoSurface(
     player: ScreenPlayer?,
     modifier: Modifier = Modifier,
-    /** 视频贴底部对齐（远程键盘弹出时：视频底部贴工具栏，黑边留顶部）。 */
+    /** Alignment of the video at the bottom (when the remote keyboard pops up: align the video to the bottom of the toolbar, leaving a black border at the top). */
     alignBottom: Boolean = false,
 )
 
 /**
- * 解码能力探测：指定分辨率下硬件解码器支持的帧率上限（0 = 未知/失败）。
- * 用于钳制推流档位——编码帧率超过解码能力只会浪费带宽 + 解码器满载排队
- * （延迟升高），业界（scrcpy/Parsec）均按解码能力限制编码帧率。
+ * Decoding Capability Test: The maximum frame rate supported by the hardware decoder at a specified resolution (0 = unknown/failure).
+ * Used to limit the streaming rate—if the encoding frame rate exceeds the decoding capacity, it will only waste bandwidth and cause the decoder to become overloaded and queue up.
+ * (Latency escalation), industry standards (scrcpy/Parsec) limit the encoding frame rate based on decoding capabilities.
  */
 expect fun probeDecoderMaxFps(
     width: Int,

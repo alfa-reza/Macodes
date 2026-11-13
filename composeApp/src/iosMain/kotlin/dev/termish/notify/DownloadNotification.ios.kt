@@ -4,7 +4,7 @@ import platform.UserNotifications.UNMutableNotificationContent
 import platform.UserNotifications.UNNotificationRequest
 import platform.UserNotifications.UNUserNotificationCenter
 
-/** iOS：下载完成本地通知（openUri 忽略——iOS 下载走 Files 转存，无 content:// 打开动作）。 */
+/** iOS: Local notification upon download completion (ignore `openUri`—iOS downloads are saved via the Files app and do not use `content://` to open). */
 actual fun showDownloadDoneNotification(
     title: String,
     body: String,

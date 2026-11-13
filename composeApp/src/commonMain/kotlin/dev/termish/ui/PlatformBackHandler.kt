@@ -2,7 +2,7 @@ package dev.termish.ui
 
 import androidx.compose.runtime.Composable
 
-/** 跨平台系统返回处理（Android 返回手势/返回键等）。 */
+/** Cross-platform system back button handling (Android back gesture/back button, etc.). */
 @Composable
 expect fun PlatformBackHandler(
     enabled: Boolean,

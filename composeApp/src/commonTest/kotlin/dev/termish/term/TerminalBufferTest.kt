@@ -5,12 +5,12 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** TerminalBuffer 回归测试：覆盖 resize 收缩、宽字符尾巴颜色继承等已修 bug。 */
+/** TerminalBuffer regression test: Covers previously fixed bugs such as resize contraction and color inheritance for wide character tails. */
 class TerminalBufferTest {
     @Test
     fun unlimitedScrollbackNotTruncated() {
-        // 影子终端用 Int.MAX_VALUE 表示无上限（mosh Framebuffer 语义），
-        // 滚动后不得丢行，否则 SSP diff 会与服务端 framebuffer 错位
+        // In the shadow terminal, `Int.MAX_VALUE` represents no upper limit (mosh Framebuffer semantics),
+        // No rows should be lost when scrolling; otherwise, the SSP diff will be misaligned with the service-side framebuffer.
         val b = TerminalBuffer(10, 5, maxScrollbackLines = Int.MAX_VALUE)
         repeat(200) { b.scrollUp(1) }
         assertEquals(200, b.scrollbackSize())
@@ -22,33 +22,33 @@ class TerminalBufferTest {
 
     @Test
     fun shallowForkSharesLinesAndCopiesOnWrite() {
-        // COW：fork 后行对象共享；任一 buffer 写共享行时先克隆，互不影响
+        // COW: Shared objects after a fork; when either buffer writes to a shared row, it clones it first so they do not interfere with each other
         val b = TerminalBuffer(10, 5)
         b.putChar('a'.code)
         val fork = b.shallowFork()
-        assertTrue(fork.lineAt(0) === b.lineAt(0)) // 未写前共享同一行对象
+        assertTrue(fork.lineAt(0) === b.lineAt(0)) // Shared on the same row as the object before writing
 
-        fork.putChar('b'.code) // 写第 0 行 → COW 克隆
+        fork.putChar('b'.code) // Write Row 0 → COW clone
         assertTrue(fork.lineAt(0) !== b.lineAt(0))
-        assertEquals('a'.code, b.lineAt(0).cells[0].codePoint) // 原 buffer 不受影响
-        assertEquals('b'.code, fork.lineAt(0).cells[1].codePoint) // 克隆行独立写入
+        assertEquals('a'.code, b.lineAt(0).cells[0].codePoint) // The original buffer remains unchanged.
+        assertEquals('b'.code, fork.lineAt(0).cells[1].codePoint) // Write each row separately.
     }
 
     @Test
     fun shallowForkPreservesExactLineCount() {
-        // 回归：shallowFork 曾在构造器预建的 rows 空行之后追加源行，每个分叉
-        // 顶部多出 rows 行幻影空行，且随分叉代数累积（会话越久越卡）
+        // Regression: shallowFork used to append source rows after the empty rows pre-built by the constructor; each fork
+        // There are extra "rows" of phantom blank lines at the top, and they accumulate as the number of forks increases (the longer the session, the slower it becomes).
         val b = TerminalBuffer(10, 5, maxScrollbackLines = 100)
-        repeat(20) { b.scrollUp(1) } // 造 20 行回看
+        repeat(20) { b.scrollUp(1) } // Create 20 rows of scrollback
         b.putChar('x'.code)
         val fork = b.shallowFork()
         assertEquals(b.totalLines(), fork.totalLines())
         assertEquals(b.scrollbackSize(), fork.scrollbackSize())
-        // 逐行引用一致（幻影行会同时改变两者）
+        // Ensure consistency in row-by-row references (phantom lines will change both).
         for (i in 0 until b.totalLines()) {
             assertTrue(fork.absLine(i) === b.absLine(i), "line $i 应共享同一对象")
         }
-        // 连续分叉不累积幻影行
+        // Consecutive rows do not accumulate phantom lines
         val fork2 = fork.shallowFork()
         assertEquals(b.totalLines(), fork2.totalLines())
     }
@@ -58,11 +58,11 @@ class TerminalBufferTest {
         val b = TerminalBuffer(10, 5)
         b.putChar('a'.code)
         val v0 = b.lineAt(0).version
-        // 光标移动 / 模式切换不改变内容，版本号不动
+        // Cursor movement and mode toggling do not alter the content; version numbers remain unchanged.
         b.moveTo(2, 2)
         b.setScrollRegion(0, 4)
         assertEquals(v0, b.lineAt(0).version)
-        // 写入内容 → 版本递增
+        // Write content → Version increment
         b.putChar('b'.code)
         assertTrue(b.lineAt(0).version > v0)
     }
@@ -92,11 +92,11 @@ class TerminalBufferTest {
         val first = b.lineAt(0)
         val firstVersion = first.version
         b.scrollUp(1)
-        // 旧首行进入回看，仍是同一实例、版本未变（内容未改写）
+        // The old first row enters the scrollback; it is still the same instance and the version is unchanged (the content was not rewritten)
         assertTrue(b.scrollbackSize() == 1)
         assertTrue(b.absLine(0) === first)
         assertEquals(firstVersion, b.absLine(0).version)
-        // 可见区首行是原第 2 行，实例未变
+        // the first visible row is the original row 2; the instance is unchanged
         assertTrue(b.lineAt(0) !== first)
     }
 
@@ -107,7 +107,7 @@ class TerminalBufferTest {
         val versions = (0..4).map { b.lineAt(it).version }
         b.setScrollRegion(1, 3)
         b.scrollUp(1)
-        // 区域内的行内容被改写 → 版本递增；区域外不变
+        // The content within the highlighted region has been rewritten → version increment; the content outside the highlighted region remains unchanged.
         assertTrue(b.lineAt(1).version > versions[1])
         assertTrue(b.lineAt(2).version > versions[2])
         assertEquals(versions[4], b.lineAt(4).version)
@@ -123,7 +123,7 @@ class TerminalBufferTest {
         assertTrue(b.lineAt(0).cells[1].isWide)
         assertTrue(b.lineAt(0).cells[2].isWideTail)
         assertEquals(1, b.lineAt(0).cells[2].width)
-        // 窄字符覆盖宽头 → 宽度复位、尾巴标记清除
+        // Narrow characters overlap wide characters → reset width, clear tail markers
         b.moveTo(0, 1)
         b.putChar('b'.code)
         assertEquals(1, b.lineAt(0).cells[1].width)
@@ -141,7 +141,7 @@ class TerminalBufferTest {
 
     @Test
     fun resizeShrinkKeepsCursorVisible() {
-        // 键盘弹起场景：收缩行数应丢弃光标下方空白行，提示符留在可视区
+        // Keyboard-pop scenario: when shrinking the row count, blank rows below the cursor are discarded and the prompt stays in the visible area
         val b = TerminalBuffer(10, 5)
         val e = TerminalEmulator(b)
         e.writeText("line0\r\nline1\r\n$ ")
@@ -153,13 +153,13 @@ class TerminalBufferTest {
         assertEquals("line0", b.lineText(0))
         assertEquals("line1", b.lineText(1))
         assertEquals("$", b.lineText(2))
-        // 丢弃的是底部空白行，顶部内容不应被挤入回看
+        // The discarded rows are the blank rows at the bottom; the top content must not be pushed into the scrollback
         assertEquals(0, b.scrollbackSize())
     }
 
     @Test
     fun resizeShrinkFullScreenFallsBackToScrollback() {
-        // 满屏文字没有空白行可丢：顶部行进入回看，光标钳在可视区
+        // A full screen of text has no blank rows to drop: the top row enters the scrollback and the cursor is clamped to the visible area
         val b = TerminalBuffer(4, 3)
         val e = TerminalEmulator(b)
         e.writeText("aaaa\r\nbbbb\r\ncccc")
@@ -170,7 +170,7 @@ class TerminalBufferTest {
 
     @Test
     fun wideCharTailInheritsColors() {
-        // 宽字符尾巴必须继承头的颜色/属性，否则带底色的行上右半格露默认背景
+        // Wide character tails must inherit the color/properties of the head; otherwise, the right half-cell on a row with a background color will display the default background.
         val b = TerminalBuffer(10, 3)
         val e = TerminalEmulator(b)
         e.writeText("[47m中[0m")
@@ -196,11 +196,11 @@ class TerminalBufferTest {
     fun writeOnWideTailClearsHead() {
         val b = TerminalBuffer(10, 3)
         val e = TerminalEmulator(b)
-        e.writeText("中") // 占 0-1 列，光标到 2
-        e.writeText("[1D") // 光标左移一格，落在尾巴上
+        e.writeText("中") // Occupies 0–1 column; cursor at position 2
+        e.writeText("[1D") // Move the cursor one space to the left, so it rests on the tail.
         e.writeText("x")
         val line = b.visibleLines()[0]
-        // 头被清掉，x 写在前尾巴位置
+        // the head is cleared and x is written at the former tail position
         assertEquals(' '.code, line.cells[0].codePoint)
         assertEquals('x'.code, line.cells[1].codePoint)
         assertFalse(line.cells[1].isWideTail)
@@ -223,14 +223,14 @@ class TerminalBufferTest {
         val e = TerminalEmulator(b)
         var clip = ""
         e.onClipboardWrite = { clip = it }
-        // "hi" 的 base64 是 aGk=
+        // The Base64 encoding for "hi" is aGk=
         e.writeText("]52;c;aGk=")
         assertEquals("hi", clip)
     }
 
     @Test
     fun mouseTrackingModesNegotiated() {
-        // herdr 实际发送的协商序列：先 reset 再 enable 1000/1002/1003/1015/1006
+        // The actual negotiation sequence sent by herdr: first "reset," then "enable" 1000/1002/1003/1015/1006
         val b = TerminalBuffer(10, 3)
         val e = TerminalEmulator(b)
         e.writeText("\u001b[?1006l\u001b[?1000l")
@@ -244,7 +244,7 @@ class TerminalBufferTest {
     @Test
     fun autoWrapMovesToNextLineAfterLastColumn() {
         val b = TerminalBuffer(5, 3)
-        // 写满第一行后再写一个字符：应换到第二行第一列
+        // After filling the first row, add one more character: it should move to the first column of the second row.
         "abcde".forEach { b.putChar(it.code) }
         assertTrue(b.pendingWrap)
         assertEquals(4, b.cursorCol)
@@ -261,7 +261,7 @@ class TerminalBufferTest {
         b.autoWrap = false
         "abcde".forEach { b.putChar(it.code) }
         b.putChar('X'.code)
-        // DECAWM 关闭：不换行，覆盖最后一格
+        // DECAWM off: no wrap; overwrite the last cell
         assertEquals(0, b.cursorRow)
         assertEquals(4, b.cursorCol)
         assertEquals('X'.code, b.lineAt(0).cells[4].codePoint)
@@ -271,7 +271,7 @@ class TerminalBufferTest {
     fun wideCharWrapAfterPendingWrap() {
         val b = TerminalBuffer(4, 3)
         "abcd".forEach { b.putChar(it.code) }
-        b.putChar(0x4E2D) // 中
+        b.putChar(0x4E2D) // U+4E2D
         assertEquals(1, b.cursorRow)
         assertEquals(2, b.cursorCol)
         assertEquals(0x4E2D, b.lineAt(1).cells[0].codePoint)
@@ -283,21 +283,21 @@ class TerminalBufferTest {
         val b = TerminalBuffer(4, 3)
         b.autoWrap = false
         "abcd".forEach { b.putChar(it.code) }
-        b.putChar(0x4E2D) // 中：DECAWM 关闭时不换行，覆盖最后一格
+        b.putChar(0x4E2D) // When DECAWM is off: no wrap; overwrite the last cell
         assertEquals(0, b.cursorRow)
         assertEquals(0x4E2D, b.lineAt(0).cells[3].codePoint)
     }
 
     @Test
     fun wideCharExactlyFillingLineEndWrapsOnNextChar() {
-        // 宽字符头在 cols-2、尾在 cols-1 恰好填满行：光标必须钳在最后一格并挂起
-        // 延迟换行。修复前 cursorCol 落到 cols（越界），下一个字符访问 cells[cursorCol]
-        // 抛 ArrayIndexOutOfBounds —— 输出消费协程死亡，整段 CJK 长行后终端冻屏
+        // With the wide character header at cols-2 and the tail at cols-1, the row is exactly filled: the cursor must be clamped to the last column and suspended.
+        // The deferred wrap. Before the fix, cursorCol landed on cols (out of bounds); the next character accessed cells[cursorCol]
+        // Throws ArrayIndexOutOfBounds — the consumer coroutine terminates, and the terminal freezes after a long row of CJK text
         val b = TerminalBuffer(4, 3)
         "ab".forEach { b.putChar(it.code) }
-        b.putChar(0x4E2D) // 中：头在 2、尾在 3，恰好填满行
+        b.putChar(0x4E2D) // Chinese: Start at 2, end at 3, exactly filling the row
         assertEquals(3, b.cursorCol)
-        b.putChar(0x6587) // 文：触发延迟换行，修复前此处崩溃
+        b.putChar(0x6587) // Text: Trigger a latency-based line break; this used to crash here before the fix.
         assertEquals(1, b.cursorRow)
         assertEquals(2, b.cursorCol)
         assertEquals(0x6587, b.lineAt(1).cells[0].codePoint)
@@ -306,10 +306,10 @@ class TerminalBufferTest {
 
     @Test
     fun wideCharExactlyFillingLineEndNarrowFollows() {
-        // 同上一场帚但跟随窄字符：同样走延迟换行，不得越界
+        // Same as the previous round, but follow narrow character limits: Use line breaks as needed, but do not go out of bounds.
         val b = TerminalBuffer(4, 3)
         "ab".forEach { b.putChar(it.code) }
-        b.putChar(0x4E2D) // 中填满行
+        b.putChar(0x4E2D) // Fill in the row
         b.putChar('x'.code)
         assertEquals(1, b.cursorRow)
         assertEquals(1, b.cursorCol)

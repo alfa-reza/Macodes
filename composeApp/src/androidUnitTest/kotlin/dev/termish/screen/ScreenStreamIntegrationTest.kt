@@ -23,12 +23,12 @@ import org.junit.Assume.assumeFalse
 import org.junit.Assume.assumeTrue
 
 /**
- * 屏幕推流链路集成测试：本地 sshd（127.0.0.1:22222）+ 本机 ffmpeg 抓屏，
- * 走 ScreenSession 同款 exec raw 通道。回归两个真实 bug：
- * 1. stderr 阻塞读卡死主循环（黑屏）——stderr 拆独立协程后 stdout 必须持续消费
- * 2. 远端 ffmpeg 退出即「画面流已断开」——通道 5 秒内不应 EOF
+ * Screen streaming integration test: Local sshd (127.0.0.1:22222) + local machine ffmpeg screen capture,
+ * Use the same `exec raw` channel as ScreenSession. Regression-test two real bugs:
+ * 1. stderr blocking causes the main loop to hang (black screen) — after separating stderr into a separate coroutine, stdout must be continuously consumed
+ * 2. When ffmpeg on the remote server exits, it reports “Video stream disconnects” — Channel should not return EOF within 5 seconds
  *
- * 环境缺任一依赖（sshd/私钥/ffmpeg）自动 SKIP（与传输层集成测试同模式）。
+ * If any dependency (sshd/private key/ffmpeg) is missing from the environment, the test will automatically SKIP (in the same mode as transport layer integration tests).
  */
 class ScreenStreamIntegrationTest {
     private fun env(
@@ -106,7 +106,7 @@ class ScreenStreamIntegrationTest {
             val ch = session.startExecRaw(ScreenSession.LAVFI_SCRIPT)
             assertNotNull(ch, "startExecRaw 应返回通道")
 
-            // stderr 独立协程（ScreenSession 同款模式）：消费但不能阻塞 stdout
+            // stderr independent coroutine (same mode as ScreenSession): consumes but does not perform blocking on stdout
             val stderrBuf = StringBuilder()
             val stderrJob =
                 CoroutineScope(Dispatchers.IO).launch {
@@ -116,9 +116,9 @@ class ScreenStreamIntegrationTest {
                     }
                 }
 
-            // 主循环：阻塞读 stdout + NAL 计数，跑 5 秒。
-            // 用 lavfi testsrc 源（不依赖屏幕录制权限——sshd 会话下 avfoundation
-            // 抓屏会因 TCC 权限失败/挂起，那是环境问题不是链路问题）
+            // Main loop: Blocking read from stdout + NAL count; runs for 5 seconds.
+            // Use the lavfi testsrc source (does not depend on screen recording permissions—avfoundation under an sshd session)
+            // (Screen capture may fail/hang due to TCC permissions; this is an environment issue, not a link issue)
             val parser = H264Stream.AnnexBParser()
             var nalCount = 0
             var sawSps = false
@@ -137,7 +137,7 @@ class ScreenStreamIntegrationTest {
                     nalCount++
                     if (nal.type == 7) sawSps = true
                     if (nal.type == 5) sawIdr = true
-                    // AUD（type 9）：帧对齐标记——relay 按 AUD 切帧，丢一片只丢一帧
+                    // AUD (type 9): Frame alignment marker—relay splits frames based on AUD; if a segment is lost, only one frame is lost
                     if (nal.type == 9) sawAud = true
                     nal = parser.drain()
                 }
@@ -191,9 +191,9 @@ class ScreenStreamIntegrationTest {
     }
 
     /**
-     * 手机端一键安装链路回归：实际执行 INSTALL_SCRIPT（引导卡片同款）→
-     * 服务装好并监听 → READ_STREAM_SCRIPT 读流持续出帧。
-     * 仅 macOS 远端有效（LaunchAgent GUI 域机制），收尾自动卸载服务。
+     * One-click installation on phone: Actually run INSTALL_SCRIPT (same as the guide card) →
+     * Service is set up as a listener → READ_STREAM_SCRIPT continuously reads frames from the stream.
+     * Works only on macOS remote systems (due to the LaunchAgent GUI domain mechanism); the service automatically uninstalls upon completion.
      */
     @Test
     fun `install script sets up gui session service and serves h264 stream`() {
@@ -231,7 +231,7 @@ class ScreenStreamIntegrationTest {
             )
         try {
             assertNotNull(session.connectAuthOnly())
-            // 1. 跑安装脚本：应输出 TERMISH_SCREEN_OK
+            // 1. Run the install script: It should output TERMISH_SCREEN_OK
             val installOut = StringBuilder()
             val installCh = session.startExecRaw(ScreenSession.INSTALL_SCRIPT)
             assertNotNull(installCh, "安装通道应建立")
@@ -245,11 +245,11 @@ class ScreenStreamIntegrationTest {
                 installOut.toString().contains("TERMISH_SCREEN_OK"),
                 "安装脚本应成功：${installOut.toString().take(300)}",
             )
-            // relay 预热 + 首次连接需要几秒，等 2 秒再读流
+            // relay warm-up + initial connection takes a few seconds; wait 2 seconds before reading the stream
             Thread.sleep(2_000)
 
-            // 2. 控制面只返回远端回环 TCP 端口；视频面用 SSH direct-tcpip
-            // 取得 THS1 状态 + 长度分帧的 H.264 Annex-B，与手机端实际链路一致。
+            // 2. The control plane only returns the remote loopback TCP port; the video plane uses SSH direct-tcpip
+            // Obtain H.264 Annex-B with THS1 status and length-based frames, consistent with the actual phone network link.
             val preflight = session.runCommandDetailed(ScreenSession.READ_STREAM_SCRIPT, 15_000)
             assertNotNull(preflight, "控制面探测应成功")
             assumeFalse(
@@ -264,8 +264,8 @@ class ScreenStreamIntegrationTest {
                     ?.substringAfter(":")
                     ?.trim()
                     ?.toIntOrNull()
-            // stdout 同时携带短生命周期之外也应保密的 bearer token，失败信息
-            // 不能把整段探测输出写进本地/CI 测试日志。
+            // stdout also carries a bearer token that should remain confidential even during its short lifecycle, along with failure info
+            // Do not include the entire probe output in local or CI test logs.
             assertNotNull(tcpPort, "应返回 TCP 视频端口")
             val authToken = ScreenSession.parseAuthToken(preflight.stdout)
             assertNotNull(authToken, "应通过已认证 SSH 返回画面 token")
@@ -290,7 +290,7 @@ class ScreenStreamIntegrationTest {
             assertTrue(frames >= 10, "推流服务应持续产生完整帧，实际 $frames 帧")
             assertTrue(bytes > 50_000, "推流服务应持续出流，实际 $bytes 字节")
         } finally {
-            // 收尾：卸载服务（测试不留垃圾）
+            // Wrap-up: Uninstall the service (leave no residual files after testing)
             runCatching {
                 session.runCommand(
                     "launchctl bootout gui/\$(id -u) \$HOME/Library/LaunchAgents/dev.termish.screen.plist",
@@ -362,7 +362,7 @@ class SystemSshdStreamTest {
         try {
             val conn = session.connectAuthOnly()
             assertNotNull(conn, "系统 sshd 连接失败")
-            // LAVFI 自包含推流（不依赖 relay 服务：install 测试收尾会卸载服务）
+            // LAVFI self-contained streaming (does not depend on a relay service: the service will be uninstalled after installation and testing are complete)
             val ch = session.startExecRaw(ScreenSession.LAVFI_SCRIPT)
             assertNotNull(ch, "exec 通道建立失败")
             val parser = H264Stream.AnnexBParser()

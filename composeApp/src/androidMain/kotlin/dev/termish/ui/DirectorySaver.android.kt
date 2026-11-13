@@ -11,12 +11,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.documentfile.provider.DocumentFile
 
-/** Android：SAF OpenDocumentTree 选目标目录，在树内创建 <远端目录名> 子目录再写入（与 iOS 语义一致）。 */
+/** Android: In SAF OpenDocumentTree, select the target directory, create a <REMOTE directory name> subdirectory within the tree, and then write to it (consistent with iOS semantics). */
 @Composable
 actual fun rememberDirectorySaver(onReady: (name: String, sink: DirectorySink) -> Unit): (name: String) -> Unit {
     val context = LocalContext.current
-    // 记住本次保存的远端目录名：用户选定目标目录后在其下建同名子目录
-    // （OpenDocumentTree 无法预设目录名，只能在回调里拿到用户选择）
+    // Remember the name of the remote directory saved this time: After the user selects the target directory, create a subdirectory with the same name under it.
+    // (OpenDocumentTree cannot preset directory names; it can only retrieve the user’s selection within the callback.)
     var pendingName by remember { mutableStateOf("download") }
     val launcher =
         rememberLauncherForActivityResult(
@@ -36,7 +36,7 @@ actual fun rememberDirectorySaver(onReady: (name: String, sink: DirectorySink) -
                     onReady(
                         name,
                         object : DirectorySink {
-                            /** 本次下载在用户选定目录下创建的 <远端目录名> 根目录（同名已存在则追加序号）。 */
+                            /** This download creates a root directory named <REMOTE directory name> in the user-specified directory (if a directory with the same name already exists, a number is appended). */
                             var createdRoot: DocumentFile? = null
 
                             override fun openFile(relativePath: String): FileSink {

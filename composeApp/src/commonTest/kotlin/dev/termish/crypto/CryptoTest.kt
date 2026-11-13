@@ -4,7 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-@Suppress("ktlint:standard:property-naming") // 测试辅助常量
+@Suppress("ktlint:standard:property-naming") // Testing-related constants
 class CryptoTest {
     private fun hex(s: String): ByteArray {
         val out = ByteArray(s.length / 2)

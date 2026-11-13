@@ -9,7 +9,7 @@ actual object SessionKeepAlive {
         try {
             SessionService.start(AppContext.get(), sessionId)
         } catch (e: Exception) {
-            // 前台服务启动失败（如后台限制）不阻断连接，但必须留痕以便排查
+            // If there is a failure to launch the foreground service (e.g., due to background restrictions), do not terminate the connection, but be sure to log the issue for troubleshooting.
             Log.e("Termish-SessionKeepAlive", "onSessionStart failed", e)
         }
     }

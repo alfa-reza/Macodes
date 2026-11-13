@@ -1,11 +1,11 @@
 #!/bin/bash
-# 构建 iOS 原生 SSH 依赖：OpenSSL (静态) + libssh2 (静态)，产出到 iosApp/native。
+# Build native iOS SSH dependencies: OpenSSL (static) + libssh2 (static), and output to iosApp/native.
 #
-# 为什么自己构建：NTermish 自带的老预编译库与新版 Xcode 链接器不兼容（arm64 模拟器缺失、
-# 归档成员未对齐）；现代 libssh2 pod 又依赖 GitHub git 克隆（网络受限）。本脚本从
-# 官方源（openssl.org / libssh2.org）下载源码交叉编译，结果静态链接进 Kotlin framework。
+# Why build it yourself: The precompiled library included with NTermish is incompatible with the new Xcode linker (arm64 emulator missing,
+# Archive members do not have alignment); the modern libssh2 pod also has a dependency on GitHub git cloning (network restricted). This script starts from
+# Download the source code from the official repositories (openssl.org / libssh2.org), cross-compile it, and statically link the result into the Kotlin framework.
 #
-# 产物：
+# Output:
 #   iosApp/native/include/openssl/*.h
 #   iosApp/native/include/libssh2.h
 #   iosApp/native/lib/libcrypto.a  libssl.a  libssh2.a   (fat: arm64-device + arm64-sim + x86_64-sim)
@@ -51,7 +51,7 @@ build_openssl "sim-arm64" "iossimulator-xcrun"   ""
 
 echo "== OpenSSL 头文件 =="
 mkdir -p "$WORK/out/include/openssl"
-# 使用构建目录中的头（含生成的 opensslv.h 等）
+# Use the header files in the build directory (including generated files such as opensslv.h, etc.)
 cp "$WORK/build-openssl-device"/include/openssl/*.h "$WORK/out/include/openssl/"
 cp "$LIBSSH2_DIR"/include/*.h "$WORK/out/include/"
 
@@ -61,13 +61,13 @@ build_libssh2_single() {
   echo "== libssh2: $name =="
   local dir="$WORK/build-libssh2-$name"
   cp -R "$LIBSSH2_DIR" "$dir"
-  # 为单架构准备 openssl 静态库前缀
+  # Prepare the OpenSSL static library prefix for a single architecture
   local oprefix="$WORK/openssl-$name"
   mkdir -p "$oprefix/include" "$oprefix/lib"
   cp -R "$WORK/out/include/." "$oprefix/include/"
   cp "$WORK/out/lib/libcrypto-$name.a" "$oprefix/lib/libcrypto.a" 2>/dev/null || true
   cp "$WORK/out/lib/libssl-$name.a" "$oprefix/lib/libssl.a" 2>/dev/null || true
-  # 若单架构 openssl 不存在，则用 fat（本脚本单架构均已生成）
+  # If the single-architecture OpenSSL version does not exist, use "fat" (this script has already generated all single-architecture versions).
   if [ ! -f "$oprefix/lib/libcrypto.a" ]; then
     cp "$WORK/out/lib/libcrypto.a" "$oprefix/lib/libcrypto.a"
     cp "$WORK/out/lib/libssl.a" "$oprefix/lib/libssl.a"
@@ -94,7 +94,7 @@ mkdir -p "$VENDOR/include" "$VENDOR/lib/device" "$VENDOR/lib/sim"
 cp -R "$WORK/out/include/." "$VENDOR/include/"
 cp "$WORK/out/lib/libcrypto-device.a" "$WORK/out/lib/libssl-device.a" "$WORK/out/lib/libssh2-device.a" "$VENDOR/lib/device/"
 cp "$WORK/out/lib/libcrypto-sim-arm64.a" "$WORK/out/lib/libssl-sim-arm64.a" "$WORK/out/lib/libssh2-sim-arm64.a" "$VENDOR/lib/sim/"
-# 规范命名
+# Naming Specification
 mv "$VENDOR/lib/device/libcrypto-device.a" "$VENDOR/lib/device/libcrypto.a"
 mv "$VENDOR/lib/device/libssl-device.a" "$VENDOR/lib/device/libssl.a"
 mv "$VENDOR/lib/device/libssh2-device.a" "$VENDOR/lib/device/libssh2.a"

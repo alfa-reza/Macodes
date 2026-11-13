@@ -8,14 +8,14 @@ import java.lang.ref.WeakReference
 import java.security.Security
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 
-/** 进程级 Application Context（用于无参 expect 存储）。 */
-@SuppressLint("StaticFieldLeak") // 字段只保存 c.applicationContext，与进程同生命周期。
+/** Process-level Application Context (used for storage of parameterless `expect` expressions). */
+@SuppressLint("StaticFieldLeak") // Only the `c.applicationContext` field is saved; its lifecycle aligns with that of the process.
 object AppContext {
-    // 只持有 applicationContext；生命周期与进程一致，不会泄漏 Activity。
+    // Holds only the `applicationContext`; its lifecycle aligns with that of the process and does not leak `Activity` instances.
     @Volatile
     private var context: Context? = null
 
-    /** 当前前台 Activity（haptic/权限请求等需要 Activity 上下文时使用；null = 无）。 */
+    /** Current foreground Activity (used when haptic feedback, permission requests, etc., require the Activity context; null = none). */
     @Volatile private var activityRef = WeakReference<Activity>(null)
 
     val currentActivity: Activity?
@@ -40,10 +40,10 @@ class TermishApplication : Application() {
     }
 
     /**
-     * Android 自带一个阉割版 BouncyCastle（provider 名也叫 "BC"），缺少 X25519 / Ed25519。
-     * sshj 的 SecurityUtils.register() 看到 "BC" 已存在就不会再注册随 App 打包的完整版，
-     * 导致 curve25519 KEX 时报 "no such algorithm: X25519 for provider BC"。
-     * 这里用完整版替换掉内置阉割版。
+     * Android comes with a stripped-down version of BouncyCastle (the provider is also named "BC"), which lacks X25519 / Ed25519.
+     * sshj’s `SecurityUtils.register()` will not register the full version bundled with the app if it detects that “BC” already exists,
+     * This causes curve25519 to report "no such algorithm: X25519 for provider BC" when running KEX.
+     * Here, the full version replaces the built-in stripped-down version.
      */
     private fun installFullBouncyCastle() {
         Security.removeProvider("BC")

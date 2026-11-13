@@ -2,20 +2,20 @@ package dev.termish.ui
 
 import androidx.compose.runtime.Composable
 
-/** 文件保存目标：下载过程中流式写入；写入完成后必须 [close]。 */
+/** File saving target: Write to the file in a streaming manner during the download process; be sure to [close] the file after writing is complete. */
 interface FileSink {
     fun write(bytes: ByteArray)
 
     fun close()
 
-    /** 下载完成后的打开入口（Android 为 MediaStore content:// uri；其他平台 null）。 */
+    /** The entry point for opening the file after download (for Android, use the MediaStore content:// URI; for other platforms, use null). */
     val openUri: String? get() = null
 }
 
 /**
- * 平台文件保存器：返回"选择保存位置并开始写入"的函数（入参为建议文件名）。
- * 用户选定目标后回调 [onReady]，携带可写入的 [FileSink]；用户取消则不回调。
- * 下载完成 / 失败后由调用方负责 [FileSink.close]。
+ * Platform File Saver: returns a function that “selects a save location and starts writing” (arg: suggested file name).
+ * When the user selects a target, the [onReady] callback is triggered, carrying a writable [FileSink]; if the user cancels, the callback is not triggered.
+ * After a download completes or there is a failure, the caller is responsible for calling [FileSink.close].
  */
 @Composable
 expect fun rememberFileSaver(onReady: (name: String, sink: FileSink) -> Unit): (name: String) -> Unit

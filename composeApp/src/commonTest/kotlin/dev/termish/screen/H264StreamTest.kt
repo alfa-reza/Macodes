@@ -16,7 +16,7 @@ class H264StreamTest {
         val sps = sc3(0x67, 0x42, 0x00) // type 7
         val pps = sc3(0x68, 0xce, 0x3c) // type 8
         val idr = sc3(0x65, 0x88, 0x84) // type 5
-        // 末尾补结束 start code（流式解析需要边界切出最后一个 NAL）
+        // Add "start code" at the end (stream-based parsing requires bounds to identify the last NAL).
         val stream = sps + pps + idr + byteArrayOf(0, 0, 1)
         val nals = mutableListOf<H264Stream.Nal>()
         for (i in 0 until stream.size step 3) {
@@ -35,7 +35,7 @@ class H264StreamTest {
     @Test
     fun `parser handles 4-byte start code`() {
         val parser = H264Stream.AnnexBParser()
-        val nal = byteArrayOf(0, 0, 0, 1, 0x41, 0x9a.toByte(), 0, 0, 1) // type 1 slice + 结束边界
+        val nal = byteArrayOf(0, 0, 0, 1, 0x41, 0x9a.toByte(), 0, 0, 1) // type 1 slice + end bounds
         val out = parser.push(nal)
         assertNotNull(out)
         assertEquals(1, out.type)
@@ -45,9 +45,9 @@ class H264StreamTest {
     @Test
     fun `parser waits for complete nal`() {
         val parser = H264Stream.AnnexBParser()
-        // 只给半个 NAL：无结束 start code → null
+        // Give only half a NAL: no ending start code → null
         assertNull(parser.push(byteArrayOf(0, 0, 1, 0x65.toByte(), 0x88.toByte())))
-        // 补上结束边界
+        // Add closing bounds
         val out = parser.push(byteArrayOf(0, 0, 1))
         assertNotNull(out)
         assertEquals(5, out.type)
@@ -74,7 +74,7 @@ class H264StreamTest {
         val ps = H264Stream.extractParameterSets(stream)
         assertNotNull(ps.sps)
         assertNotNull(ps.pps)
-        // 带 start code 前缀（CSD 格式）
+        // With the "start code" prefix (CSD format)
         assertEquals(0, ps.sps!![0].toInt())
         assertEquals(1, ps.sps!![3].toInt())
     }
@@ -92,19 +92,19 @@ class H264StreamTest {
         val idr = sc3(0x65, 0x88, 0x84, 0x02)
         val p = sc3(0x41, 0x9a, 0x02)
 
-        // 3 字节 start code
+        // 3-byte start code
         val withIdr = sps + pps + idr + p
         assertTrue(H264Stream.containsIdr(withIdr))
 
-        // 4 字节 start code（00 00 00 01 65）
+        // 4-byte start code (00 00 00 01 65)
         val fourByte = byteArrayOf(0, 0, 0, 1, 0x65.toByte(), 0x88.toByte()) + p
         assertTrue(H264Stream.containsIdr(fourByte))
 
-        // 纯 P 帧：不含 IDR（换面重建后起播前应丢弃）
+        // Pure P-frame: no IDR (should be discarded before playback after a surface rebuild)
         val pOnly = p + sc3(0x01, 0x02, 0x03) + sc3(0x41, 0x9a)
         assertFalse(H264Stream.containsIdr(pOnly))
 
-        // AUD + SPS + PPS 但无 IDR（部分远端不重复参数集时的典型关键帧块）
+        // AUD + SPS + PPS but no IDR (typical keyframe blocks where some remote parameters do not repeat)
         val audSpsPps = sc3(0x09, 0xf0) + sps + pps
         assertFalse(H264Stream.containsIdr(audSpsPps))
     }
@@ -149,7 +149,7 @@ class H264StreamTest {
 
     @Test
     fun `parseSpsDimensions extracts real 720p sps`() {
-        // 真实 libx264 输出（1280x720）：6742c01fda014016ec0440000003004000000f23c60ca8
+        // Actual libx264 output (1280x720): 6742c01fda014016ec0440000003004000000f23c60ca8
         val sps =
             byteArrayOf(
                 0x67,

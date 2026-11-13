@@ -48,12 +48,12 @@ actual fun rememberMicPermissionRequester(): MicPermissionRequester {
     }
 }
 
-/** 权限结果暂存（launcher 回调与 request 调用分离）。 */
+/** Temporarily stage permission results (separate launcher callbacks from request calls). */
 private var pendingResult: ((Boolean) -> Unit)? = null
 
-// ---- 录音：AudioRecord 16kHz / PCM16 / mono ----
+// ---- Audio recording: AudioRecord 16 kHz / PCM16 / mono ----
 
-/** 单包音频时长（文档建议 100–200ms，200ms 性能最优）。 */
+/** Audio duration per packet (documentation recommends 100–200 ms; 200 ms provides optimal performance). */
 private const val FRAME_MS = 200
 private const val SAMPLE_RATE = 16000
 
@@ -80,7 +80,7 @@ actual class MicrophoneRecorder actual constructor() {
         }
         val rec =
             try {
-                // lint MissingPermission：此处显式复查运行时权限（UI 层已请求过）
+                // lint MissingPermission: Explicitly recheck runtime permissions here (already requested at the UI layer)
                 val granted =
                     ContextCompat.checkSelfPermission(
                         AppContext.get(),
@@ -150,7 +150,7 @@ actual class MicrophoneRecorder actual constructor() {
     }
 }
 
-// ---- WebSocket：OkHttp（Android minSdk 26 无 java.net.http） ----
+// ---- WebSocket: OkHttp (Android minSdk 26 without java.net.http) ----
 
 actual fun createVoiceWebSocket(): VoiceWebSocket = OkHttpVoiceWebSocket()
 
@@ -198,9 +198,9 @@ private class OkHttpVoiceWebSocket : VoiceWebSocket {
                         t: Throwable,
                         response: Response?,
                     ) {
-                        // 连接失败消息常含完整 URL/IP/端口（如 Failed to connect to
-                        // openspeech.bytedance.com/1.2.3.4:443）——用户侧只给友好
-                        // 文案，原始错误进日志供诊断（用户反馈：错误把端口打印出来）
+                        // Connection failure messages often include the full URL/IP/port (e.g., Failed to connect to
+                        // openspeech.bytedance.com/1.2.3.4:443) — On the user side, only provide friendly
+                        // copy; the original error is logged for diagnostics (user feedback: the error prints the port).
                         TermLog.w("voice") { "ws failure: $t" }
                         val friendly =
                             when (t) {

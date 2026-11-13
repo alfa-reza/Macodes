@@ -4,22 +4,22 @@ import dev.termish.util.base64Decode
 import dev.termish.util.base64Encode
 
 /**
- * mosh 数据报加密会话：AES-128-OCB，nonce = 4 字节 0 || 8 字节大端序号，
- * 序号最高位为方向位（TO_CLIENT=1）。线上格式：
- *   8B nonce 低位 || OCB 密文 || 16B tag
- * 明文格式：2B timestamp || 2B timestamp_reply || 分片载荷。
+ * mosh data datagram encryption session: AES-128-OCB, nonce = 4 bytes of zeros || 8-byte big-endian number,
+ * The most significant bit of the sequence number indicates the direction (TO_CLIENT=1). Wire format:
+ *   8B nonce (low-order bits) || OCB ciphertext || 16B tag
+ * Plaintext format: 2B timestamp || 2B timestamp_reply || fragmentation of the payload.
  */
 internal class MoshCryptoSession(
     keyBase64: String,
 ) {
     private val ocb: Ocb
 
-    /** 加密块计数（协议：达到 2^47 块即终止会话，防 OCB 生日界）。 */
+    /** Encryption block count (protocol: session terminates upon reaching 2^47 blocks to prevent OCB birthday attacks). */
     private var blocksEncrypted = 0L
 
     init {
-        // mosh Base64Key：22 字符（16 字节 key 去掉 == 填充），且要求规范编码，
-        // 以拒绝尾部非零 bit 的伪 key（Base64Key 同款校验）
+        // mosh Base64Key: 22 characters (16-byte key without == filling), and must follow encoding specification,
+        // Reject pseudo-keys with a non-zero bit at the end (same validation as Base64Key).
         require(keyBase64.length == 22) { "mosh key 必须为 22 字符 base64" }
         val key = base64Decode(keyBase64)
         require(key.size == 16) { "mosh key 必须解码为 16 字节" }
@@ -34,7 +34,7 @@ internal class MoshCryptoSession(
         val payload: ByteArray,
     )
 
-    /** 加密一个待发数据报（客户端方向，方向位 0）。 */
+    /** Apply encryption to a data packet to be sent (client-bound, direction bit 0). */
     fun encrypt(
         seq: ULong,
         timestamp: Int,
@@ -55,12 +55,12 @@ internal class MoshCryptoSession(
             throw IllegalStateException("OCB 加密块数达到 2^47 上限，会话终止")
         }
         val out = ByteArray(8 + ct.size)
-        nonce.copyInto(out, 0, 4, 12) // 低 8 字节序号
+        nonce.copyInto(out, 0, 4, 12) // Low 8-byte sequence number
         ct.copyInto(out, 8)
         return out
     }
 
-    /** 解密一个收到的数据报；tag 校验失败返回 null。 */
+    /** Decryption of a received datagram; failure of the tag check results in null. */
     fun decrypt(datagram: ByteArray): PlainPacket? {
         if (datagram.size < 24) return null
         val nonce = ByteArray(12)
@@ -68,9 +68,9 @@ internal class MoshCryptoSession(
         val plain = ocb.decrypt(nonce, datagram.copyOfRange(8, datagram.size)) ?: return null
         if (plain.size < 4) return null
         val raw = (0..7).fold(0uL) { acc, i -> (acc shl 8) or (datagram[i].toInt() and 0xff).toULong() }
-        // 客户端只收 TO_CLIENT（最高位=1）；掩掉方向位后才是单调序号。
-        // 方向位校验与 mosh recv_one 的 dos_assert(direction==期望方向) 对应，
-        // 防止把客户端自己发过的包重放回来当合法数据
+        // The client only accepts TO_CLIENT (most significant bit = 1); the monotonically increasing sequence number is obtained after masking the direction bit.
+        // The direction bit check corresponds to `dos_assert(direction == expected_direction)` in `mosh recv_one`,
+        // Prevent the client from replaying its own previously sent packets as valid data.
         if (raw and DIRECTION_BIT == 0uL) return null
         val seq = raw and SEQUENCE_MASK
         return PlainPacket(
@@ -90,7 +90,7 @@ internal class MoshCryptoSession(
     }
 
     companion object {
-        /** 数据报序号最高位为方向位（协议方向位：TO_SERVER=0 / TO_CLIENT=1）。 */
+        /** The most significant bit of the data packet sequence number is the direction bit (protocol direction bit: TO_SERVER=0 / TO_CLIENT=1). */
         private val DIRECTION_BIT: ULong = 1uL shl 63
         private val SEQUENCE_MASK: ULong = ULong.MAX_VALUE xor DIRECTION_BIT
     }

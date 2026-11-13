@@ -10,14 +10,14 @@ import androidx.activity.enableEdgeToEdge
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        // 显式深色系统栏样式（浅色图标），否则系统浅色模式下图标会变深色，
-        // 在深色窗口背景上完全不可见（“漆黑”）。
+        // Explicitly set the system bar style to dark (with light-colored icons); otherwise, icons will appear dark in the system’s light mode,
+        // Completely invisible against a dark window background (“pitch black”).
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
         )
         super.onCreate(savedInstanceState)
-        // 通知「重新连接」动作（singleTop：App 存活时走 onNewIntent）
+        // Notification for the “reconnect” action (singleTop: onNewIntent is called while the app is alive)
         dev.termish.notify.handleNotificationIntent(intent)
         setContent {
             App()

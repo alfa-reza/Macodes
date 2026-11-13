@@ -1,13 +1,13 @@
 package dev.termish.term
 
-/** 终端颜色：以 0xRRGGBB 编码的 Int。默认前景/背景用负哨兵值。 */
+/** Terminal colors: Integers with 0xRRGGBB encoding. Default foreground/background colors use negative sentinel values. */
 const val DEFAULT_FG = -1
 const val DEFAULT_BG = -2
 
-/** 光标颜色未设置（用主题默认色）的哨兵值。 */
+/** Sentinel value for “cursor color not set” (uses the theme default color). */
 const val DEFAULT_CURSOR = -3
 
-/** ARGB Long → 0xRRGGBB Int（终端协议应答用，如 OSC 10/11/12 的颜色查询）。 */
+/** ARGB Long → 0xRRGGBB Int (for terminal protocol responses, such as color queries in OSC 10/11/12). */
 fun argbToRgb(c: Long): Int {
     val r = ((c shr 16) and 0xff).toInt()
     val g = ((c shr 8) and 0xff).toInt()
@@ -16,7 +16,7 @@ fun argbToRgb(c: Long): Int {
 }
 
 object TerminalPalette {
-    /** 16 个基础 ANSI 颜色（VGA 标准）。 */
+    /** 16 basic ANSI colors (VGA standard). */
     val BASIC_16: IntArray =
         intArrayOf(
             0x000000, // 0 black
@@ -39,7 +39,7 @@ object TerminalPalette {
 
     private val CUBE = intArrayOf(0, 95, 135, 175, 215, 255)
 
-    /** xterm 256 色板：16 基础色 + 216 色立方体 + 24 灰度。 */
+    /** xterm 256-color palette: 16 base colors + 216 color cube + 24 shades of gray. */
     val PALETTE_256: IntArray =
         IntArray(256) { i ->
             when {
@@ -71,7 +71,7 @@ object TerminalPalette {
     fun blue(c: Int): Int = c and 0xff
 }
 
-/** 单元格属性位掩码。 */
+/** Cell attribute bitmask. */
 object CellAttr {
     const val BOLD = 1
     const val DIM = 1 shl 1
@@ -84,29 +84,29 @@ object CellAttr {
 }
 
 /**
- * 简易字符宽度（列数）：1 或 2。
- * 覆盖常用全角 / CJK / 表情符号区间，足够移动端 SSH 场景使用。
+ * Simple character width (number of columns): 1 or 2.
+ * Covers the full range of commonly used full-width characters, CJK characters, and emojis, sufficient for mobile SSH scenarios.
  */
 object CharWidth {
     fun wcwidth(cp: Int): Int {
-        if (cp < 0x20) return 1 // C0 控制字符按 1 处理
+        if (cp < 0x20) return 1 // Handle C0 control characters as 1
         if (cp == 0x200B) return 1 // zero-width space
-        if (cp in 0x0300..0x036F) return 1 // 组合字符简化处理
+        if (cp in 0x0300..0x036F) return 1 // Simplify the handling of character compositions
         if (cp in 0x1100..0x115F) return 2 // Hangul Jamo
-        if (cp in 0x2E80..0x303E) return 2 // CJK 部首/标点
-        if (cp in 0x3041..0x33FF) return 2 // 日文假名、CJK 兼容
-        if (cp in 0x3400..0x4DBF) return 2 // CJK 扩展 A
-        if (cp in 0x4E00..0x9FFF) return 2 // CJK 统一表意文字
+        if (cp in 0x2E80..0x303E) return 2 // CJK radicals/punctuation
+        if (cp in 0x3041..0x33FF) return 2 // Compatible with Japanese kana and CJK characters
+        if (cp in 0x3400..0x4DBF) return 2 // CJK Extension A
+        if (cp in 0x4E00..0x9FFF) return 2 // CJK Unified Ideographs
         if (cp in 0xA000..0xA4CF) return 2 // Yi
-        if (cp in 0xAC00..0xD7A3) return 2 // Hangul 音节
-        if (cp in 0xF900..0xFAFF) return 2 // CJK 兼容表意
-        if (cp in 0xFE10..0xFE19) return 2 // 竖排标点
-        if (cp in 0xFE30..0xFE6F) return 2 // CJK 兼容形式
-        if (cp in 0xFF00..0xFF60) return 2 // 全角形式
+        if (cp in 0xAC00..0xD7A3) return 2 // Hangul syllables
+        if (cp in 0xF900..0xFAFF) return 2 // CJK-compatible ideograms
+        if (cp in 0xFE10..0xFE19) return 2 // Vertical punctuation
+        if (cp in 0xFE30..0xFE6F) return 2 // CJK-compatible formats
+        if (cp in 0xFF00..0xFF60) return 2 // Full-width characters
         if (cp in 0xFFE0..0xFFE6) return 2
-        if (cp in 0x1F300..0x1FAFF) return 2 // 表情符号
+        if (cp in 0x1F300..0x1FAFF) return 2 // Emojis
         if (cp in 0x1F000..0x1F02F) return 2
-        if (cp in 0x20000..0x2FFFD) return 2 // CJK 扩展 B+
+        if (cp in 0x20000..0x2FFFD) return 2 // CJK Extension B+
         if (cp in 0x30000..0x3FFFD) return 2
         return 1
     }

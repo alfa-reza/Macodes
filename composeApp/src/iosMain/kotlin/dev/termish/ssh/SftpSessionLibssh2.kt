@@ -48,8 +48,8 @@ actual fun createSftpSession(
 ): SftpSession = SftpSessionLibssh2(connection, callbacks)
 
 /**
- * libssh2 SFTP 实现（iOS）：复用 [SshSessionLibssh2] 的认证链路，
- * 阻塞模式调用 libssh2_sftp_*。
+ * libssh2 SFTP implementation (iOS): Reuse the authentication chain from [SshSessionLibssh2],
+ * Call libssh2_sftp_* in blocking mode.
  */
 private class SftpSessionLibssh2(
     private val connection: SshConnection,
@@ -127,8 +127,8 @@ private class SftpSessionLibssh2(
 
     override fun list(path: String): List<SftpEntry> {
         val s = sftpOrThrow()
-        // cinterop String 参数按 UTF-8 编码：长度必须传字节数（.length 是字符数，
-        // 中文文件名/路径会被截断——目录打不开、下载/删除/新建全失败）
+        // cinterop String parameters are encoded in UTF-8: the length must be specified in bytes (`.length` refers to the number of characters,
+        // (Chinese filenames/paths suffer truncation—directories cannot be opened, and there is failure when attempting to download, delete, or create new files.)
         val pathLen = path.encodeToByteArray().size
         val handle =
             memScoped {
@@ -158,10 +158,10 @@ private class SftpSessionLibssh2(
                     when {
                         n > 0 -> {
                             val name = buf.readBytes(n.toInt()).decodeToString()
-                            // libssh2 的 attrs 结构在 cinterop 中不透明，
-                            // 从 longentry（drwxr-xr-x 2 root root 4096 Jan 1 12:34 name）解析；
-                            // 服务器不返回 longentry（Windows OpenSSH、部分嵌入式 SFTP）时
-                            // 类型未知，用 stat 兜底——递归下载目录依赖准确的 isDirectory
+                            // The `attrs` structure in libssh2 is opaque in cinterop,
+                            // Parsed from longentry (drwxr-xr-x 2 root root 4096 Jan 1 12:34 name);
+                            // When the server does not return a `longentry` (Windows OpenSSH, some embedded SFTP implementations)
+                            // type unknown; use `stat` as the fallback — recursive directory download relies on an accurate `isDirectory`
                             val long = longBuf.toKString()
                             val entry = parseLongEntry(name, long) ?: statEntry(path, name)
                             entries.add(entry)
@@ -179,17 +179,17 @@ private class SftpSessionLibssh2(
     }
 
     /**
-     * 解析 readdir 的 longentry（权限/大小），时间降级为空（Android 有完整属性）。
-     * 类型字符无法识别（longentry 缺失/格式异常）时返回 null，由 [statEntry] 兜底。
+     * Parse the `longentry` (permissions/size) from `readdir`; if the time is missing, fallback to empty (Android has full attributes).
+     * Returns null when the type character cannot be recognized (longentry missing/format exception); [statEntry] provides the fallback.
      */
     private fun parseLongEntry(
         name: String,
         long: String,
     ): SftpEntry? {
-        // longentry 格式：perm links owner group size date… name（OpenSSH 实测）。
-        // size 取正数第 5 列：尾部列数随名字含空格/日期格式浮动（实测
-        // "带 空格 的 文件.txt" 会把倒数第 5 列错位到 Aug/12:28），头部固定。
-        // 拿不到有效数字退 0（展示性字段，不影响 isDirectory 判定）
+        // longentry format: perm links owner group size date… name (tested with OpenSSH).
+        // For `size`, take the 5th column from the front: the number of trailing columns varies with spaces in the name/date format
+        // (measured: "File.txt with spaces" shifts the fifth-to-last column onto Aug/12:28), so leading columns are the stable ones.
+        // If no valid number is obtained, return 0 (this is a display-only field and does not affect the `isDirectory` check).
         val parts = long.trim().split(Regex("\\s+"))
         val perm = parts.firstOrNull() ?: return null
         if (perm.isEmpty() || perm.first() !in "dl-") return null
@@ -205,7 +205,7 @@ private class SftpSessionLibssh2(
         )
     }
 
-    /** longentry 缺失时的类型兜底：stat 拿真实类型（目录/文件/链接），并带上大小/时间。 */
+    /** Type fallback when `longentry` is missing: `stat` uses the actual type (directory/file/link) and includes size and time. */
     private fun statEntry(
         dirPath: String,
         name: String,
@@ -233,7 +233,7 @@ private class SftpSessionLibssh2(
                     usleep(30_000u)
                     continue
                 }
-                // stat 失败：按普通文件处理（下载/进入时自然会再报错），不中断整个列表
+                // stat failure: Handle as a regular file (an error will naturally be reported again when downloading or navigating to it), without interrupting the entire list
                 return SftpEntry(
                     name = name,
                     isDirectory = false,
@@ -246,7 +246,7 @@ private class SftpSessionLibssh2(
         }
     }
 
-    /** 数字 mode → "drwxr-xr-x" 权限串（stat 兜底路径用，展示用途）。 */
+    /** Numeric mode → "drwxr-xr-x" permission string (used for the `stat` fallback path, for demonstration purposes). */
     private fun formatPerm(mode: ULong): String {
         val type = if (mode and LIBSSH2_SFTP_S_IFDIR.toULong() != 0uL) 'd' else '-'
         val chars = "rwxrwxrwx"
@@ -274,12 +274,12 @@ private class SftpSessionLibssh2(
     ) {
         val isDir =
             runCatching { list(path) }.getOrNull()?.let {
-                // list 成功 = 目录（文件 list 会抛错）；也可能返回空列表（空目录）
+                // list success = directory (the list function will raise an error); it may also return an empty list (empty directory)
                 true
             } ?: false
         val pathLen = path.encodeToByteArray().size.toUInt()
         if (isDir) {
-            // 递归删除子项（list 内部已跳过 . / ..）
+            // Recursively delete child items (the ., /, and .. characters within the list have already been skipped)
             list(path).forEach { child -> deleteRecursive(s, joinRemote(path, child.name)) }
             if (libssh2_sftp_rmdir_ex(s, path, pathLen) != 0) {
                 throw SshException("SFTP 删除目录失败: $path")
@@ -347,10 +347,10 @@ private class SftpSessionLibssh2(
             libssh2_sftp_open_ex(s, remotePath, remotePath.encodeToByteArray().size.toUInt(), flags, 0x1A4L, 0)
                 ?: throw SshException("SFTP 打开文件失败: $remotePath")
         try {
-            // 拉取分块逐块写：内存峰值 = 单块大小，与 download 对称
+            // Pull blocks one by one: peak memory usage = size of a single block, symmetrical with "download"
             var sent = 0L
             while (true) {
-                // 防御：声明了 totalSize 的源不得超发（同 JVM 实现）
+                // Defense: The source that declares `totalSize` must not exceed the limit (as in the JVM implementation).
                 if (totalSize > 0 && sent >= totalSize) break
                 val chunk = nextChunk() ?: break
                 chunk.usePinned { pinned ->
@@ -424,7 +424,7 @@ private class SftpSessionLibssh2(
         }
     }
 
-    /** 已打开文件句柄的大小（fstat）；失败/未知返回 0（进度 total 不可用）。 */
+    /** Size of the open file handle (fstat); returns 0 on failure or if unknown (progress total not available). */
     private fun fileSize(h: CPointer<LIBSSH2_SFTP_HANDLE>): Long {
         memScoped {
             val attrs = alloc<LIBSSH2_SFTP_ATTRIBUTES>()

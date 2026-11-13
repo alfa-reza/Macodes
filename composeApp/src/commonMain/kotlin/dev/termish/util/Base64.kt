@@ -1,6 +1,6 @@
 package dev.termish.util
 
-/** RFC 4648 标准 Base64 编码（无换行）。 */
+/** RFC 4648 standard Base64 encoding (no line breaks). */
 fun base64Encode(data: ByteArray): String {
     val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
     val sb = StringBuilder((data.size + 2) / 3 * 4)
@@ -18,7 +18,7 @@ fun base64Encode(data: ByteArray): String {
     return sb.toString()
 }
 
-/** RFC 4648 标准 Base64 解码（容忍空白与缺省填充；非法输入返回空）。 */
+/** Decode using the RFC 4648 standard Base64 encoding (tolerates whitespace and default filling; returns an empty string for invalid input). */
 fun base64Decode(s: String): ByteArray {
     val clean = s.filter { !it.isWhitespace() }
     val table = IntArray(128) { -1 }

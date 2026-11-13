@@ -8,7 +8,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 
-/** 会话凭据签名：任一连接参数变化即失效；敏感字段只保留哈希。 */
+/** Session credential signature: The session becomes invalid if any connection parameter changes; only hashes of sensitive fields are retained. */
 class CredentialSignatureTest {
     private fun host() =
         Host(

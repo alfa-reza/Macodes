@@ -1,8 +1,8 @@
 package dev.termish
 
 /**
- * 应用版本号（设置页「关于」展示）。
- * 与 composeApp/build.gradle.kts 的 versionName 保持同步，
- * 由 scripts/bump-version.sh 统一更新（勿手改）。
+ * App version number (displayed on the “About” page in settings).
+ * Keep it in sync with the `versionName` in `composeApp/build.gradle.kts`,
+ * Updated uniformly by scripts/bump-version.sh (do not modify manually).
  */
 const val APP_VERSION = "1.8.14"

@@ -1,70 +1,70 @@
 package dev.termish.ui
 
 /**
- * Git 可视化面板的数据模型与解析（纯函数，无 Compose 依赖，可单测）。
+ * Data Model and Parsing of the Git Visualization Panel (pure functions, no Compose dependencies, unit-testable).
  *
- * 数据源：通过终端通道执行 `git status --porcelain=v1 --branch` /
- * `git diff --no-color`，解析远端输出为结构化 UI 数据。
+ * Data source: Execute `git status --porcelain=v1 --branch` via the terminal channel /
+ * `git diff --no-color`, parse the remote output into structured UI data.
  *
- * git status 单文件条目（porcelain=v1 的 XY 行）。
+ * git status single-file entry (porcelain=v1 XY line).
  */
 
 data class GitEntry(
     val path: String,
-    /** 暂存区（index）状态码；' ' = 无改动。 */
+    /** Stage status code; ' ' = no changes. */
     val indexStatus: Char,
-    /** 工作区（worktree）状态码；' ' = 无改动。 */
+    /** Worktree status codes; ' ' = no changes. */
     val worktreeStatus: Char,
-    /** 未跟踪（??）。 */
+    /** Not tracked (??). */
     val untracked: Boolean = false,
-    /** 合并冲突（UU/AA/DD 等）。 */
+    /** Merge conflicts (UU/AA/DD, etc.). */
     val conflicted: Boolean = false,
-    /** 重命名/复制目标路径（R/C 时非空，porcelain 的 `old -> new`）。 */
+    /** Rename/copy target path (non-empty during R/C; porcelain’s `old -> new`). */
     val renameTarget: String? = null,
-    /** 未跟踪目录（porcelain 输出以 / 结尾，不递归展开）。 */
+    /** Untracked directories (porcelain output ends with / and is not expanded recursively). */
     val isDir: Boolean = false,
 ) {
-    /** 展示用路径：重命名显示新路径。 */
+    /** Display path: Rename to show the new path. */
     val displayPath: String get() = renameTarget ?: path
 
-    /** 暂存区是否有改动（A/M/D/R/C 等）。 */
+    /** Are there any changes in the stage area (A/M/D/R/C, etc.)? */
     val isStaged: Boolean get() = indexStatus != ' '
 
-    /** 是否可查看 diff（未跟踪目录除外）。 */
+    /** Is it possible to view the diff (excluding untracked directories)? */
     val diffable: Boolean get() = !(untracked && isDir)
 
-    /** 状态码文本（徽章显示）。 */
+    /** Status code text (shown as badges). */
     val statusCode: String get() = if (untracked) "??" else "${indexStatus}$worktreeStatus"
 }
 
-/** `git status --porcelain=v1 --branch` 解析结果。 */
+/** Result of parsing `git status --porcelain=v1 --branch`. */
 data class GitStatusResult(
-    /** 当前分支；detached HEAD / 非仓库时为 null。 */
+    /** Current branch; null for detached HEAD or when not in a repository. */
     val branch: String?,
-    /** 领先上游提交数（[ahead N]）。 */
+    /** Ahead of upstream by N commits ([ahead N]). */
     val ahead: Int,
-    /** 落后上游提交数（[behind N]）。 */
+    /** Number of commits behind the upstream ([behind N]). */
     val behind: Int,
     val entries: List<GitEntry>,
-    /** 原始输出中的错误行（fatal: / command not found 等），无则 null。 */
+    /** Errors in the original output (e.g., `fatal:`, `/ command not found`, etc.); if no errors exist, return `null`. */
     val error: String?,
 )
 
-/** diff 行类型。 */
+/** diff row type. */
 enum class GitDiffKind { HEADER, HUNK, CONTEXT, ADD, REMOVE, NO_NEWLINE }
 
-/** 一行解析后的 diff。 */
+/** A row showing the parsed diff. */
 data class GitDiffLine(
     val kind: GitDiffKind,
     val text: String,
 )
 
 /**
- * 解析 `git status --porcelain=v1 --branch` 输出。
+ * Parse the output of `git status --porcelain=v1 --branch`.
  *
- * 终端里执行 git 命令会有命令回显等杂讯，解析只认格式行：
- * - `## branch...upstream [ahead 1, behind 2]` 分支行
- * - `XY path` 条目行（porcelain 的 C 引号路径会做 unescape）
+ * When executing Git commands in the terminal, there is noise such as command echo; the parser should only parse format rows:
+ * - `## branch...upstream [ahead 1, behind 2]` branch row
+ * - `XY path` row (C-style quotes in porcelain paths will be unescaped)
  */
 fun parseGitStatus(text: String): GitStatusResult {
     var branch: String? = null
@@ -76,7 +76,7 @@ fun parseGitStatus(text: String): GitStatusResult {
     for (raw in text.lineSequence()) {
         val line = raw.trimEnd('\r')
         if (line.isEmpty()) continue
-        // 错误识别（git 输出到 stderr，已 2>&1 合并）
+        // Error detection (Git output to stderr, merged via `2>&1`)
         if (error == null &&
             (
                 line.startsWith("fatal:") ||
@@ -103,8 +103,8 @@ fun parseGitStatus(text: String): GitStatusResult {
             }
             continue
         }
-        // 条目行：`XY path`（X=index，Y=worktree；` M`=仅工作区修改，
-        // `??`=未跟踪，`!!`=忽略，`R  old -> new`=重命名；至少一列非空格）
+        // Row: `XY path` (X=index, Y=worktree; `M`=modify the worktree only,
+        // `??` = not tracked, `!!` = ignore, `R  old -> new` = rename; at least one column must not be blank)
         if (line.length >= 4 &&
             line[2] == ' ' &&
             (line[0] != ' ' || line[1] != ' ') &&
@@ -117,7 +117,7 @@ fun parseGitStatus(text: String): GitStatusResult {
             val untracked = x == '?' && y == '?'
             val conflicted = (x == 'U' || y == 'U' || (x == 'A' && y == 'A') || (x == 'D' && y == 'D'))
             var renameTarget: String? = null
-            // 重命名/复制：`R  old -> new`（引号路径时 `R  "old" -> "new"`）
+            // Rename/Copy: `R  old -> new` (for paths in quotes, `R  "old" -> "new"`)
             val arrow = pathPart.indexOf(" -> ")
             if ((x == 'R' || x == 'C') && arrow >= 0) {
                 renameTarget = unescapePorcelainPath(pathPart.substring(arrow + 4))
@@ -138,14 +138,14 @@ fun parseGitStatus(text: String): GitStatusResult {
             )
             continue
         }
-        // 其他行（命令回显等杂讯）忽略
+        // Ignore other rows (such as command echo and other noise).
     }
     return GitStatusResult(branch, ahead, behind, entries, error)
 }
 
 /**
- * 解析 `git diff --no-color` 输出（含 `--no-index` 的新文件 diff 与二进制提示）。
- * 非 diff 格式行（命令回显等）直接跳过。
+ * Parse the output of `git diff --no-color` (including `--no-index` diffs for new files and binary notices).
+ * Skip rows that are not in diff format (such as command output).
  */
 fun parseGitDiff(text: String): List<GitDiffLine> {
     val lines = ArrayList<GitDiffLine>()
@@ -174,19 +174,19 @@ fun parseGitDiff(text: String): List<GitDiffLine> {
                 line.startsWith("-") -> GitDiffKind.REMOVE
                 line.startsWith("\\ No newline") -> GitDiffKind.NO_NEWLINE
                 line.startsWith(" ") -> GitDiffKind.CONTEXT
-                else -> continue // 杂讯（命令回显等）跳过
+                else -> continue // Skip noise (such as command echo).
             }
         lines.add(GitDiffLine(kind, line))
     }
     return lines
 }
 
-/** shell 单引号转义（用于把 git 输出的路径安全拼进远端命令）。 */
+/** Escape single quotes in shell commands (to safely concatenate paths from Git output into remote commands). */
 fun shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
 
 /**
- * porcelain 输出的 C 引号路径 unescape：`"a\tb"` → `a<TAB>b`。
- * 只有含特殊字符的路径才被引号包裹；普通路径原样返回。
+ * Unescape C-style quotes in porcelain output path: `"a\tb"` → `a<TAB>b`.
+ * Only paths containing special characters are enclosed in quotes; regular paths are returned as-is.
  */
 fun unescapePorcelainPath(p: String): String {
     if (p.length < 2 || p.first() != '"' || p.last() != '"') return p
@@ -239,7 +239,7 @@ fun unescapePorcelainPath(p: String): String {
                 i += 2
             }
             in '0'..'7' -> {
-                // 八进制转义 \ooo（最多 3 位）
+                // Octal escape \ooo (up to 3 digits)
                 var v = n - '0'
                 var j = i + 2
                 var digits = 1

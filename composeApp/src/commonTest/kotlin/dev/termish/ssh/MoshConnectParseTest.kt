@@ -4,7 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/** mosh-server 引导输出的 MOSH CONNECT 解析。 */
+/** Parse of the "MOSH CONNECT" message in the mosh-server output. */
 class MoshConnectParseTest {
     @Test
     fun parsesStandardMoshConnectLine() {

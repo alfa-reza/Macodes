@@ -52,7 +52,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-// 基础 16 色值 → ANSI 索引的预计算映射（替代每帧线性 indexOf）
+// Pre-computed mapping of the 16 basic color values to the ANSI index (replaces the per-frame linear `indexOf` operation)
 private val BASIC_16_INDEX: Map<Int, Int> =
     TerminalPalette.BASIC_16.mapIndexed { i, v -> v to i }.toMap()
 
@@ -64,7 +64,7 @@ private fun cellColor(
     return if (idx != null) theme.ansi(idx) else Color(0xFF000000.toInt() or c)
 }
 
-/** 按背景亮度取黑/白前景，保证「远端只设底色、留默认前景」时叠加场景可读。 */
+/** Choose a black or white foreground based on the background brightness to ensure readability when the background color is set remotely and the default foreground is retained. */
 private fun contrastTextColor(bg: Color): Color {
     val l = bg.red * 0.299f + bg.green * 0.587f + bg.blue * 0.114f
     return if (l >= 0.5f) Color.Black else Color.White
@@ -74,14 +74,14 @@ private fun cellColors(
     cell: TerminalCell,
     theme: TerminalTheme,
 ): Pair<Color, Color> {
-    // xterm 惯例：BOLD + 基本 8 色 → 提亮到 8-15
+    // xterm convention: BOLD + base 8 colors → highlight to 8–15
     val fgIdx = if (cell.attrs and CellAttr.BOLD != 0 && cell.fg in 0..7) cell.fg + 8 else cell.fg
     val bg = if (cell.bg == DEFAULT_BG) theme.background() else cellColor(cell.bg, theme)
     val fg =
         when {
             cell.fg != DEFAULT_FG -> cellColor(fgIdx, theme)
-            // 远端只设了底色（代码块/高亮区），默认前景按底色亮度自动取黑/白，
-            // 避免浅色主题下深底+深字渲染成黑色块
+            // The remote server only sets the background color (for code blocks/highlighted areas); by default, the foreground color automatically adjusts to black or white based on the background’s brightness,
+            // Avoid rendering dark backgrounds and dark text as black blocks on light themes.
             cell.bg != DEFAULT_BG -> contrastTextColor(bg)
             else -> theme.foreground()
         }
@@ -91,8 +91,8 @@ private fun cellColors(
 private fun runFontWeight(attrs: Int): FontWeight? = if (attrs and CellAttr.BOLD != 0) FontWeight.Bold else null
 
 /**
- * 跨平台追加 Unicode 码点。使用项目专属名称，避免 JVM StringBuilder 的同名成员
- * 遮蔽扩展、造成 JVM 与 Kotlin/Native 解析到不同实现。
+ * Add Unicode code points across platforms. Use project-specific names to avoid conflicts with members of the same name in the JVM StringBuilder.
+ * shadowing the extension, causing the JVM and Kotlin/Native to resolve to different implementations.
  */
 private fun StringBuilder.appendUnicodeCodePoint(cp: Int) {
     if (cp <= 0xFFFF) {
@@ -105,11 +105,11 @@ private fun StringBuilder.appendUnicodeCodePoint(cp: Int) {
 }
 
 /**
- * 码点 → String。不能依赖 JVM 专有的 StringBuilder.appendCodePoint(cp)：
- * Kotlin/Native 的 StringBuilder 没有公开的 appendCodePoint 成员（stdlib 里仅有
- * internal 实现），会解析到本文件返回 Unit 的私有扩展 → Unit.toString()，
- * iOS 上每个宽字符都渲染成字面串 "kotlin.Unit"（中文乱码根因）；JVM 则因
- * java.lang.StringBuilder 成员遮蔽私有扩展而恰好正确——平台语义分叉，禁用。
+ * Code points → String. Do not depend on the JVM-specific `StringBuilder.appendCodePoint(cp)`:
+ * Kotlin/Native’s `StringBuilder` does not have a public `appendCodePoint` member (the stdlib only contains
+ * (internal implementation), it will parse to the private extension of the `Unit` returned by this file → `Unit.toString()`,
+ * On iOS, each wide character is rendered as the literal string "kotlin.Unit" (the root cause of Chinese garbled characters); on the JVM, however, due to
+ * The `java.lang.StringBuilder` member shadows the private extension and is exactly right — a platform-semantics fork; disabled.
  */
 private fun codePointToString(cp: Int): String =
     when {
@@ -122,7 +122,7 @@ private fun codePointToString(cp: Int): String =
         }
     }
 
-/** 一行内一个测量好的文本 run：x 为行内像素偏移，y 由绘制时行位置决定。 */
+/** One measured text item per row: x is the pixel offset within the row, and y is determined by the row position at the time of drawing. */
 private class CachedTextRun(
     val layout: androidx.compose.ui.text.TextLayoutResult,
     val x: Float,
@@ -132,10 +132,10 @@ private class LineText(
     val runs: List<CachedTextRun>,
 )
 
-/** 按 (行 identity, version) 缓存测量好的文本 run：行内容不变（identity 同、
- *  version 未 bump）时重绘/滚动平移只回放布局，跳过文本测量——全屏文本布局是
- *  每帧最昂贵的部分。只有可见行会被绘制，LRU 容量取可见屏数倍即可。
- *  整体失效由外层 remember(style, wideStyle, theme) 负责（字号/主题变化即重建）。 */
+/** Cache the measured text run by (row identity, version): the row content remains unchanged (same identity,
+ *  When the version has not been bumped, repainting/translating only replays the layout and skips text measurement—fullscreen text layout is
+ *  The most expensive part of each frame. Only visible rows are drawn, so the LRU capacity should be several times the number of visible screens.
+ *  The outer `remember(style, wideStyle, theme)` is responsible for overall invalidation (a change in font size or theme triggers a rebuild). */
 private class LineTextCache(
     private val capacity: Int = 256,
 ) {
@@ -144,13 +144,13 @@ private class LineTextCache(
         val text: LineText,
     )
 
-    // LinkedHashMap 保持插入序：get/put 时重插到末尾实现 LRU
-    // （Kotlin common 的 LinkedHashMap 没有 accessOrder/removeEldestEntry）
+    // LinkedHashMap preserves insertion order: re-inserts at the end during get/put operations for LRU implementation
+    // (The `LinkedHashMap` in Kotlin Common does not have `accessOrder` or `removeEldestEntry`.)
     private val map = LinkedHashMap<Any, Entry>()
 
     fun get(line: TerminalLine): LineText? {
         val e = map.remove(line.identity) ?: return null
-        map[line.identity] = e // 重插到末尾（标记最近使用）
+        map[line.identity] = e // Reinsert at the end (mark as recently used)
         return if (e.version == line.version) e.text else null
     }
 
@@ -164,7 +164,7 @@ private class LineTextCache(
             val it = map.keys.iterator()
             if (it.hasNext()) {
                 it.next()
-                it.remove() // 逐出最久未用
+                it.remove() // Remove the longest-unused items
             }
         }
     }
@@ -179,7 +179,7 @@ private fun currentStartAbs(
     return (buffer.totalLines() - buffer.rows - offset).coerceAtLeast(0)
 }
 
-/** OSC 8 链接可打开的协议白名单：只放开常规 Web/邮件，避免远端内容触发 file://、intent:// 等。 */
+/** OSC 8 whitelist of protocols that can be opened via links: Only allow standard Web and email to prevent remote content from triggering file://, intent://, etc. */
 private fun isSafeLinkScheme(url: String): Boolean {
     val scheme = url.substringBefore(':', "").lowercase()
     return scheme in setOf("http", "https", "mailto")
@@ -191,16 +191,16 @@ fun TerminalView(
     theme: TerminalTheme,
     fontSizeSp: Float,
     targetCols: Int = 0,
-    /** 键盘/工具栏覆盖画布底部的高度（px）：用于向上平移画布保证光标可见。 */
+    /** Height (px) of keyboard/toolbar overlap at the bottom of the canvas: Used to translate the canvas upward to ensure the cursor remains visible. */
     coveredBottomPx: Float = 0f,
-    /** 软键盘是否弹出：仅在键盘弹出时向上平移画布，避免工具栏常驻把顶部（如 herdr 的 switch 菜单）顶出屏幕。 */
+    /** Whether the soft keyboard is up: pan the canvas upward only while the keyboard is up, to avoid the always-on toolbar pushing the top (e.g. herdr's switch menu) off the screen. */
     keyboardVisible: Boolean = false,
-    /** 首次量到真实画布尺寸后回调（用于以真实行列建连，避免先以 80x24 起 PTY）。 */
+    /** Callback after measuring the actual canvas dimensions for the first time (used to establish connections based on actual rows and columns, avoiding starting the PTY at 80x24). */
     onReady: (cols: Int, rows: Int) -> Unit = { _, _ -> },
     /**
-     * 画布尺寸是否已稳定（布局链上游的常驻元素已量到）：false 时不 resize、
-     * 不上报 [onReady]——首帧中间尺寸（如工具栏未量到、bottom padding 未
-     * 生效）会以错误行数起 PTY / resize，TUI（herdr）跟着整体重排跳动。
+     * Is the canvas size stable (permanent elements upstream in the layout chain have been accounted for)? When false, do not resize,
+     * Do not report [onReady] — the first-frame intermediate size (e.g., toolbar not yet measured, bottom padding not yet
+     * will start the PTY / resize with a wrong row count, and TUI (herdr) jumps with the full re-layout.
      */
     sizeStable: Boolean = true,
     onCopy: (String) -> Unit,
@@ -209,13 +209,13 @@ fun TerminalView(
     val textMeasurer = rememberTextMeasurer()
 
     var scrollOffset by remember { mutableStateOf(0) }
-    // 滚动小数累加器（按行换算）
+    // Rolling Decimal Accumulator (Conversion by Row)
     var scrollAccum by remember { mutableFloatStateOf(0f) }
-    // 首次量到有效画布尺寸后置位（用真实行列建连）
+    // Set the flag after the first valid canvas measurement (connect with the real rows/cols)
     var readySent by remember { mutableStateOf(false) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
-    // 惯性滚轮动画作用域：rememberCoroutineScope 在部分平台上调度不保证立即执行，
-    // 这里用显式 Main 作用域 + 组合销毁时取消
+    // Scope of the inertial scroll wheel animation: `rememberCoroutineScope` — on some platforms, scheduling does not guarantee immediate execution,
+    // use an explicit `Main` scope and cancel it when the composition is destroyed
     val inertiaScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate) }
     DisposableEffect(Unit) {
         onDispose { inertiaScope.cancel() }
@@ -223,9 +223,9 @@ fun TerminalView(
 
     val fontFamily = monospaceFontFamily()
     val cjkFont = cjkFontFamily()
-    // 目标列数模式：字形宽度与字号成线性关系，用 12sp 参考测量反算所需字号
-    // 注意：不能用 fontFamily 做键——monospaceFontFamily() 每次组合都返回新实例，
-    // 用它做键会导致这里和下面的 sample 每帧重算。
+    // Target column width mode: Glyph width is linearly proportional to font size; use 12sp to measure the required font size.
+    // `monospaceFontFamily()` returns a new instance on every composition
+    // Using this as a key will cause the sample here and below to be recalculated for each frame.
     val effectiveFontSizeSp =
         remember(canvasSize.width, targetCols, fontSizeSp) {
             if (targetCols > 0 && canvasSize.width > 0) {
@@ -233,8 +233,8 @@ fun TerminalView(
                 val refCellW = ref.size.width.toFloat() / 16f
                 val desiredCellW = canvasSize.width.toFloat() / targetCols
                 var font = (12f * desiredCellW / refCellW).coerceIn(4f, 32f)
-                // 文字测量按整数像素取整，直接反算的 cellW 可能偏大导致实际列数比目标少 1
-                // （屏幕右侧留一条空白）。逐次实测校正：列数不足就按比例调小字号并留余量。
+                // Text measurements are rounded to whole pixels; directly calculated `cellW` values may be slightly too large, resulting in the actual number of columns being one less than the target.
+                // (Leave a blank space on the right side of the screen). Test and adjust step by step: if there are not enough columns, use a ratio to reduce the font size and leave some margin.
                 var guard = 0
                 while (guard < 5) {
                     val sample =
@@ -256,22 +256,22 @@ fun TerminalView(
 
     val fontSize = effectiveFontSizeSp.sp
     val style = TextStyle(fontFamily = fontFamily, fontSize = fontSize)
-    // JetBrains Mono 不含 CJK 字形：宽字符（中文/日韩/全角/emoji）改用 cjkFontFamily()
-    // （iOS 显式加载 PingFang SC，其他平台走系统回退），避免缺字显示成豆腐块/乱码。
-    // 格宽仍按 JetBrains Mono 度量，宽字符天然占 2 格。
+    // JetBrains Mono does not include CJK glyphs: Use cjkFontFamily() for wide characters (Chinese/Japanese/Korean/full-width/emoji).
+    // (Explicitly load PingFang SC on iOS; use the system fallback on other platforms) to prevent missing characters from showing as blank blocks or garbled text.
+    // Character width is still measured using the JetBrains Mono standard, with wide characters naturally occupying 2 spaces.
     val wideStyle = style.copy(fontFamily = cjkFont)
-    // 用较长采样串测单格宽度：避免小字号下单字符宽度像素取整带来的累积误差
+    // Use a longer sample string to test single-cell width: Avoid cumulative errors caused by rounding the pixel width of a single character at small font sizes.
     val sample = remember(effectiveFontSizeSp) { textMeasurer.measure("0".repeat(16), style) }
     val cellW = (sample.size.width.toFloat() / 16f).coerceAtLeast(1f)
     val cellH = (sample.size.height.toFloat() * 1.2f).coerceAtLeast(1f)
     val textTop = (cellH - sample.size.height) / 2f
-    // pointerInput(Unit) 闭包只在首次组合创建一次，直接捕获 cellW/cellH 会
-    // 定格旧值：改字号/旋转/resize 后点击→格子的换算全部错位。
-    // rememberUpdatedState 返回的 State 实例稳定，旧闭包读取到的仍是实时值。
+    // The closure is created only once during the initial composition; directly capturing cellW/cellH will
+    // Lock old values: After changing the font size, rotating, or resizing, tap → causes all grid conversions to become misaligned.
+    // The `State` instance returned by `rememberUpdatedState` is stable; the old closure still reads real-time values.
     val currentCellW by rememberUpdatedState(cellW)
     val currentCellH by rememberUpdatedState(cellH)
 
-    // 按 (ARGB, bold, 窄/宽字体) 缓存 TextStyle，避免每帧每个 run 都 style.copy
+    // Cache TextStyle based on (ARGB, bold, narrow/wide font) to avoid calling `style.copy` for every run in every frame.
     val textStyleCache = remember(style, wideStyle) { HashMap<Long, TextStyle>() }
 
     fun cachedTextStyle(
@@ -292,13 +292,13 @@ fun TerminalView(
     val latestCanvasSize by rememberUpdatedState(canvasSize)
     val uriHandler = LocalUriHandler.current
 
-    // 行级文本渲染缓存：键 (identity, version) 已随 COW/增量拷贝保证「内容变则
-    // version 变」；style/theme 变化时 remember 重建整体失效。命中时重绘只是
-    // 回放 TextLayoutResult，滚动时整屏平移几乎全部命中。
+    // Row-level text rendering cache: The key (identity, version) is guaranteed to change when the content changes via COW/incremental copying.
+    // when the style/theme changes, the remember rebuild invalidates everything wholesale; on a hit, redrawing just
+    // Replay TextLayoutResult; when scrolling, full-screen translating hits almost all elements.
     val lineTextCache = remember(style, wideStyle, theme) { LineTextCache() }
 
-    // 测量一行的全部文本 run：窄字符按 (fg, attrs) 连续成 run，宽字符单独测量。
-    // 与下方背景/下划线 pass 的遍历规则保持一致。
+    // Measure the entire text of a row: for narrow characters, count them consecutively as (fg, attrs); for wide characters, measure them individually.
+    // Be consistent with the traversal rules for "pass" with a background or underline, as described below.
     fun measureLineText(line: TerminalLine): LineText {
         val runs = ArrayList<CachedTextRun>()
         var i = 0
@@ -328,7 +328,7 @@ fun TerminalView(
             if (sb.isNotEmpty()) {
                 runs.add(CachedTextRun(textMeasurer.measure(sb.toString(), runStyle), i * cellW))
             }
-            // 宽字符单独测量
+            // Wide characters are measured separately.
             if (j < buffer.cols && !line.cells[j].isWideTail && line.cells[j].width == 2) {
                 val wide = line.cells[j]
                 runs.add(
@@ -351,8 +351,8 @@ fun TerminalView(
         return LineText(runs)
     }
 
-    // 触摸 → 终端鼠标事件（X10/SGR）：herdr/vim/htop 等 TUI 开启鼠标上报后，
-    // 触摸映射为左键按下/拖拽/释放，滚动手势映射为滚轮。坐标为 1-based 格坐标。
+    // Touch → Terminal mouse events (X10/SGR): After enabling mouse reporting in TUI applications such as herdr, vim, and htop,
+    // Touch gestures are mapped to left-click, drag, and release; scroll gestures are mapped to the scroll wheel. Coordinates are 1-based grid coordinates.
     fun sendMouseEvent(
         btn: Int,
         col: Int,
@@ -362,12 +362,12 @@ fun TerminalView(
         val c = (col + 1).coerceIn(1, buffer.cols)
         val r = (row + 1).coerceIn(1, buffer.rows)
         if (buffer.mouseUrxvt) {
-            // urxvt 1015：CSI b;x;y M/m，无私有前缀
+            // urxvt 1015: CSI b;x;y M/m, no proprietary prefix
             controller.sendBytes("\u001b[$btn;$c;$r${if (release) "m" else "M"}".encodeToByteArray())
         } else if (buffer.mouseSgr) {
             controller.sendText("\u001b[<$btn;$c;$r${if (release) "m" else "M"}")
         } else {
-            // X10：按下发按钮号，释放发 3；坐标 32 偏移字节，上限 223
+            // X10: press sends the button number, release sends 3; coordinates are bytes offset by 32, max 223
             if (c > 223 || r > 223) return
             val b = if (release) 3 else btn
             controller.sendBytes(
@@ -387,12 +387,12 @@ fun TerminalView(
         ((pos.x / currentCellW).toInt().coerceIn(0, buffer.cols - 1)) to
             ((pos.y / currentCellH).toInt().coerceIn(0, buffer.rows - 1))
 
-    // 内容不足一屏时的填充空行：共享同一实例（只读），保证行缓存键稳定，
-    // 避免每帧新建实例产生的缓存垃圾
+    // Fill with blank rows when content does not fill a full screen: Share the same instance (read-only) to ensure the stability of the row cache key,
+    // Avoid cache garbage generated by creating new instances every frame
     val emptyLine = remember(buffer.cols) { TerminalLine(buffer.cols) }
 
-    // 尺寸或字号变化时重新计算行列并同步 PTY；sizeStable=false（上游布局
-    // 未定，画布尺寸还是中间值）时全部跳过——稳定后 effect 重跑一次到位
+    // Recalculate rows and columns and sync PTY when dimensions or font sizes change; sizeStable=false (upstream layout
+    // undetermined; the canvas size is still intermediate) — skip everything; re-run the effect once when it stabilizes
     LaunchedEffect(canvasSize, effectiveFontSizeSp, sizeStable) {
         if (!sizeStable || canvasSize.width <= 0 || canvasSize.height <= 0) return@LaunchedEffect
         val cols = (canvasSize.width / cellW).toInt().coerceAtLeast(1)
@@ -406,10 +406,10 @@ fun TerminalView(
 
     Canvas(
         modifier
-            // 软键盘弹出且光标被键盘区域遮住时向上平移，保证光标可见（不改变 PTY
-            // 尺寸，避免全屏程序随键盘弹收反复重排）。工具栏/导航条常驻不平移；
-            // 用户回看滚动时不平移。平移计算放在 graphicsLayer 块内：frame（输出）
-            // 与 scrollOffset 的变化只触发 layer 更新，不再重组整个 TerminalView。
+            // When the on-screen keyboard pops up and the cursor is obscured by the keyboard region, translate the cursor upward to ensure it remains visible (without changing the PTY).
+            // Size: Avoid repeated reflow caused by fullscreen programs expanding and contracting with keyboard input. Toolbars and navigation bars should remain fixed and not translate;
+            // Do not translate while the user is scrolling the scrollback. Put the translation math inside the `graphicsLayer` block: `frame` (output)
+            // Changes to `scrollOffset` only trigger a layer update; the entire `TerminalView` is no longer subject to reassembly.
             .graphicsLayer {
                 @Suppress("UNUSED_VARIABLE")
                 val redraw = controller.frame
@@ -430,37 +430,37 @@ fun TerminalView(
             }.onSizeChanged { size ->
                 canvasSize = size
             }
-            // 触摸 → 鼠标事件：TUI 开启上报（1000/1002/1003）时接管手势，
-            // 否则不消费事件，保持聚焦键盘/选择/滚动回看的默认行为。
-            // 手势语义（鼠标模式下唯一事件源，scrollable 同步让位）：
-            //   - 轻点 → 左键按下/释放（释放用按下格，避免手指抖动被 herdr 的 1 格拖拽阈值判成拖拽）
-            //   - 单指纵向拖拽 → 滚轮（手指下滑=回看=滚轮上 64，上滑=向下=65），落点跟随手指
-            //   - 单指横向拖拽 / 双指拖拽 → 鼠标拖拽 motion（1002/1003，选字、拖分割线、pane 内拖拽）
+            // Touch → Mouse events: When TUI reporting is enabled (1000/1002/1003), it takes over gesture handling,
+            // Otherwise, do not consume the event; maintain the default behavior of keeping focus on keyboard input, selection, or scrollback.
+            // Gesture semantics (single event source in mouse mode; scrollable elements sync their yieldings):
+            //   - Tap → left button down/up (release is sent at the pressed cell, so finger jitter is not judged a drag by herdr's 1-cell drag threshold)
+            //   - Single-finger vertical drag → scroll wheel (swipe down = scroll back = wheel up 64, swipe up = down = 65); the drop point follows the finger
+            //   - Single-finger horizontal drag / Two-finger drag → Mouse drag motion (1002/1003, selecting text, dragging dividers, dragging within a pane)
             .pointerInput(Unit) {
-                // 纵向滚轮手势的惯性：手指抬起后按速度持续发衰减滚轮，直到停下
+                // Inertia of vertical scroll wheel gestures: After lifting the finger, the scroll wheel continues to scroll with decreasing speed until it stops.
                 var inertiaJob: Job? = null
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    // 手指落下即停惯性。必须在 awaitFirstDown 之后：awaitEachGesture
-                    // 在上个手势块返回后立即重入本块（循环里先调 block 再等 all-up），
-                    // 若先 cancel，刚启动的惯性会在同一帧被掐死（拖多少是多少）。
+                    // Inertia stops as soon as the finger lands. Must be after `awaitFirstDown`: `awaitEachGesture`
+                    // Re-enter this block immediately after returning from the previous gesture block (call the block first within the loop, then wait for all-up),
+                    // If you cancel first, the momentum from the initial launch will be cut off in the same frame (whatever the delay was).
                     inertiaJob?.cancel()
                     if (buffer.mouseTracking <= 0) return@awaitEachGesture
                     down.consume()
                     val downId = down.id
                     val downCell = pointerCell(down.position)
                     var (col, row) = downCell
-                    // 手势方向（null=尚未判定）：按整体位移主导方向决定语义并锁定，
-                    // 避免真实手指的横向抖动把纵向滚动误判成横向拖拽（herdr 会当
-                    // 成选区并复制）。纵向主导 → 只发滚轮；横向主导 → 才发 Down+motion。
+                    // Gesture direction (null = not yet determined): Determine the semantic meaning based on the dominant direction of the overall displacement and lock it in,
+                    // Prevent horizontal finger jitter from causing vertical scrolling to be mistakenly interpreted as horizontal drag (herdr will treat
+                    // (Select and copy). Vertical scrolling → only scroll with the mouse wheel; horizontal scrolling → only scroll with Down+motion.
                     var vertical: Boolean? = null
                     var totalDx = 0f
                     var totalDy = 0f
-                    // 延迟到手势意图明确后再发 Down：
-                    //   - 轻点 → 按下+抬起同格（点击）
-                    //   - 单指纵向拖拽 → 只发滚轮（不按下/抬起）：herdr 对"按下后在其他格抬起"
-                    //     会判成拖拽选区并复制 → OSC 52 → app 反复弹「远端已写入剪贴板」
-                    //   - 横向/多指拖拽 → 补发 Down + drag-motion + Up
+                    // Defer sending Down until the gesture intent is clear:
+                    //   - Light tap → Press and release within the same cell (tap)
+                    //   - Single-finger vertical drag → send only the scroll wheel (no press/release): herdr treats “press, then release on a different cell”
+                    //     It interprets this as dragging to select and copy → OSC 52 → app repeatedly displays the message “Content has been written to the clipboard on the remote device.”
+                    //   - Horizontal/multi-finger drag → additionally send Down + drag-motion + Up
                     var downSent = false
                     var sentMotion = false
                     var sentWheel = false
@@ -475,31 +475,31 @@ fun TerminalView(
                     var prevX = down.position.x
                     var prevY = down.position.y
                     var lastPos = down.position
-                    // 最近事件时间/位置窗口，用于估算手指抬起时的速度
+                    // Recent event time/location window, used to estimate the velocity when the finger is lifted
                     val recent = ArrayDeque<Pair<Long, Float>>()
                     var movedCell = false
                     var multiTouch = false
                     while (true) {
                         val event = awaitPointerEvent()
-                        // 第二根手指参与 → 切换为鼠标拖拽语义
+                        // Use a second finger → Toggle to mouse drag semantics
                         if (event.changes.count { it.pressed } > 1) multiTouch = true
                         val change = event.changes.firstOrNull { it.id == downId } ?: continue
-                        // 以 pressed 状态判断结束而非 changedToUp()：极快的点击可能被 Compose
-                        // 合并为单帧（down+up 同帧时 previousPressed=false，changedToUp 永不成立），
-                        // 否则释放事件丢失、手势循环卡死，后续点击全被吞。
+                        // Determine when the action is complete based on the `pressed` state rather than `changedToUp()`: extremely fast taps may be interpreted by Compose
+                        // Merge into a single frame (when down and up are in the same frame, previousPressed=false; changedToUp never holds true),
+                        // Otherwise, events are lost, the gesture loop freezes, and all subsequent taps are ignored.
                         if (!change.pressed) {
                             if (downSent) {
                                 val upPos = if (movedCell && sentMotion) change.position else down.position
                                 val (uc, ur) = pointerCell(upPos)
                                 sendMouseEvent(0, uc, ur, release = true)
                             } else if (!sentWheel) {
-                                // 纯轻点（无位移、无滚轮）：补发同格按下+抬起，保证点击语义
+                                // Pure light tap (no displacement, no scroll wheel): additionally send down+up at the same cell to preserve tap semantics
                                 val (uc, ur) = pointerCell(down.position)
                                 sendMouseEvent(0, uc, ur, release = false)
                                 sendMouseEvent(0, uc, ur, release = true)
                             } else {
-                                // 纵向滚轮手势：按手指抬起速度补惯性滚轮（衰减），
-                                // 方向与滑动一致，落点固定在手最后位置（钳到第 1 行起）
+                                // Vertical scroll gesture: Use the speed at which the finger is lifted to simulate inertial scrolling (decay),
+                                // The direction should match the swipe direction, and the landing point should be fixed at the end of the row (starting from the first row).
                                 val velocityY =
                                     if (recent.size >= 2) {
                                         val newest = recent.last()
@@ -544,16 +544,16 @@ fun TerminalView(
                         prevY = change.position.y
                         lastPos = change.position
                         recent.addLast(change.uptimeMillis to change.position.y)
-                        // 只保留最近 ~150ms 的事件：长按后拖动时，长按期的静止事件
-                        // 会稀释速度估算（长按 500ms + 快速拖动 → 平均速度接近 0），
-                        // 惯性就永远不触发。按时间裁剪后速度反映真实拖动速度。
+                        // Retain only events from the last ~150 ms: static events during the long press period when dragging after a long press
+                        // This will skew the speed estimate (long press for 500 ms + quick drag → average speed approaches 0),
+                        // Inertia is never triggered. After time-based clipping, the speed reflects the actual drag speed.
                         val nowMs = change.uptimeMillis
                         while (recent.isNotEmpty() && nowMs - recent.first().first > 150L) {
                             recent.removeFirst()
                         }
                         totalDx += dx
                         totalDy += dy
-                        // 位移超过一格后判定方向并锁定（横向抖动不改变纵向手势）
+                        // Determine direction and lock after moving more than one space (horizontal jitter does not change vertical gestures).
                         if (vertical == null &&
                             !multiTouch &&
                             (kotlin.math.abs(totalDx) >= currentCellW || kotlin.math.abs(totalDy) >= currentCellH)
@@ -565,7 +565,7 @@ fun TerminalView(
                             col = nc
                             row = nr
                             movedCell = true
-                            // 横向主导/多指 → 鼠标拖拽（分割线、选区）；纵向主导 → 已换算滚轮
+                            // Horizontal-dominant/multi-finger → Mouse drag (dividing lines, selections); Vertical-dominant → Converted to mouse wheel
                             val wantMotion = buffer.mouseTracking >= 1002 && (multiTouch || vertical == false)
                             if (wantMotion) {
                                 sendDownIfNeeded()
@@ -573,7 +573,7 @@ fun TerminalView(
                                 sentMotion = true
                             }
                         }
-                        // 单指纵向位移 → 滚轮（每 cellH 一档），落点跟随手指当前位置
+                        // Single-finger vertical scroll → scroll wheel (one step per `cellH`), with the scroll position following the finger’s current location
                         if (!multiTouch) {
                             scrollAccumY += dy
                             if (vertical == true) {
@@ -581,10 +581,10 @@ fun TerminalView(
                                 if (notches != 0) {
                                     val btn = if (notches > 0) 64 else 65
                                     val (wc, wr) = pointerCell(change.position)
-                                    // 快速上滑到顶部时，最后一批滚轮会落在第 0 行——桌面布局下那是
-                                    // herdr 的 tab 栏，每个滚轮都会切一次 tab（表现为松手后疯狂切 tab）。
-                                    // 滚轮钳制到第 1 行起：pane 区完全可滚，chrome 永不接收滚轮；
-                                    // 点击切 tab 走 Down/Up 路径，不受影响。
+                                    // When quickly swiping up to the top, the last batch of scroll wheel events lands on row 0 — in desktop layout that is
+                                    // In herdr’s tab bar, each scroll wheel click triggers a tab switch (resulting in rapid-fire tab switching after releasing the wheel).
+                                    // Scroll wheel control starting from row 1: the pane area is fully scrollable; Chrome never accepts the scroll wheel;
+                                    // Tapping the tab key to navigate the Down/Up path remains unaffected.
                                     val wheelRow = maxOf(wr, 1)
                                     repeat(kotlin.math.abs(notches)) {
                                         sendMouseEvent(btn, wc, wheelRow, release = false)
@@ -599,7 +599,7 @@ fun TerminalView(
             }.pointerInput(Unit) {
                 detectTapGestures(
                     onTap = tap@{ pos ->
-                        // TUI 鼠标模式：点击事件由上面的鼠标 handler 全权上报，本地不拦截
+                        // TUI Mouse Mode: Tap events are reported entirely by the mouse handler mentioned above; they are not intercepted locally.
                         if (buffer.mouseTracking > 0) return@tap
                         val startAbsNow = currentStartAbs(buffer, scrollOffset)
                         val col = (pos.x / currentCellW).toInt().coerceIn(0, buffer.cols - 1)
@@ -613,16 +613,16 @@ fun TerminalView(
                                 opened = true
                             }
                         }
-                        // 点空白处收起选区
+                        // Click a blank space to collapse the selection
                         if (!opened && controller.selection.isActive) {
                             controller.selection.clear()
                         }
                     },
                     onDoubleTap = tap@{ pos ->
-                        // TUI 鼠标模式（herdr/vim 等）：选区由远端自己管理，
-                        // 本地双击选词会与远端选区冲突，且长按/慢滑误触会整行复制
+                        // TUI mouse mode (herdr/vim, etc.): The selection is managed by the remote end,
+                        // Double-clicking to select a word locally causes conflict with the selection on the remote server, and accidental long presses or slow swipes may copy the entire row.
                         if (buffer.mouseTracking > 0) return@tap
-                        // 双击选词并复制
+                        // Double-click to select a word and copy it
                         val startAbsNow = currentStartAbs(buffer, scrollOffset)
                         val col = (pos.x / currentCellW).toInt().coerceIn(0, buffer.cols - 1)
                         val row = (pos.y / currentCellH).toInt().coerceIn(0, buffer.rows - 1)
@@ -649,7 +649,7 @@ fun TerminalView(
                         }
                     },
                     onLongPress = longPress@{ pos ->
-                        // 同上：鼠标模式下本地长按选词禁用（用户长按后滑动会误触整行复制）
+                        // Same as above: Disable long-press word selection in local mouse mode (swiping after a long press may accidentally copy the entire row).
                         if (buffer.mouseTracking > 0) return@longPress
                         val startAbsNow = currentStartAbs(buffer, scrollOffset)
                         val col = (pos.x / currentCellW).toInt().coerceIn(0, buffer.cols - 1)
@@ -664,17 +664,17 @@ fun TerminalView(
                     },
                 )
             }
-            // 滚动回看：scrollable 自带 fling 惯性衰减；
-            // delta 为手指拖动方向（下滑 delta>0 → 内容跟手下移 → 看历史 → scrollOffset 增大）
+            // Scrollback: scrollable comes with fling inertia damping;
+            // delta represents the direction of finger swipe (downward swipe with delta > 0 → content moves down with the finger → view history → scrollOffset increases)
             .scrollable(
                 orientation = Orientation.Vertical,
                 state =
                     rememberScrollableState { delta ->
-                        // TUI 鼠标模式：手势由上面的鼠标 handler 全权处理（避免拖拽既发
-                        // drag-motion 又发滚轮的混合序列），本地滚动只在非鼠标模式生效
+                        // TUI Mouse Mode: Gestures are handled entirely by the mouse handler above (to prevent dragging from triggering
+                        // (drag-motion triggers another blend of wheel events); local scrolling only works in non-mouse mode
                         if (buffer.mouseTracking > 0) return@rememberScrollableState delta
-                        // DECSET 1007 alternate scroll：备用屏里没有回看可滚，
-                        // 滚动手势转成方向键交给远端全屏程序（less/vim 等）
+                        // DECSET 1007 alternate scroll: there is no scrollback to scroll in the alternate screen,
+                        // Convert scroll gestures to arrow keys for use in remote fullscreen applications (such as Less or Vim).
                         if (buffer.altScreen && buffer.alternateScroll) {
                             scrollAccum += delta
                             val rows = (scrollAccum / cellH).toInt()
@@ -696,9 +696,9 @@ fun TerminalView(
                         delta
                     },
             )
-            // 滚动条拖动：仅右边缘命中时消费事件，其余交给 scrollable。
-            // 鼠标模式下让位（TUI 的 UI 元素可能在右边缘，如 herdr 的 tab 按钮）；
-            // 默认 requireUnconsumed=true：上游鼠标处理已消费的事件不再触发。
+            // Scrollbar dragging: Only consume events when the right edge is hit; leave the rest to `scrollable`.
+            // Yield in mouse mode (TUI UI elements may be positioned at the right edge, such as the tab button in herdr);
+            // Default `requireUnconsumed=true`: Upstream mouse handling will no longer be triggered for events that have already been consumed.
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
@@ -721,17 +721,17 @@ fun TerminalView(
                 }
             },
     ) {
-        // 观察重绘序号触发 redraw（否则 Compose 会因 draw 内容未变而跳过重绘）
+        // Monitor the redraw counter to trigger a redraw (otherwise, Compose will skip the redraw because the content to be drawn has not changed).
         @Suppress("UNUSED_VARIABLE")
         val redraw = controller.frame
 
-        // 每次绘制都基于最新 buffer/滚动位置计算可视区
+        // Each drawing draws the visible area based on the latest buffer/scroll position.
         val scrollback = buffer.scrollbackSize()
         val offset = scrollOffset.coerceIn(0, scrollback)
         val totalLines = buffer.totalLines()
         val startAbs = (totalLines - buffer.rows - offset).coerceAtLeast(0)
 
-        // 背景（alpha 恒为 1，仅用于消费 redraw 以建立重绘观察）
+        // Background (alpha is always 1; used solely to trigger a redraw to establish redraw observation)
         drawRect(theme.background().copy(alpha = if (redraw >= 0L) 1f else 1f))
 
         val lines = ArrayList<TerminalLine>(buffer.rows)
@@ -740,8 +740,8 @@ fun TerminalView(
             lines.add(if (abs < totalLines) buffer.absLine(abs) else emptyLine)
         }
 
-        // 键盘弹起/字号变化时，canvas 尺寸与 buffer 行列数存在一帧的瞬态不一致，
-        // 越界绘制文本会导致 drawText 内部约束为负而崩溃，这里统一跳过越界文本。
+        // When the keyboard pops up or the font size changes, there is a transient one-frame mismatch between the canvas dimensions and the number of rows and columns in the buffer,
+        // Drawing text out of bounds causes `drawText` to crash due to negative internal constraints; here, text that is out of bounds is uniformly skipped.
         fun drawTextInBounds(
             text: String,
             topLeft: Offset,
@@ -751,7 +751,7 @@ fun TerminalView(
             drawText(textMeasurer = textMeasurer, text = text, topLeft = topLeft, style = textStyle)
         }
 
-        // 缓存布局的回放版本：跳过测量，直接画 TextLayoutResult
+        // Cached layout replay version: Skip measurement and directly render TextLayoutResult
         fun drawLayoutInBounds(
             run: CachedTextRun,
             topLeft: Offset,
@@ -760,7 +760,7 @@ fun TerminalView(
             drawText(textLayoutResult = run.layout, topLeft = topLeft)
         }
 
-        // 背景色 run
+        // Background color run
         for (r in lines.indices) {
             val line = lines[r]
             val y = r * cellH
@@ -782,8 +782,8 @@ fun TerminalView(
             }
         }
 
-        // 文本 run：按行 (identity, version) 缓存测量结果——未变行只回放布局，
-        // 滚动时整屏内容平移几乎全部命中缓存，不再每帧全屏文本重排
+        // Text run: Cache measurement results by row (identity, version)—for unchanged rows, only replay the layout,
+        // When scrolling, the entire screen’s content is translated and almost entirely cached, eliminating the need to reflow the fullscreen text every frame.
         for (r in lines.indices) {
             val line = lines[r]
             val y = r * cellH
@@ -795,7 +795,7 @@ fun TerminalView(
             }
         }
 
-        // 下划线
+        // Underscore
         for (r in lines.indices) {
             val line = lines[r]
             val y = r * cellH
@@ -823,7 +823,7 @@ fun TerminalView(
             }
         }
 
-        // OSC 8 超链接下划线（与 SGR 下划线分开画，避免依赖属性位）
+        // OSC 8: Underline hyperlinks (draw the underline separately from the SGR underline to avoid dependency on attribute positions)
         for (r in lines.indices) {
             val line = lines[r]
             val y = r * cellH
@@ -846,7 +846,7 @@ fun TerminalView(
             }
         }
 
-        // 选择高亮
+        // Selection of highlight
         if (controller.selection.isActive) {
             val sel = controller.selection
             val selTop = minOf(sel.startRow, sel.endRow)
@@ -877,11 +877,11 @@ fun TerminalView(
             }
         }
 
-        // 光标
+        // cursor
         val cursorAbs = buffer.absCursorRow()
         val cursorScreenRow = cursorAbs - startAbs
-        // 协议显隐（DECSET 25）与渲染闪烁相位叠加：
-        // 稳态样式（2/4/6）常亮，闪烁样式按相位交替
+        // Protocol visibility (DECSET 25) and rendering flickering due to phase overlap:
+        // Steady-state styles (2/4/6) remain lit; flashing styles alternate according to phase.
         val steadyCursor = buffer.cursorStyle == 2 || buffer.cursorStyle == 4 || buffer.cursorStyle == 6
         if (buffer.cursorVisible &&
             cursorScreenRow in 0 until buffer.rows &&
@@ -896,7 +896,7 @@ fun TerminalView(
             val cursorColPx = buffer.cursorCol * cellW
             val cursorRowPx = cursorScreenRow * cellH
             when (buffer.cursorStyle) {
-                // DECSCUSR：下划线 / 竖线光标
+                // DECSCUSR: Underscore / Vertical Cursor
                 3, 4 ->
                     drawRect(
                         color = cursorColor,
@@ -915,7 +915,7 @@ fun TerminalView(
                         topLeft = Offset(cursorColPx, cursorRowPx),
                         size = Size(cellW, cellH),
                     )
-                    // 块状光标下的字符反色显示（下划线/竖线光标不遮挡字符）
+                    // Characters under a block cursor are shown in reverse color (underline/vertical bar cursors do not obscure characters)
                     if (cursorAbs in 0 until totalLines) {
                         val line = buffer.absLine(cursorAbs)
                         if (buffer.cursorCol < buffer.cols) {
@@ -935,7 +935,7 @@ fun TerminalView(
             }
         }
 
-        // 滚动条（有历史时显示在右侧，可拖动）
+        // Scrollbar (shows on the right when there is history; draggable)
         if (scrollback > 0) {
             val barW = 6f
             val barX = size.width - barW - 4f

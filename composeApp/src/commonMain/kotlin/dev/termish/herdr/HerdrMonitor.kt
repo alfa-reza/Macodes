@@ -11,66 +11,66 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * herdr agent 监控器（V1：轮询 `herdr api snapshot`）。
+ * herdr agent monitor (V1: Polls `herdr api snapshot`).
  *
- * 挂在主机级（每主机一个）：通过已认证 SSH 连接的 [runCommand] 执行
- * `herdr api snapshot`，快照经 [HerdrAgentStateMachine] 产生状态迁移事件，
- * 回调给 UI（徽章/面板）；blocked 经连续两轮确认后发 AGENT_TASK 通知
- * （手机 approve 的入口）。
+ * Host-level (one per host): Execute via [runCommand] using an authenticated SSH connection
+ * `herdr api snapshot`: The snapshot generates migration events via [HerdrAgentStateMachine],
+ * Callback to the UI (badge/panel); send an AGENT_TASK notification after “blocked” status is confirmed in two consecutive rounds.
+ * (Phone app approval entry point).
  *
- * 纪律：
- * - 轮询间隔带 ±20% 抖动防惊群；调用方负责只在前台且主机有活跃会话时
- *   start()（电池），退后台/会话关闭时 stop()
- * - 失败退避 3s→15s；连续 3 次失败暂停 60s（herdr 未安装/服务器未启动时
- *   不空转轰炸）
- * - blocked 通知防抖：进入 blocked 后需连续两轮确认才发，瞬时 blocked
- *   （agent 自问自答）不误报；Unblocked/会话消失即取消
+ * Guidelines:
+ * - The polling interval includes ±20% jitter to prevent swarm effects; the caller is responsible for ensuring that the request is made only from the foreground and only when there is an active session on the host.
+ *   start() (battery), stop() when the app goes to the background or the session closes
+ * - Backoff interval for failures: 3s → 15s; pause for 60s after 3 consecutive failures (when herdr is not installed or the server is not launched)
+ *   (No empty loop bombing)
+ * - Blocked-notification debouncing: after entering blocked, two consecutive rounds of confirmation are required before sending; transient blocked
+ *   (Agent asks and answers its own questions) No false positives; Unblocked/session cancelled if it expires
  */
 class HerdrMonitor(
     private val hostName: String,
     private val hostId: String,
-    /** 在已认证连接上执行控制面命令（SshSession.runCommand）。 */
+    /** Execute control plane commands (SshSession.runCommand) on an authenticated connection. */
     private val runCommand: (String) -> String?,
     private val scope: CoroutineScope,
     private val pollIntervalMs: Long = 4_000,
-    /** 状态迁移事件回调（UI 徽章/面板刷新）。 */
+    /** State migration event callbacks (UI badges/panel refreshes). */
     private val onEvents: (List<HerdrAgentEvent>) -> Unit = {},
-    /** 每轮快照后的完整 agents 列表回调（UI 面板数据源；含无变化轮）。 */
+    /** Callback for the complete list of agents after each snapshot round (UI panel data source; includes rounds with no changes). */
     private val onAgents: (List<HerdrAgentInfo>) -> Unit = {},
 ) {
     companion object {
         /**
-         * snapshot 命令候选（轮换探测，命中即固定到下标）。
-         * 单一事实源在 [HerdrApi.SNAPSHOT_CMD_CANDIDATES]。
+         * `snapshot` command candidates (probed in rotation; the hit is pinned to the index).
+         * The single source of truth is located at [HerdrApi.SNAPSHOT_CMD_CANDIDATES].
          */
         private val SNAPSHOT_CMD_CANDIDATES = HerdrApi.SNAPSHOT_CMD_CANDIDATES
         private const val MIN_BACKOFF_MS = 3_000L
         private const val MAX_BACKOFF_MS = 15_000L
 
-        /** 连续失败后的暂停轮数（≈60s @ 4s 轮询）：纯 delay 驱动，测试可虚拟时间推进。 */
+        /** Number of rounds to pause after consecutive failures (≈60s @ 4s polling): Purely delay-driven; the test can simulate the passage of time. */
         private const val PAUSE_ROUNDS = 15
         private const val MAX_CONSECUTIVE_FAILURES = 3
 
-        /** blocked 确认轮数：进入后需连续两轮仍 blocked 才发通知。 */
+        /** Number of "confirmed" rounds: A notification will be sent only if the status remains "blocked" for two consecutive rounds after entry. */
         private const val BLOCKED_CONFIRM_ROUNDS = 2
     }
 
     private val machine = HerdrAgentStateMachine()
     private var job: Job? = null
 
-    /** pane_id → 已确认 blocked 的轮数（达到阈值即发通知并移除）。 */
+    /** pane_id → Number of rounds confirmed as "blocked" (a notification is sent and the item is removed once the threshold is reached). */
     private val pendingNotify = HashMap<String, Int>()
 
-    /** 已发过 blocked 通知的 pane（防重复通知；Unblocked/离开 blocked 时清除）。 */
+    /** Panes for which a “blocked” notification has already been sent (to prevent duplicate notifications; cleared when unblocked or exited the “blocked” state). */
     private val notifiedBlocked = HashSet<String>()
 
-    /** 当前使用的 herdr 命令候选下标（失败轮询时切换探测）。 */
+    /** Index of the currently used herdr command candidates (toggle detection upon failure of polling). */
     private var cmdIndex = 0
 
-    /** 是否正在轮询。 */
+    /** Whether polling is in progress. */
     fun isRunning(): Boolean = job?.isActive == true
 
-    /** 当前各 pane 状态（UI 读取）。 */
+    /** Current status of each pane (read from the UI). */
     fun currentStatus(): Map<String, HerdrAgentStatus> = machine.current()
 
     fun start() {
@@ -85,7 +85,7 @@ class HerdrMonitor(
                 var failures = 0
                 var pauseRounds = 0
                 while (isActive) {
-                    // 连续失败暂停期：不轰炸远端（herdr 未装/未启动/连接断开）
+                    // Pause period for consecutive failures: Do not bombard the remote server (herdr not installed/not launched/connection disconnects)
                     if (pauseRounds > 0) {
                         pauseRounds--
                         delay(jitter(pollIntervalMs))
@@ -94,7 +94,7 @@ class HerdrMonitor(
                     val raw = runCommand(currentCmd())
                     val snapshot = raw?.let { parseHerdrSnapshot(it) }
                     if (snapshot == null) {
-                        // 失败退避：herdr 未装/未启动/连接断开；换下一个候选命令（循环探测）
+                        // Failure backoff: herdr not installed/not launched/connection disconnected; move on to the next candidate command (loop through candidates)
                         cmdIndex = (cmdIndex + 1) % SNAPSHOT_CMD_CANDIDATES.size
                         failures++
                         backoffMs = (backoffMs * 2).coerceAtMost(MAX_BACKOFF_MS)
@@ -133,20 +133,20 @@ class HerdrMonitor(
     }
 
     /**
-     * blocked 确认与通知：新 Blocked 事件进入确认队列；已确认 ≥2 轮的
-     * pane 若仍 blocked 发 AGENT_TASK 通知（Unblocked/状态离开由
-     * [onEvents] 路径同步清除）。
+     * Blocked Confirmation and Notification: New "Blocked" events enter the confirmation queue; those confirmed for ≥2 rounds
+     * If the pane is still blocked, send an AGENT_TASK notification (Unblocked/status change triggered by
+     * [onEvents] Clear path sync).
      */
     private fun confirmBlocked(snapshot: HerdrSessionSnapshot) {
         val current = machine.current()
-        // 已离开 blocked 的 pane 移出确认队列
+        // Removed from the confirmation queue after leaving the "blocked" pane
         pendingNotify.keys.filter { current[it] != HerdrAgentStatus.BLOCKED }.forEach { pendingNotify.remove(it) }
         for (a in snapshot.agents) {
             if (a.agentStatus != HerdrAgentStatus.BLOCKED) continue
             val rounds = (pendingNotify[a.paneId] ?: 0) + 1
             if (rounds >= BLOCKED_CONFIRM_ROUNDS) {
                 pendingNotify.remove(a.paneId)
-                // 防重复：同一 pane 连续 blocked 只通知一次（Unblocked 才重置）
+                // Duplicate prevention: Notification is sent only once for consecutive "blocked" statuses in the same pane (reset only when "unblocked").
                 if (notifiedBlocked.add(a.paneId)) {
                     postBlockedNotification(a)
                 }
@@ -166,7 +166,7 @@ class HerdrMonitor(
         )
     }
 
-    /** 通知正文（独立纯函数便于测试）。 */
+    /** Notification body (a standalone pure function to facilitate testing). */
     internal fun blockedNotificationText(
         hostName: String,
         a: HerdrAgentInfo,

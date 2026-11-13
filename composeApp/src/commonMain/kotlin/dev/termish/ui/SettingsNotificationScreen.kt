@@ -29,8 +29,8 @@ import dev.termish.notify.openNotificationSettings
 import dev.termish.util.monospaceFontFamily
 
 /**
- * 通知设置二级页面：总开关 + 事件级开关（统一管理，业务方经
- * NotificationCenter.post 调用）+ 系统通知设置入口。
+ * Notification Settings subpage: master switch + per-event switches (managed centrally; business code posts via
+ * (NotificationCenter.post call) + entry point for system notification settings.
  */
 @Composable
 fun SettingsNotificationScreen(
@@ -75,7 +75,7 @@ fun SettingsNotificationScreen(
             )
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            // 总开关：打开时请求系统通知权限（Android 13+ / iOS）
+            // Master switch: When enabled, requests system notification permissions (Android 13+ / iOS)
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -103,7 +103,7 @@ fun SettingsNotificationScreen(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 4.dp),
             )
-            // 事件级开关：统一由 NotificationCenter 读取
+            // Event-level switches: uniformly read by NotificationCenter
             NotificationEvent.entries.forEachIndexed { i, event ->
                 Row(
                     Modifier
@@ -129,7 +129,7 @@ fun SettingsNotificationScreen(
                 }
             }
 
-            // 系统通知设置（权限被拒时的出口）
+            // System Notification Settings (Fallback when permissions are denied)
             Row(
                 Modifier
                     .fillMaxWidth()

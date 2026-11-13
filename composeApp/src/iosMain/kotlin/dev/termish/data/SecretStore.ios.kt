@@ -47,17 +47,17 @@ import platform.Security.kSecReturnData
 import platform.Security.kSecValueData
 
 /**
- * iOS 安全存储：系统 Keychain（kSecClassGenericPassword）。
+ * iOS Security Storage: System Keychain (kSecClassGenericPassword).
  *
- * 查询字典用 CFDictionaryCreate 构造真正的 CFDictionary：Kotlin/Native 的
- * NSMutableDictionary() 返回的是内部包装类（NSDictionaryAsKMap），强转
- * CFDictionaryRef 必然抛 ClassCastException，异常若穿过 UIKit 手势回调会让
- * 整个 app 触摸失效（表现为点保存后卡死）。字符串用 CFBridgingRetain 桥接，
- * 用完 CFBridgingRelease 释放，与 Apple Security API 的 CF 内存约定一致。
+ * To query a dictionary, use `CFDictionaryCreate` to construct a real `CFDictionary`: Kotlin/Native’s
+ * NSMutableDictionary() returns an internal wrapper class (NSDictionaryAsKMap); cast it
+ * CFDictionaryRef will inevitably throw a ClassCastException; if the exception propagates through the UIKit gesture callback, it will cause
+ * Touch input is unresponsive throughout the app (manifesting as the app freezing after tapping "Save"). Strings are bridged using CFBridgingRetain,
+ * Release the memory using `CFBridgingRelease` after use, consistent with the CF memory conventions of the Apple Security API.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class, ExperimentalNativeApi::class)
 actual object SecretStore {
-    /** errSecMissingEntitlement：app 未签名/未配置 keychain-access-groups 时 Keychain 不可用。 */
+    /** errSecMissingEntitlement: Keychain is unavailable if the app does not have a signature or if the keychain-access-groups configuration is not complete. */
     private const val ERR_SEC_MISSING_ENTITLEMENT = -34018
 
     actual fun get(
@@ -76,7 +76,7 @@ actual object SecretStore {
             val result = alloc<CFTypeRefVar>()
             val status = SecItemCopyMatching(query, result.ptr)
             CFBridgingRelease(query)
-            // 只记状态不记 service/account：避免把 host id 与凭据类型的映射写进系统日志
+            // Log only the status, not the service or account: Avoid writing the mapping between host IDs and credential types to the system logs.
             NSLog("Termish-KEYCHAIN get status=$status")
             if (status != errSecSuccess) {
                 if (status == ERR_SEC_MISSING_ENTITLEMENT && Platform.isDebugBinary) {
@@ -144,10 +144,10 @@ actual object SecretStore {
         }
     }
 
-    // ---------- 沙盒文件兜底 ----------
-    // Keychain 需要 keychain-access-groups entitlement；CLI 构建/未签名的模拟器包
-    // 会返回 -34018（errSecMissingEntitlement）。仅 debug 退到 app 私有目录存储，
-    // 便于开发调试；release 严格 fail-closed，不会把凭据明文落盘。
+    // ---------- Sandbox File Fallback ----------
+    // Keychain requires the keychain-access-groups entitlement; CLI builds/unsigned emulator packages
+    // -34018 (errSecMissingEntitlement) is returned. In debug builds only, fall back to storing in the app’s private directory,
+    // Facilitates development and debugging; releases strictly follow a “fail-closed” policy and do not store credentials in plain text on disk.
 
     private fun fallbackDir(): String {
         val docs =
@@ -177,7 +177,7 @@ actual object SecretStore {
     }
 }
 
-/** 构造真正的 CFDictionary（K/N 的 NSMutableDictionary 无法安全转 CFDictionaryRef）。 */
+/** Construct a true CFDictionary (NSMutableDictionary from K/N cannot be safely converted to CFDictionaryRef). */
 @OptIn(ExperimentalForeignApi::class)
 private fun MemScope.cfDictionaryOf(vararg items: Pair<CFStringRef?, CFTypeRef?>): CFDictionaryRef? {
     val size = items.size
@@ -193,7 +193,7 @@ private fun MemScope.cfDictionaryOf(vararg items: Pair<CFStringRef?, CFTypeRef?>
     )
 }
 
-/** 桥接 Kotlin 对象为 CFTypeRef 供 Security API 使用，操作结束后统一释放。 */
+/** Bridge Kotlin objects to CFTypeRef for use by the Security API, and release them uniformly after the operation is complete. */
 @OptIn(ExperimentalForeignApi::class)
 private inline fun <T> withCfRetain(
     value1: Any?,

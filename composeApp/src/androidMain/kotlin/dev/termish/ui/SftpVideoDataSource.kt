@@ -11,7 +11,7 @@ import dev.termish.ssh.SftpReadHandle
 import java.io.EOFException
 import java.io.IOException
 
-/** 连接在第一次读取时建立，多次 seek 复用；所有访问（含释放）串行化。 */
+/** Connections are established on the first read and reused for subsequent seeks; all accesses (including releases) are serialized. */
 internal class SftpVideoSource(
     private val openFile: () -> SftpReadHandle,
 ) {
@@ -100,6 +100,6 @@ internal class SftpVideoDataSource(
             opened = false
             transferEnded()
         }
-        // DataSource.close 也在 seek 时调用；整个播放器销毁才关闭 source。
+        // DataSource.close is also called during a seek; the source is not closed until the entire player is destroyed.
     }
 }

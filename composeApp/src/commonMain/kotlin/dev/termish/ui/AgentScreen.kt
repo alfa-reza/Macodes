@@ -208,7 +208,7 @@ private const val TYPING_DOT_STAGGER_MILLIS = 120
 private const val TYPING_DOT_IDLE_ALPHA = 0.28f
 private const val TYPEWRITER_FRAME_INTERVAL_MILLIS = 24L
 
-/** 工具输出完整展示上限（防超大输出刷爆列表）。 */
+/** Cap for fully displaying tool output (prevents huge outputs from flooding the list). */
 private const val TOOL_PREVIEW_MAX_LINES = 5
 
 internal fun agentSlashCommands(
@@ -257,20 +257,20 @@ fun AgentScreen(
     repository: HostRepository,
     controller: AgentBridgeController,
     initialContext: AgentLaunchContext? = null,
-    /** 离开页面后由 AppRoot 启动一分钟闲置计时；超时前再次进入会取消释放。 */
+    /** After leaving the screen, AppRoot launches a one-minute idle timer; re-entering before the timeout cancels the release. */
     onRelease: () -> Unit,
     onBack: () -> Unit,
-    /** 屏幕远控会话条目（AppRoot 持有；非空 = Agent 页内全屏播放远程画面）。 */
+    /** Remote screen session entries (held by AppRoot; if not empty, the Agent page plays the remote screen in fullscreen mode). */
     screenEntry: ScreenSessionEntry? = null,
-    /** 建立屏幕推流会话（复用终端页 establishScreen 流程）。 */
+    /** Establish a screen streaming session (reuse the `establishScreen` process from the terminal screen). */
     onStartScreen: (Host) -> Unit = {},
-    /** 关闭屏幕会话并移除条目。 */
+    /** Close the screen session and remove the entry. */
     onCloseScreen: (Host) -> Unit = {},
-    /** 屏幕断线重连（重建推流会话）。 */
+    /** Reconnection after a screen disconnection (rebuild the streaming session). */
     onReconnectScreen: (Host) -> Unit = {},
-    /** 屏幕推流服务安装引导（缺 ffmpeg / relay 时一键安装）。 */
+    /** Screen Streaming Service Installation Guide (one-click installation when ffmpeg or relay is missing). */
     onInstallScreenService: (Host, String?) -> Unit = { _, _ -> },
-    /** 全屏帧率/画质档位切换。 */
+    /** Toggle between fullscreen frame rate and image quality settings. */
     onScreenConfigChange: (Host, Int, String) -> Unit = { _, _, _ -> },
 ) {
     val scope = rememberCoroutineScope()
@@ -334,7 +334,7 @@ private fun AgentWorkspace(
     var editingProvider by remember { mutableStateOf<AgentProvider?>(null) }
     var addingProvider by remember { mutableStateOf(false) }
 
-    // ---- 屏幕远控：沉浸式（隐藏状态栏）+ 状态栏高度记录（header 内容下移对齐）----
+    // ---- Remote Screen Control: Immersive (Status Bar is Hidden) + Status Bar Height Recording (Header Content Alignment)----
     val screenDensity = LocalDensity.current
     var lastStatusBarTop by remember { mutableIntStateOf(0) }
     val screenActive = screenEntry?.session != null
@@ -343,7 +343,7 @@ private fun AgentWorkspace(
     }
     PlatformImmersiveMode(screenActive)
 
-    // ---- 终端「+」工具菜单（右上角 ⋮）----
+    // ---- Terminal “+” Tools Menu (⋮ in the top-right corner)----
     var gitOpen by remember { mutableStateOf(false) }
     var uploadDirDialog by remember { mutableStateOf(false) }
     var uploadTargets by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -393,10 +393,10 @@ private fun AgentWorkspace(
         )
     }
 
-    // 终端「+」工具菜单（右上角 ⋮）：文件管理 / 上传 / Git / 收藏夹 / 屏幕远控。
-    // 与终端页同源同义：文件管理定位到 Agent 会话工作目录；上传目标 = Agent
-    // cwd + /tmp；Git 走 Agent 控制连接独立 exec 通道；屏幕复用推流基础设施。
-    // 每次重组重建（5 项成本可忽略），保证语言切换即时生效。
+    // Terminal “+” Tools menu (⋮ in the top-right corner): File Management / Upload / Git / Favorites / Remote Screen Control.
+    // Synonymous with "terminal screen": File management navigates to the Agent session's working directory; upload target = Agent
+    // cwd + /tmp; Git uses an agent to control connections via a separate exec channel; screen reuse streaming infrastructure.
+    // After each recomposition rebuild (the cost of 5 items is negligible), language switches take effect immediately.
     val all = LocalAppStrings.current
     val toolActions =
         listOf(
@@ -447,13 +447,13 @@ private fun AgentWorkspace(
                 label = all.screen.menuLabel,
                 icon = Icons.Filled.Monitor,
                 onClick = {
-                    // 已有会话 = 正在播放（覆盖层已显示）；没有才建立
+                    // Existing session = Playing (overlay already shown); create one if none exists
                     if (screenEntry == null) onStartScreen(controller.host)
                 },
             ),
         )
 
-    // 上传完成/失败提示（监听状态变化，与终端页同文案）
+    // Upload Success/Failure Tooltips (Listener for status changes; use the same text as the terminal screen)
     LaunchedEffect(uploadState) {
         when (val st = uploadState) {
             is AgentUploadUiState.Done -> {
@@ -487,13 +487,13 @@ private fun AgentWorkspace(
         }
     }
 
-    // Agent 工作区只注册一个页面级返回处理器：全屏/覆盖层 → 子页面 → 会话 → 上一页。
-    // 对话框和 BottomSheet 自己消费返回；即使漏掉，也不会穿透到 AppRoot 直接回首页。
+    // The Agent workspace registers only one screen-level return handler: fullscreen/overlay → subpage → session → previous page.
+    // Dialogs and BottomSheets handle their own back logic; even if omitted, they will not navigate directly to the home screen via AppRoot.
     PlatformBackHandler(enabled = true, onBack = ::handleWorkspaceBack)
 
-    // Agent 页的左边缘始终代表返回：覆盖层 → 子页面 → 当前对话 → Termish。
-    // 之前首页禁用了此手势，ModalNavigationDrawer 会把它当成开抽屉，导致
-    // Android 用户从边缘滑动无法退出 Agent 页面。
+    // The left edge of the Agent screen always means Back: overlay → subpage → current conversation → Termish.
+    // Previously, this gesture was disabled on the home page; ModalNavigationDrawer would interpret it as opening the drawer, causing
+    // Android users cannot exit the Agent screen by swiping from the edge.
     val backSwipeModifier =
         Modifier.pointerInput(controller.currentSession?.id, page) {
             awaitEachGesture {
@@ -516,7 +516,7 @@ private fun AgentWorkspace(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        // 关闭态禁用边缘开抽屉，避免与页面返回冲突；抽屉打开后保留拖动关闭。
+        // Disable the drawer when the app is in closed state to avoid conflicts with the screen's back button; retain the ability to drag to close the drawer once it is open.
         gesturesEnabled = drawerState.isOpen,
         drawerContent = {
             AgentDrawer(
@@ -643,7 +643,7 @@ private fun AgentWorkspace(
                     toolActions = toolActions,
                     modifier = Modifier.align(Alignment.TopCenter),
                 )
-                // 上传进度浮层（右上角 ⋮ → 上传）：与终端页同款卡片，置于顶部 chrome 下方
+                // Upload progress overlay (top-right ⋮ → Upload): same card style as the terminal screen, placed below the top chrome
                 (uploadState as? AgentUploadUiState.Uploading)?.let { up ->
                     Surface(
                         Modifier.align(Alignment.TopCenter).padding(top = Sizes.AgentChromeClearance + Sizes.TouchTarget),
@@ -683,9 +683,9 @@ private fun AgentWorkspace(
         }
     }
 
-    // 屏幕远控全屏覆盖：AppRoot 建好会话条目后在此全屏播放（Agent 连接不中断）。
-    // 放在根层（ModalNavigationDrawer 之后、最后声明）：与终端页全屏同构——
-    // 若嵌在抽屉内容里，视频手势层会吃掉 header 返回/模式按钮的触摸。
+    // Full-screen remote screen control: After creating a session entry in AppRoot, play it in fullscreen mode here (the Agent connection is not interrupted).
+    // Place at the root level (after `ModalNavigationDrawer`, declared last): Isomorphic with the terminal screen’s fullscreen mode—
+    // If embedded within a drawer, the video gesture layer will intercept touches intended for the header’s back and mode buttons.
     screenEntry?.session?.let { screenSession ->
         ScreenContent(
             host = screenEntry.host,
@@ -773,7 +773,7 @@ private fun AgentWorkspace(
         )
     }
 
-    // ---- 终端「+」工具：Git 面板（Agent 控制连接 + 会话 cwd）----
+    // ---- Terminal “+” Tools: Git Panel (Agent-controlled connection + session cwd) ----
     if (gitOpen) {
         val gitTheme =
             TerminalThemes.ALL.getOrElse(repository.loadSettings().terminalThemeIndex) {
@@ -792,7 +792,7 @@ private fun AgentWorkspace(
         )
     }
 
-    // ---- 终端「+」工具：上传目标目录选择（Agent 工作目录 / /tmp）----
+    // ---- Terminal “+” Tool: Select Upload Target Directory (Agent Working Directory / /tmp)----
     if (uploadDirDialog) {
         val all = LocalAppStrings.current
         AlertDialog(
@@ -820,7 +820,7 @@ private fun AgentWorkspace(
         )
     }
 
-    // ---- 终端「+」工具：文件管理（复用终端页完整 SFTP，Agent 会话不中断）----
+    // ---- Terminal “+” Tools: File Management (SFTP support is reused from the same terminal screen; Agent sessions are not interrupted)----
     if (fileBrowserOpen) {
         AgentSftpOverlay(
             controller = controller,
@@ -831,7 +831,7 @@ private fun AgentWorkspace(
         )
     }
 
-    // ---- 终端「+」工具：收藏夹（与终端页同款 AlertDialog，点击直达文件管理）----
+    // ---- Terminal “+” Tool: Bookmarks (same AlertDialog as the terminal screen; tap to go directly to file management)----
     if (favoritesOpen) {
         SftpFavoritesDialog(
             favorites = favoritePaths,
@@ -1159,8 +1159,8 @@ private fun AgentFloatingChrome(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            // 终端「+」工具菜单（右上角 ⋮）：Bridge 就绪即显示（不依赖当前会话），
-            // 会话改名/删除已收进抽屉的会话 ⋮（原右上角入口移除）
+            // Terminal “+” Tools menu (⋮ in the top-right corner): Bridge shows as soon as it’s ready (independent of any dependency on the current session),
+            // Rename/delete sessions moved into the drawer ⋮ (original top-right entry removed)
             if (controller.state == AgentBridgeState.READY) {
                 Box {
                     IconButton({ toolMenuOpen = true }) {
@@ -1184,7 +1184,7 @@ private fun AgentFloatingChrome(
     }
 }
 
-/** Agent 页工具菜单项（对应终端页「+」菜单）。 */
+/** Agent page tool menu items (corresponding to the “+” menu on the terminal screen). */
 private data class AgentToolAction(
     val label: String,
     val icon: ImageVector,
@@ -1904,7 +1904,7 @@ private fun AgentProviderDialog(
 ) {
     val strings = LocalAppStrings.current.nativeAgents
     val providerId = remember(initial?.id) { initial?.id ?: newId() }
-    // wire 协议与 Pi CLI provider id 分开保存，避免把 openai 错传给 Pi。
+    // Save the wire protocol and the Pi CLI provider id separately, so `openai` isn't mistakenly passed to Pi.
     var type by remember(initial?.id) { mutableStateOf(initial?.type ?: AgentProviderType.OPENAI) }
     var name by remember(initial?.id) { mutableStateOf(initial?.name ?: "") }
     var baseUrl by remember(initial?.id) { mutableStateOf(initial?.baseUrl ?: "") }
@@ -1938,7 +1938,7 @@ private fun AgentProviderDialog(
             title = { Text(if (initial == null) strings.addProvider else initial.name) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.Md)) {
-                    // 预设一键添加（编辑态不显示）
+                    // Preset one-click addition (does not show in edit mode)
                     if (initial == null) {
                         Box {
                             OutlinedButton({ presetsOpen = true }, Modifier.fillMaxWidth()) {
@@ -1975,7 +1975,7 @@ private fun AgentProviderDialog(
                         label = { Text(strings.providerName) },
                         singleLine = true,
                     )
-                    // 协议类型：openai / anthropic
+                    // Protocol type: openai / anthropic
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.Sm)) {
                         Text(strings.providerProtocol, style = MaterialTheme.typography.labelLarge)
                         AgentProviderTypeChoice(
@@ -2006,7 +2006,7 @@ private fun AgentProviderDialog(
                         supportingText = { Text(strings.providerPiIdHint) },
                         singleLine = true,
                     )
-                    // 模型列表 + 拉取
+                    // Model list + fetch
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.Sm)) {
                         OutlinedTextField(
                             models,
@@ -2109,7 +2109,7 @@ private fun AgentProviderDialog(
     }
 }
 
-/** 供应商预设（参考 tuiniverse PROVIDER_PRESETS）。 */
+/** Provider presets (see tuiniverse PROVIDER_PRESETS). */
 private data class AgentProviderPreset(
     val id: String,
     val type: AgentProviderType,
@@ -2901,8 +2901,8 @@ private fun AssistantMessage(
         }
     val visibleText = progressiveAgentText(message, animateText)
     if (animateText) {
-        // 流式期间直接由 Compose 状态逐字重组。Markdown 只在回答结束后解析，
-        // 避免防抖不断重启把多个字合并成一次闪现。
+        // The reassembly occurs word-for-word directly from the Compose state during the streaming process. Markdown is only parsed after the response is complete,
+        // Avoid merging multiple words into a single flash of text to prevent debouncing from causing repeated restarts.
         Text(
             visibleText,
             modifier = Modifier.fillMaxWidth(),
@@ -2996,8 +2996,8 @@ private fun progressiveAgentText(
     val animateInitially = remember(key) { animateOnArrival }
     val latestText = rememberUpdatedState(message.text)
     val latestAnimate = rememberUpdatedState(animateOnArrival)
-    // rememberSaveable：LazyColumn 滚动把 item 移出组合后回来，动画进度不丢
-    // （否则正在流的消息会从空重新打字——「文字半天不出来」的来源之一）
+    // rememberSaveable: When scrolling, LazyColumn moves items out of the composition and back in without losing animation progress
+    // (Otherwise, messages currently being streamed will be retyped from scratch—one of the sources of the “text takes forever to appear” problem.)
     var visibleText by
         rememberSaveable(key) {
             mutableStateOf(if (animateInitially) "" else message.text)
@@ -3008,8 +3008,8 @@ private fun progressiveAgentText(
             val frameAt = withFrameMillis { it }
             val target = latestText.value
             if (!target.startsWith(visibleText)) visibleText = ""
-            // 动画结束（turn 完成 / 不再流式）：立即补全全文，不等打字机龟速
-            // ——「下面工具都结束了，上面的字还在慢慢出」的修复
+            // Animation ends (turn complete / no longer streaming): Immediately complete the entire text; do not wait for the typewriter’s snail’s pace.
+            // — Fix for “The tools below have finished, but the text above is still slowly appearing”
             if (!latestAnimate.value) {
                 if (visibleText.length < target.length) visibleText = target
                 break
@@ -3229,7 +3229,7 @@ private fun ActivityCard(
     }
 }
 
-/** 工具名 → 图标 + 可本地化语义类型（参考 tuiniverse TOOL_META）。 */
+/** Tool names → Icon + localizable semantic type (see tuiniverse TOOL_META). */
 internal enum class AgentToolKind {
     COMMAND,
     FILE_LIST,
@@ -3297,7 +3297,7 @@ internal fun agentToolMeta(name: String?): AgentToolMeta {
     return AGENT_TOOL_META.getValue("tool")
 }
 
-/** 从工具参数 JSON 提取命令（bash 等执行类工具）。 */
+/** Extract commands from JSON tool parameters (for execution-based tools such as bash). */
 internal fun extractToolCommand(input: String): String? {
     if (input.isBlank()) return null
     val obj =
@@ -3312,7 +3312,7 @@ internal fun extractToolCommand(input: String): String? {
     return cmd?.trim()?.takeIf { it.isNotBlank() }
 }
 
-/** 工具行单行摘要：command / path / url / 参数前 40 字（参考 tuiniverse extractSummary）。 */
+/*Tool-row single-line summary: command / path / url / first 40 chars of params (see tuiniverse extractSummary). */
 internal fun extractToolSummary(input: String): String {
     if (input.isBlank()) return ""
     val obj =
@@ -3339,7 +3339,7 @@ internal fun extractToolSummary(input: String): String {
         .take(40)
 }
 
-/** 展开区输入：有 command 时去掉 command 字段，展示其余参数（避免重复）。 */
+/** Input in the expand area: If a "command" is present, remove the "command" field and display the remaining parameters (to avoid duplication). */
 internal fun removeCommandFromInput(input: String): String {
     if (input.isBlank()) return ""
     val obj =
@@ -3458,8 +3458,8 @@ internal fun nextTypewriterIndex(
 
 internal fun typewriterCharsPerFrame(remaining: Int): Int =
     when {
-        // 短回答严格逐字显示；只在模型一次涌入大段文本时加速追平积压，
-        // 防止工具已结束而正文仍长时间未显示完。
+        // Short answers are shown strictly word-for-word; the system only speeds up to clear a backlog when the model receives a large chunk of text at once,
+        // Prevent the tool having finished while the message body still takes a long time to finish displaying.
         remaining > 2_000 -> 48
         remaining > 800 -> 24
         remaining > 300 -> 12
@@ -3632,13 +3632,13 @@ private fun formatFileSize(bytes: Long): String =
         else -> "$bytes B"
     }
 
-// ===================== 终端「+」工具：Agent 页实现 =====================
+// ===================== Terminal “+” Tool: Agent Page Implementation =====================
 
-/** Agent 页上传状态（驱动右上角上传进度浮层）。 */
+/** Agent page upload status (drives the upload progress overlay in the top-right corner). */
 private sealed interface AgentUploadUiState {
     data object Idle : AgentUploadUiState
 
-    /** 上传中：当前文件进度。 */
+    /** Upload: Current file progress. */
     data class Uploading(
         val name: String,
         val sent: Long,
@@ -3647,21 +3647,21 @@ private sealed interface AgentUploadUiState {
         val totalCount: Int,
     ) : AgentUploadUiState
 
-    /** 全部完成（paths = 成功上传的远端路径）。 */
+    /** All completed (paths = success in uploading remote paths). */
     data class Done(
         val count: Int,
         val paths: List<String>,
     ) : AgentUploadUiState
 
-    /** 失败（含原因，UI 提示后回 Idle）。 */
+    /** Failure (including cause; returns to Idle after a tooltip). */
     data class Failed(
         val message: String,
     ) : AgentUploadUiState
 }
 
 /**
- * Agent 页文件上传器：复用 Agent Bridge 的凭据/回调新建 SFTP 连接（与终端页
- * [TerminalFileUploader] 同模式），多文件串行流式上传，任意大小不整体驻内存。
+ * Agent Page File Uploader: Reuses Agent Bridge credentials/callbacks to create a new SFTP connection (similar to the terminal screen
+ * [TerminalFileUploader] (same mode), serialized streaming upload of multiple files; files of any size are not kept entirely in memory.
  */
 private class AgentUploader(
     private val controller: AgentBridgeController,
@@ -3673,7 +3673,7 @@ private class AgentUploader(
     private val queue = ArrayDeque<PickedFile>()
     private var job: Job? = null
 
-    /** 入队并启动（若未在传）串行上传。 */
+    /** Enqueue and launch (if not already in progress) a serial upload. */
     fun enqueue(
         file: PickedFile,
         targetDir: String,
@@ -3684,7 +3684,7 @@ private class AgentUploader(
         }
     }
 
-    /** 上传完成/失败提示后回 Idle。 */
+    /** Return to Idle after displaying a tooltip for upload success/failure. */
     fun clear() {
         state = AgentUploadUiState.Idle
     }
@@ -3758,9 +3758,9 @@ private class AgentUploader(
 }
 
 /**
- * Agent 页文件管理/收藏夹：直接复用终端页完整 SFTP（SftpContent）——
- * 面包屑/文件类型图标/日期分组/多选/预览/收藏面板/上传/搜索/排序/下拉刷新
- * 全部与终端页一致。独立 SFTP 会话（Agent Bridge 连接不受影响），关闭弹窗释放。
+ * Agent Page File Management/Bookmarks: Directly reuse the terminal screen’s complete SFTP (SftpContent) —
+ * Breadcrumbs / File type icons / Date grouping / Multiple selection / Preview / Favorites panel / Upload / Search / Sort / Pull-to-refresh
+ * All identical to the terminal screen. Independent SFTP session (Agent Bridge connection unaffected); close the dialog to release.
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -3777,7 +3777,7 @@ private fun AgentSftpOverlay(
     var connectError by remember { mutableStateOf<String?>(null) }
     val latestSession = rememberUpdatedState(session)
 
-    // 建立 SFTP 会话（复用 Agent Bridge 凭据/回调弹窗），恢复收藏 + 初始路径
+    // Establish an SFTP session (reuse Agent Bridge credentials/callback dialog), resume bookmarks + initial path
     LaunchedEffect(Unit) {
         repository.loadFavorites(controller.host.id).forEach { uiState.favorites.add(it) }
         if (!initialPath.isNullOrBlank()) uiState.path = initialPath
@@ -3789,7 +3789,7 @@ private fun AgentSftpOverlay(
         }
     }
 
-    // 弹窗关闭释放会话（Agent 对话连接不受影响）
+    // Close the dialog to release the session (Agent dialog connections remain unaffected)
     DisposableEffect(Unit) {
         onDispose {
             val sc = latestSession.value
@@ -3799,7 +3799,7 @@ private fun AgentSftpOverlay(
         }
     }
 
-    // 断线重连：重建会话替换（SftpContent 的 banner 按钮触发）
+    // Reconnection after disconnection: Rebuild the session and replace (triggered by the "banner" button in SftpContent)
     fun reconnect() {
         scope.launch {
             uiState.reconnecting = true
@@ -3855,7 +3855,7 @@ private fun AgentSftpOverlay(
                         onBack = onDismiss,
                         onReconnect = ::reconnect,
                         onFavoritesChanged = { repository.saveFavorites(controller.host.id, it) },
-                        // Agent 页浏览路径不持久化（与终端页 SFTP 会话独立）
+                        // Browsing paths on the Agent page do not have persistence (they are independent of the terminal screen’s SFTP session).
                         onPathChanged = {},
                     )
                 } else if (connectError != null) {

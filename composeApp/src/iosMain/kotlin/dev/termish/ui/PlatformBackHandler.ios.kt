@@ -7,5 +7,5 @@ actual fun PlatformBackHandler(
     enabled: Boolean,
     onBack: () -> Unit,
 ) {
-    // iOS 无系统返回键/手势
+    // iOS has no system back button or gesture
 }

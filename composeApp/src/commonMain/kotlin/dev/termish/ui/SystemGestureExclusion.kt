@@ -4,10 +4,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
 /**
- * 将该区域排除出系统返回手势（Android 侧边返回/预测性返回）。
- * 用于小窗缩放把手：把手贴屏幕右边缘时，从把手开始的水平缩放手势
- * 会被系统返回手势抢走（拖一下直接回主页，窗口宽度调不了）。
- * 非 Android 平台为空实现。
+ * Exclude this region from the system’s back gesture (Android side-swipe back/predictive back).
+ * For floating window handles: When the handle is against the right edge of the screen, a horizontal scale gesture starting from the handle
+ * The system’s gesture response takes over (a quick swipe takes you straight to the home screen, and you can’t adjust the window width).
+ * For non-Android platforms, implement a null implementation.
  */
 @Composable
 expect fun Modifier.excludeSystemBackGesture(): Modifier

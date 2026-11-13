@@ -13,20 +13,20 @@ import dev.termish.util.TermLog
 import dev.termish.util.base64Encode
 import kotlinx.datetime.Clock
 
-/** SFTP 会话条目（与终端会话平级管理，跨页面存活）。
- *  [session] 可空：进程重启后恢复的条目未连接（session=null），
- *  进入 SFTP tab 时触发自动重连（见 SftpContent / AppRoot.onReconnectSftp）。 */
+/** SFTP session entries (managed at the same level as terminal sessions; persist across screens).
+ *  [session] Optional: Entries resumed after a process restart are without connections (session=null),
+ *  Trigger an automatic reconnect when entering the SFTP tab (see SftpContent / AppRoot.onReconnectSftp). */
 data class SftpSessionEntry(
     val host: Host,
     val session: SftpSession?,
-    /** 浏览状态（路径/列表/排序等）：随条目存活，切 tab 不重置。 */
+    /** Browsing state (path/list/sorting, etc.): Persists with the entry; switching tabs does not reset it. */
     val uiState: SftpUiState = SftpUiState(),
-    /** 当前 [session] 所属连接的身份标识（establishSftp 每次生成）。
-     *  close() 会同步触发 onClosed：重连/换新/移除时被关闭的旧连接回调仍在，
-     *  必须凭代次区分「本代连接意外断开」与「旧连接被主动关闭」，
-     *  否则旧回调会把 uiState.disconnected 误标回 true（断开 banner 永不消失）。 */
+    /** The identity identifier for the connection associated with the current [session] (generated each time by `establishSftp`).
+     *  close() syncs onClosed: the callback for an old connection that was closed during reconnect, replacement, or removal still exists,
+     *  It is essential to distinguish between “the current connection was unexpectedly disconnected” and “the old connection was actively closed” based on the connection generation,
+     *  Otherwise, the old callback will incorrectly set `uiState.disconnected` back to `true` (causing the disconnected banner to never disappear). */
     val connectionToken: Any = Any(),
-    /** 条目首次创建时间；重连替换底层连接时保持不变。 */
+    /** The time the entry was first created; this remains unchanged when the underlying connection is replaced during a reconnect. */
     val createdAt: Long = Clock.System.now().toEpochMilliseconds(),
 )
 
@@ -37,7 +37,7 @@ internal enum class BackgroundReconnectAction {
     REBUILD,
 }
 
-/** 纯决策层，避免生命周期回调里把同主机的其他会话误当成后台活跃会话。 */
+/** Pure decision-making layer; avoid mistakenly identifying other sessions on the same host as active background sessions within lifecycle callbacks. */
 internal fun backgroundReconnectAction(
     sessionId: String,
     activeSessionIds: Set<String>,
@@ -59,24 +59,24 @@ internal fun backgroundReconnectAction(
     }
 
 /**
- * 会话管理器：持有所有活跃 [TerminalController]，跨页面存活。
- * 同一主机已有活跃会话时复用（终端缓冲保留，重新进入即"继续上次"）；
- * 离开终端页（返回主页）不断开，连接由前台服务保活。
+ * Session Manager: Holds all active [TerminalController] instances and persists across screens.
+ * Reuse when there is an active session on the same host (terminal buffer is retained; re-entering resumes from where you left off);
+ * Leaving the terminal screen (going back to the home page) does not disconnect; the connection is kept alive by the foreground service.
  */
 class SessionManager(
     private val repository: HostRepository,
-    /** 连接错误文案提供器（随语言切换取最新 AppStrings）。 */
+    /** Connection-error message provider (fetch the latest AppStrings on language switch). */
     private val strings: () -> AppStrings = { appStringsFor("en") },
 ) {
     val sessions = mutableStateListOf<TerminalController>()
 
-    /** SFTP 会话（与终端会话同源管理：连接页可见、卡片 Close 可关、删除主机连带释放）。 */
+    /** SFTP sessions (managed in the same way as terminal sessions: visible on the Connections page, can be closed by clicking the “Close” button on the card, and deleting a host releases the session). */
     val sftpSessions = mutableStateListOf<SftpSessionEntry>()
 
-    /** 退到后台时仍活跃的 session id（回前台据此自动重连，iOS 场景）。 */
+    /** Session ID that remains active when the app is in the background (used to automatically reconnect when the app is brought back to the foreground; iOS scenario). */
     private val activeAtBackground = HashSet<String>()
 
-    /** 退到后台：记录当前活跃会话，供回前台恢复。 */
+    /** Go to the background: Record the current active session so it can be resumed when returning to the foreground. */
     fun noteBackgrounded() {
         activeAtBackground.clear()
         sessions.forEach { controller ->
@@ -88,10 +88,10 @@ class SessionManager(
     }
 
     /**
-     * 回前台：把退后台期间掉线的活跃会话自动重连（保留缓冲）。
+     * Return to the foreground: Automatically reconnect active sessions that were disconnected while the process was in the background (with buffering).
      *
-     * [recovery] 由平台决定：iOS 挂起后直接重建；Android 保活服务被停止时
-     * 只做端到端探测，避免把健康 socket 误杀。
+     * [recovery] Determined by the platform: On iOS, rebuild immediately after suspension; on Android, when the background service is stopped,
+     * Perform end-to-end checks only to avoid falsely flagging healthy sockets.
      */
     fun reconnectDroppedSessions(recovery: ForegroundSshRecovery = ForegroundSshRecovery.KEEP) {
         if (activeAtBackground.isEmpty()) return
@@ -123,13 +123,13 @@ class SessionManager(
         }
     }
 
-    /** Android 保活服务重建后重新登记所有仍连接的会话；sessionId 集合保证幂等。 */
+    /** After the Android background service is rebuilt, re-register all sessions that are still connected; the sessionId collection ensures idempotency. */
     fun restoreKeepAliveRegistrations() {
         sessions.forEach { it.restoreKeepAliveRegistration() }
     }
 
-    /** 恢复上次运行时留下的会话列表（进程死亡连接必死，恢复为未连接状态，点击重连）。
-     *  终端与 SFTP 条目都恢复（SFTP 的 session=null，进 tab 自动重连）。 */
+    /** Resume the list of sessions left over from the last run (if the process dies, the connection will be lost; it will revert to an unconnected state; tap to reconnect).
+     *  Both terminal and SFTP entries are restored (SFTP `session=null`; entering the tab auto-reconnects). */
     fun restoreRecent(
         hosts: List<Host>,
         autoReconnect: Boolean,
@@ -157,8 +157,8 @@ class SessionManager(
                 sessions.add(it)
             }
         }
-        // SFTP：恢复为未连接条目（session=null），进 tab 时自动重连；
-        // 浏览路径从持久化恢复（进程重启后回到上次目录，而非 home）
+        // SFTP: restored as unconnected entries (session=null); entering the tab auto-reconnects;
+        // Resume the browsing path from persistence (return to the last directory after a process restart, rather than the home directory)
         if (sftpSessions.isEmpty()) {
             repository.loadRecentSftpEntries().forEach { entry ->
                 val host = byId[entry.hostId] ?: return@forEach
@@ -172,8 +172,8 @@ class SessionManager(
                 )
             }
         }
-        // 旧条目没有 createdAt：上面已补当前时间，必须立即写回；否则每次进程
-        // 重启都会重新生成时间，菜单里的“创建时间”会看起来不断变化。
+        // The old entry lacks a `createdAt`: The current time has been added above and must be written back immediately; otherwise, every time the process
+        // The time is regenerated every time the system restarts, so the “Created” time in the menu will appear to change constantly.
         persist()
     }
 
@@ -192,10 +192,10 @@ class SessionManager(
         )
     }
 
-    /** 供 AppRoot 退后台时调用：保存最新 SFTP 浏览路径（杀 App 后恢复到上次目录）。 */
+    /** To be called when AppRoot goes into the background: Save the latest SFTP browsing path (resume in the previous directory after the app is terminated). */
     fun persistNow() = persist()
 
-    /** 打开主机：有活跃会话则复用，否则凭据解析后新建。 */
+    /** Open a host: If an active session exists, reuse it; otherwise, create a new one after parsing the credentials. */
     fun open(
         host: Host,
         autoReconnect: Boolean,
@@ -203,8 +203,8 @@ class SessionManager(
         onSystemDetected: ((Host) -> Unit)? = null,
     ): TerminalController {
         TermLog.i("session") { "open ${host.name} (${sessions.count { it.host.id == host.id } + 1}th)" }
-        // 同一主机支持多个会话（Termius 风格）：每次打开都新建，
-        // 旧的保留在列表，可从卡片下拉/连接页重入。
+        // Support for multiple sessions on the same host (Termius-style): a new session is created each time it is opened,
+        // Old sessions are retained in the list and can be re-entered via card dropdown / the Connections page.
         val (pw, key) = resolveCredentials(host)
         val controller =
             TerminalController(
@@ -222,12 +222,12 @@ class SessionManager(
         return controller
     }
 
-    /** 断开但保留在列表中（灰点，点击可重连，缓冲保留）。 */
+    /** Disconnected but still listed (gray dot; tap to reconnect; buffering retained). */
     fun disconnect(controller: TerminalController) {
         controller.close()
     }
 
-    /** 从列表中移除（针对已断开的会话）：销毁控制器，回收协程作用域。 */
+    /** Remove from the list (for disconnected sessions): Destroy the controller and reclaim the coroutine scope. */
     fun remove(controller: TerminalController) {
         TermLog.i("session") { "remove ${controller.host.name}" }
         controller.destroy()
@@ -236,8 +236,8 @@ class SessionManager(
     }
 
     /**
-     * 当前主机配置 + 已存凭据的签名。与 [TerminalController.credentialKey] 比对：
-     * 不一致即主机配置/凭据已变更——旧会话不复用，应新建（旧会话保留可手动关闭）。
+     * Current host configuration + signature of stored credentials. Compare with [TerminalController.credentialKey]:
+     * Inconsistencies indicate that host configuration or credentials have changed—old sessions should not be reused; a new one should be created (old sessions can be manually closed).
      */
     fun signatureFor(host: Host): String {
         val (pw, key) = resolveCredentials(host)
@@ -245,9 +245,9 @@ class SessionManager(
     }
 
     /**
-     * 登记 SFTP 会话（连接成功后由调用方加入）。返回条目：调用方建 tab 时用同一 uiState。
-     * 每主机单会话：已有条目则替换（保留浏览状态，重连语义一致）——
-     * 否则进程恢复条目 + 新连接会并存两个同主机条目。
+     * Register an SFTP session (added by the caller after a successful connection). Returned entry: Use the same `uiState` when the caller creates a tab.
+     * One session per host: Replace existing entries (preserve browsing state; ensure consistent reconnection semantics) —
+     * Otherwise, the process resumption entry and the new connection will result in two entries for the same host coexisting.
      */
     fun addSftp(
         host: Host,
@@ -263,8 +263,8 @@ class SessionManager(
                 connectionToken = connectionToken,
                 createdAt = existing?.createdAt ?: Clock.System.now().toEpochMilliseconds(),
             )
-        // 先摘除旧条目（登记新代次）再 close 旧连接：close 同步触发旧连接的
-        // onClosed，届时代次已不匹配，不会把共享 uiState 误标 disconnected
+        // First remove the old entry (register the new generation), then close the old connection: close synchronously triggers the old connection's
+        // generation no longer matches → it won't wrongly flag the shared uiState as disconnected.
         if (existing != null) {
             sftpSessions.remove(existing)
         }
@@ -280,8 +280,8 @@ class SessionManager(
     }
 
     /**
-     * SFTP 断线重连：替换条目中的 session（uiState 保留，浏览路径/列表不丢）。
-     * 旧 session 先 close 释放连接；重连失败由调用方负责提示。
+     * SFTP Reconnection: Replace "session" in the entry (uiState is preserved, and the browsing path/list is retained).
+     * Close the old session first to release the connection; the caller is responsible for prompting the user in case of a reconnection failure.
      */
     fun reconnectSftp(
         entry: SftpSessionEntry,
@@ -292,8 +292,8 @@ class SessionManager(
         val idx = sftpSessions.indexOf(entry)
         if (idx >= 0) {
             val old = entry.session
-            // 先替换（新代次立即生效）再关旧连接：旧连接 close 同步触发 onClosed，
-            // 代次已不匹配 → 不误标 disconnected（否则重连成功 banner 也不消失）
+            // First replace (the new instance takes effect immediately), then close the old connection: closing the old connection triggers `onClosed` sync-style,
+            // Generation mismatch → Do not incorrectly label as "disconnected" (otherwise, the "Reconnect success" banner will not disappear)
             sftpSessions[idx] =
                 SftpSessionEntry(
                     entry.host,
@@ -311,10 +311,10 @@ class SessionManager(
         }
     }
 
-    /** 断开 SFTP 会话但保留条目（与终端会话同语义：灰点可重连，浏览状态保留）。 */
+    /** Disconnect the SFTP session but retain the entry (same semantics as a terminal session: the gray dot indicates it can be reconnected, and the browsing state is preserved). */
     fun disconnectSftp(entry: SftpSessionEntry) {
-        // 先置空 session 再 close：close 同步触发 onClosed，此时条目已无 session，
-        // 回调查不到可标记对象（disconnected 由这里主动置位，不受旧回调干扰）
+        // First clear the session, then close it: closing the session triggers `onClosed` in sync; at this point, the entry no longer has a session,
+        // The callback cannot find a target to mark (the "disconnected" flag is set here proactively and is not affected by the old callback).
         val idx = sftpSessions.indexOf(entry)
         if (idx >= 0) {
             sftpSessions[idx] =
@@ -325,8 +325,8 @@ class SessionManager(
                     createdAt = entry.createdAt,
                 )
             entry.uiState.disconnected = true
-            // 用户主动断开：不自动重连（进 tab 显示断开 banner，手动点重连）；
-            // 意外断链（onClosed 路径）仍保留自动重连一次
+            // User-initiated disconnection: No automatic reconnection (a disconnection banner shows when opening the tab; manually click to reconnect);
+            // Unexpected link breaks (onClosed path) will still trigger one automatic reconnect
             entry.uiState.autoReconnectAttempted = true
         }
         try {
@@ -337,8 +337,8 @@ class SessionManager(
     }
 
     fun closeSftp(entry: SftpSessionEntry) {
-        // 先移除再 close：close 同步触发 onClosed，届时条目已不在列表，
-        // 不会误标/误日志
+        // Remove first, then close: Closing triggers `onClosed` in sync, at which point the entry is no longer in the list,
+        // No mislabeling or incorrect logging
         sftpSessions.remove(entry)
         try {
             entry.session?.close()
@@ -347,13 +347,13 @@ class SessionManager(
         persist()
     }
 
-    /** 关闭主机的全部会话：断开但保留可重入（终端灰点重连；SFTP 保路径重连恢复浏览）。 */
+    /** Close all sessions on the host: Disconnect but retain re-entry capability (reconnect via the gray dot in the terminal; resume browsing via SFTP by reconnecting with the same path). */
     fun closeAllForHost(hostId: String) {
         sessions.filter { it.host.id == hostId }.forEach { disconnect(it) }
         sftpSessions.filter { it.host.id == hostId && it.session != null }.toList().forEach { disconnectSftp(it) }
     }
 
-    /** 主机被删除时，连带断开并移除其会话。 */
+    /** When a host is deleted, its sessions are disconnected and removed as well. */
     fun closeForHost(hostId: String) {
         sessions.filter { it.host.id == hostId }.forEach { it.destroy() }
         sessions.removeAll { it.host.id == hostId }
@@ -362,13 +362,13 @@ class SessionManager(
     }
 }
 
-/** 凭据/连接参数/启动命令签名：任一变化即视为旧会话过期（编辑主机后需重建会话）。 */
+/** Credentials/connection parameters/launch command signature: Any change will be treated as the old session expiring (a rebuild of the session is required after editing the host). */
 internal fun credentialSignature(
     host: Host,
     password: String?,
     privateKeyPem: String?,
 ): String {
-    // 敏感字段只保留散列：避免明文密码/私钥以签名串形式常驻内存
+    // Retain only hashes for sensitive fields: Avoid storing plaintext passwords or private keys in memory as signature strings.
     fun hash(s: String?): String = if (s == null) "-" else base64Encode(Sha256.digest(s.encodeToByteArray()))
     return "${host.username}@${host.hostname}:${host.port}|${host.authMethod}|" +
         "${hash(password)}|${hash(privateKeyPem)}|" +

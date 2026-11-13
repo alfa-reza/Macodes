@@ -1,18 +1,18 @@
 package dev.termish.term
 
 /**
- * VT100/xterm 终端模拟器：UTF-8 解码 + 转义序列状态机 + 屏幕执行。
+ * VT100/xterm terminal emulator: UTF-8 decoding + escape sequence state machine + screen execution.
  *
- * 纯 Kotlin，无平台依赖，可单元测试。覆盖 shell 日常使用与 vim/tmux/htop 等
- * 全屏应用所需的绝大多数序列（C0、ANSI CSI、SGR 颜色/真彩、OSC 标题、备用屏、
- * 滚动区域、插入/删除、DEC 特殊图形字符集、光标保存/恢复、模式切换）。
+ * Pure Kotlin, no platform dependencies, unit-testable. Covers everyday shell usage as well as vim/tmux/htop and other
+ * The vast majority of sequences required by fullscreen apps (C0, ANSI CSI, SGR color/true color, OSC title, alternate screen,
+ * Scroll region, insert/delete, DEC special graphic character set, cursor save/restore, mode toggling).
  */
 class TerminalEmulator(
     private val buffer: TerminalBuffer,
     var onTitleChange: (String) -> Unit = {},
-    /** OSC 52：远端程序请求写系统剪贴板。 */
+    /** OSC 52: A remote program requests to write to the system clipboard. */
     var onClipboardWrite: (String) -> Unit = {},
-    /** 终端需要向远端回写数据（如 DSR 应答）时调用。 */
+    /** Call this when the terminal needs to send data back to the remote server (e.g., a DSR response). */
     var onResponse: (ByteArray) -> Unit = {},
 ) {
     private enum class State {
@@ -35,27 +35,27 @@ class TerminalEmulator(
     private val dcsBuf = StringBuilder()
     private var oscTermByBel = false
 
-    // UTF-8 增量解码
+    // UTF-8 incremental decoding
     private var utf8Expected = 0
     private var utf8Accum = 0
     private var utf8Remaining = 0
 
     private var g0Charset = TerminalBuffer.Charset.ASCII
     private var g1Charset = TerminalBuffer.Charset.ASCII
-    private var shiftedOut = false // SO 激活 G1
+    private var shiftedOut = false // SO Activates G1
 
     fun write(bytes: ByteArray) {
         var i = 0
         while (i < bytes.size) {
             val cp = decodeUtf8(bytes[i].toInt() and 0xff)
             i++
-            if (cp < 0) continue // 等待更多字节
+            if (cp < 0) continue // Waiting for more bytes
             feedCodePoint(cp)
         }
     }
 
     fun writeText(text: String) {
-        // 直接按码点喂入，避免再次编码/解码（UTF-16 代理对手动解码）
+        // Feed directly by code points to avoid re-encoding/decoding (UTF-16 surrogate pairs decoded manually).
         var i = 0
         while (i < text.length) {
             val c = text[i]
@@ -73,9 +73,9 @@ class TerminalEmulator(
         }
     }
 
-    // ---------- UTF-8 解码 ----------
+    // ---------- UTF-8 Decoding ----------
 
-    /** 返回码点，或 -1 表示需要更多字节，或 0xFFFD 表示非法。 */
+    /** Return code points, or -1 to indicate that more bytes are needed, or 0xFFFD to indicate an invalid value. */
     private fun decodeUtf8(b: Int): Int {
         if (utf8Expected == 0) {
             return when {
@@ -83,10 +83,10 @@ class TerminalEmulator(
                 b in 0xC2..0xDF -> startUtf8(b, 2, 0x1F)
                 b in 0xE0..0xEF -> startUtf8(b, 3, 0x0F)
                 b in 0xF0..0xF4 -> startUtf8(b, 4, 0x07)
-                else -> 0xFFFD // 非法前导字节
+                else -> 0xFFFD // Invalid leading byte
             }
         }
-        // 期望续字节
+        // Expected continuation of bytes
         if (b in 0x80..0xBF) {
             utf8Accum = (utf8Accum shl 6) or (b and 0x3F)
             utf8Remaining--
@@ -96,7 +96,7 @@ class TerminalEmulator(
             }
             return -1
         }
-        // 非法续字节：丢弃当前序列，把该字节当新的前导字节
+        // Invalid trailing byte: Discard the current sequence and treat this byte as a new leading byte.
         utf8Expected = 0
         return decodeUtf8(b)
     }
@@ -112,7 +112,7 @@ class TerminalEmulator(
         return -1
     }
 
-    // ---------- 状态机 ----------
+    // ---------- state machine ----------
 
     private fun feedCodePoint(cp: Int) {
         when (state) {
@@ -146,8 +146,8 @@ class TerminalEmulator(
             }
             0x1B -> state = State.ESCAPE
             else -> {
-                if (cp < 0x20 || cp == 0x7F) return // 其它 C0 / DEL 忽略
-                if (cp in 0x80..0x9F) return // C1 控制字符忽略（不支持，不应当字符画出来）
+                if (cp < 0x20 || cp == 0x7F) return // Other C0 / DEL entries are ignored
+                if (cp in 0x80..0x9F) return // C1 Control characters ignored (not supported; should not be rendered as characters)
                 val out = if (buffer.currentCharset == TerminalBuffer.Charset.DEC_SPECIAL) mapDecSpecial(cp) else cp
                 buffer.putChar(out)
             }
@@ -286,7 +286,7 @@ class TerminalEmulator(
     private fun dcs(cp: Int) {
         when {
             cp == 0x1B -> state = State.DCS_ESC
-            // 只关心短查询（DECRQSS）；sixel/tmux passthrough 等大块内容忽略且限长防内存膨胀
+            // Focus only on short queries (DECRQSS); ignore large blocks of content such as "sixel" and "tmux passthrough," and enforce length limits to prevent memory bloat.
             else -> if (dcsBuf.length < 65536) dcsBuf.append(codePointToString(cp))
         }
     }
@@ -300,7 +300,7 @@ class TerminalEmulator(
         }
     }
 
-    // ---------- CSI 执行 ----------
+    // ---------- CSI Execution ----------
 
     private fun executeCsi(
         finalByte: Int,
@@ -371,7 +371,7 @@ class TerminalEmulator(
         }
     }
 
-    /** CSI 计数参数：缺省/显式 0 均按 1 处理（xterm 语义）。 */
+    /** CSI count parameter: Both the default value and an explicit 0 are handled as 1 (xterm semantics). */
     private fun n1(
         p: List<Int>,
         i: Int,
@@ -430,7 +430,7 @@ class TerminalEmulator(
         }
     }
 
-    /** 处理 38;5;n / 38;2;r;g;b / 48;... 返回消耗掉的额外参数个数。 */
+    /** Handle 38;5;n / 38;2;r;g;b / 48;... and return the number of extra parameters consumed. */
     private fun applyExtendedColor(
         params: List<Int>,
         idx: Int,
@@ -462,7 +462,7 @@ class TerminalEmulator(
         buffer.currentBg = DEFAULT_BG
     }
 
-    // ---------- 模式 ----------
+    // ---------- mode ----------
 
     private fun setModes(
         params: List<Int>,
@@ -472,7 +472,7 @@ class TerminalEmulator(
         for (p in params) {
             when {
                 !private && p == 4 -> buffer.insertMode = set
-                !private && p == 20 -> {} // LF→CRLF，忽略
+                !private && p == 20 -> {} // LF→CRLF, ignore
                 private && p == 1 -> buffer.applicationCursorKeys = set
                 private && p == 6 -> buffer.originMode = set
                 private && p == 7 -> buffer.autoWrap = set
@@ -509,7 +509,7 @@ class TerminalEmulator(
         raw: String,
         isPrivate: Boolean,
     ): List<Int> {
-        // 去掉私有前缀字符
+        // Remove private prefix characters
         var s = raw
         while (s.isNotEmpty() && s[0] in setOf('?', '<', '=', '>')) s = s.substring(1)
         if (s.isEmpty()) return emptyList()
@@ -518,7 +518,7 @@ class TerminalEmulator(
         }
     }
 
-    // ---------- 其它 ----------
+    // ---------- Other ----------
 
     private fun reverseIndex() {
         if (buffer.cursorRow == buffer.scrollTop) {
@@ -580,25 +580,25 @@ class TerminalEmulator(
         onResponse(resp.encodeToByteArray())
     }
 
-    /** DCS $ q Pt ST（DECRQSS）：应答当前状态，无效查询回 DCS 0$r ST。 */
+    /** DCS $ q Pt ST (DECRQSS): Provides a response with the current status; for an invalid query, returns DCS 0$r ST. */
     private fun finishDcs() {
         val content = dcsBuf.toString()
         dcsBuf.clear()
-        if (!content.startsWith("\$q")) return // tmux passthrough 等其它 DCS 忽略
+        if (!content.startsWith("\$q")) return // Ignore other DCS sequences such as "tmux passthrough."
         val query = content.removePrefix("\$q").trim()
         val resp =
             when {
                 query.endsWith("r") -> { // DECSTBM
                     "\u001bP1\$r${buffer.scrollTop + 1};${buffer.scrollBottom + 1}r\u001b\\"
                 }
-                query.endsWith("m") -> "\u001bP1\$r0m\u001b\\" // SGR：仅应答默认态
+                query.endsWith("m") -> "\u001bP1\$r0m\u001b\\" // SGR: Response only to the default state
                 query.endsWith("q") -> "\u001bP1\$r${buffer.cursorStyle} q\u001b\\" // DECSCUSR
                 else -> "\u001bP0\$r\u001b\\"
             }
         onResponse(resp.encodeToByteArray())
     }
 
-    /** CSI Ps $ p / CSI ? Ps $ p（DECRQM）：应答模式状态。 */
+    /** CSI Ps $ p / CSI ? Ps $ p (DECRQM): Response mode status. */
     private fun respondToDecrqm(
         params: List<Int>,
         isPrivate: Boolean,
@@ -647,18 +647,18 @@ class TerminalEmulator(
             12 -> handleOsc12(pt)
             52 -> handleOsc52(pt)
             8 -> handleOsc8(pt)
-            else -> {} // 忽略其它 OSC
+            else -> {} // Ignore other OSCs
         }
     }
 
-    /** OSC 8 ; params ; URI —— 超链接开始/结束（URI 为空时结束）。 */
+    /** OSC 8 ; params ; URI — Start/end of hyperlink (ends when URI is empty). */
     private fun handleOsc8(pt: String) {
         val semi = pt.indexOf(';')
         val uri = if (semi >= 0) pt.substring(semi + 1) else pt
         buffer.currentLink = uri.ifEmpty { null }
     }
 
-    /** OSC 12：查询/设置光标颜色。仅支持 #RRGGBB 与查询。 */
+    /** OSC 12: Query/set cursor color. Only #RRGGBB and settings are supported. */
     private fun handleOsc12(pt: String) {
         val value = pt.trim()
         if (value == "?") {
@@ -672,29 +672,29 @@ class TerminalEmulator(
         }
     }
 
-    /** xterm 颜色格式：rgb:rrrr/gggg/bbbb（16 位/通道）。 */
+    /** xterm color format: rgb:rrrr/gggg/bbbb (16 bits per channel). */
     private fun rgbToXTerm(c: Int): String {
         fun ch(v: Int) = (v * 257).toString(16).padStart(4, '0')
         return "rgb:${ch(TerminalPalette.red(c))}/${ch(TerminalPalette.green(c))}/${ch(TerminalPalette.blue(c))}"
     }
 
-    /** OSC 10/11 查询默认前景/背景色：TUI（如 herdr）据此决定对比色，必须应答。 */
+    /** OSC 10/11: Queries default foreground/background colors; TUI (e.g., herdr) uses this to determine contrasting colors—a response is required. */
     private fun handleOscColorQuery(
         ps: Int,
         pt: String,
     ) {
-        if (pt.trimEnd() != "?") return // 暂不支持设置颜色
+        if (pt.trimEnd() != "?") return // Color settings are not currently supported.
         val rgb = if (ps == 10) buffer.defaultFgRgb else buffer.defaultBgRgb
         onResponse("\u001b]$ps;${rgbToXTerm(rgb)}\u001b\\".encodeToByteArray())
     }
 
     /**
-     * 主动向远端注入本端终端配色（OSC 10/11 + 基础 16 色调色板）。
+     * Proactively inject the local terminal's color scheme into the remote side (OSC 10/11 + basic 16-color palette).
      *
-     * 用于 Mosh：mosh-server 会吞掉远端 TUI 发出的 OSC 10/11 查询，
-     * 查询永远到不了手机，应用（如 herdr）只能拿到宿主机终端主题，
-     * 导致手机浅色主题下远端却按深色渲染。把应答字节直接写进会话输入流，
-     * 应用会像收到终端应答一样解析并采纳本端配色。
+     * For Mosh: mosh-server will swallow OSC 10/11 queries sent by the remote TUI,
+     * Queries never reach the phone; apps (such as herdr) can only access the host machine’s terminal theme,
+     * This causes the remote end to render in dark mode even when the phone is in light theme. Write the response bytes directly into the session input stream,
+     * The app will parse and adopt the local color scheme as if it were receiving a terminal response.
      */
     fun buildThemeSyncPayload(): ByteArray {
         val sb = StringBuilder()
@@ -706,7 +706,7 @@ class TerminalEmulator(
         return sb.toString().encodeToByteArray()
     }
 
-    /** OSC 4 ; i ; ? 调色板查询（可多对 i;?）。 */
+    /** OSC 4 ; i ; ? palette query (multiple matches for i;?). */
     private fun handleOsc4Query(pt: String) {
         val parts = pt.split(';')
         var i = 0
@@ -719,7 +719,7 @@ class TerminalEmulator(
         }
     }
 
-    /** OSC 52 ; Pc ; Pd —— Pd 为 base64 编码的剪贴板内容；Pd 为 "?" 时是查询（回空）。 */
+    /** OSC 52 ; Pc ; Pd — Pd refers to the clipboard content encoded in Base64; when Pd is "?", it indicates a query (returns an empty string). */
     private fun handleOsc52(pt: String) {
         val semi = pt.indexOf(';')
         val pd = if (semi >= 0) pt.substring(semi + 1) else return
@@ -785,6 +785,6 @@ class TerminalEmulator(
     fun reset() {
         fullReset()
         buffer.eraseScreen()
-        buffer.moveTo(0, 0) // eraseScreen 按 xterm 语义不再移动光标，reset 显式归位
+        buffer.moveTo(0, 0) // `eraseScreen` no longer moves the cursor according to xterm semantics; `reset` explicitly returns the cursor to the home position.
     }
 }

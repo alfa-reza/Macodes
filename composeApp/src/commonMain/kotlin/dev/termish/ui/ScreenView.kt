@@ -113,8 +113,8 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 /**
- * 屏幕 tab（远程画面）：全屏播放 H.264 推流，黑底 + Fit 缩放；
- * 右上角常驻帧率/分辨率角标；连接中/错误态与终端页同款。
+ * Screen tab (remote screen): Fullscreen playback of H.264 streaming, black background + Fit scaling;
+ * Permanent frame-rate/resolution badge in the upper-right corner; connection and error states match the terminal screen.
  */
 @Composable
 fun ScreenContent(
@@ -123,66 +123,66 @@ fun ScreenContent(
     state: ScreenUiState,
     onBack: () -> Unit,
     onReconnect: () -> Unit,
-    /** 服务缺失时的一键安装（引导卡片按钮）。 */
+    /** One-click installation when the service is missing (button on the guidance card). */
     onInstallService: (String?) -> Unit = { _ -> },
-    /** 就地全屏模式：左上角返回按钮显示「收起」（不跳 tab）；否则显示「返回」。 */
+    /** Fullscreen mode: The back button in the top-left corner shows “Collapse” (without switching tabs); otherwise, it shows “Back.” */
     onClose: (() -> Unit)? = null,
-    /** 状态栏高度（px，沉浸式隐藏前记录）：header 内容下移，返回按钮与终端页
-     * tab 栏对齐（用户反馈：全屏返回按钮比终端页更靠上）。 */
+    /** Status bar height (px, recorded before immersive mode hides it): header content shifts down, back button and terminal screen
+     * Alignment with the tab bar (user feedback: the fullscreen back button is positioned higher than on the terminal screen). */
     statusBarInsetTop: Int = 0,
-    /** 推流参数切换（帧率/画质）：写远端配置后重建会话生效。 */
+    /** Streaming parameter toggling (frame rate/image quality): Changes take effect after rebuilding the session following remote configuration. */
     onStreamConfigChange: (fps: Int, scale: String) -> Unit = { _, _ -> },
-    /** 帧率档位本地更新（异步重建前 UI 先反馈）。 */
+    /** Local updates to frame rate settings (UI feedback before async rebuild). */
     onFpsIndex: (Int) -> Unit = {},
-    /** 视频面是否上真 SurfaceView（展开动画期间 false，黑底占位——动画把整个
-     * 容器从小窗尺寸 graphicsLayer 缩放到全屏，部分设备视频表面不跟随缩放，
-     * 画面卡成小窗尺寸的「亮点」/黑屏；动画结束后再建面，surface 永远全尺寸） */
+    /** Whether the video surface uses a real SurfaceView (false during the expand animation; black placeholder—
+     * When the container is scaled from a floating window size to fullscreen, the video surface does not scale properly on some devices,
+     * a floating-window-sized “bright spot” / black screen where the picture freezes; the surface stays full-size once the animation ends) */
     videoEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val s = LocalAppStrings.current
     val density = LocalDensity.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    // 远程键盘工具栏（右下角 ⌨ 按钮展开）：软键盘 + 一行功能键。
-    // 布局：画面(weight 1f) + 工具栏 + 隐藏输入框——imePadding 把工具栏
-    // 顶到键盘上方，工具栏顶部 = 画面底部（用户要求：不覆盖画面）
+    // Remote keyboard toolbar (expand by clicking the ⌨ button in the lower-right corner): on-screen keyboard + a row of function keys.
+    // Layout: Screen (weight 1f) + Toolbar + Hidden Input Field — imePadding places the toolbar
+    // Position it above the keyboard; the top of the toolbar = the bottom of the screen (user requirement: do not cover the screen)
     var keyboardOpen by remember { mutableStateOf(false) }
     val keyFocus = remember { FocusRequester() }
-    // 键盘完全展开时的高度（固定值）：收起动画期间 Spacer 不渐变，
-    // 视频不随动画下移再跳回（用户反馈：先下来再上去）
+    // Height when the keyboard is fully expanded (fixed value): the Spacer doesn't animate during the collapse animation,
+    // The video does not jump back up after moving down with the animation (user feedback: it moves down first, then back up).
     var imeHeightFixed by remember { mutableStateOf(0) }
-    // 预取（WindowInsets.ime 是 @Composable 属性，LaunchedEffect 里不能直接访问）
+    // Prefetch (WindowInsets.ime is a @Composable property and cannot be accessed directly within a LaunchedEffect)
     val imeInsets = WindowInsets.ime
-    // 系统键盘可见性监听：软键盘自带的收起按钮/手势收起键盘时（ime 高度归零），
-    // 同步关闭工具栏回到初始态（否则工具栏残留 + 视频跳位——用户反馈）
+    // System keyboard visibility listener: When the soft keyboard is closed using its built-in close button or a gesture (IME height returns to zero),
+    // Sync the toolbar closure to return it to its initial state (otherwise, the toolbar remains open and the video skips—user feedback).
     val imeHeightForSync = WindowInsets.ime.getBottom(LocalDensity.current)
     LaunchedEffect(imeHeightForSync) {
         if (keyboardOpen && imeHeightForSync <= 0) {
             keyboardOpen = false
         }
     }
-    // 零宽空格哨兵：TextField 永不真正为空——软键盘退格在空文本时无文本
-    // 变化、onValueChange 不触发（Mac 输入框原有字符删不掉——用户反馈）。
-    // 哨兵让退格永远有内容可删：删哨兵 → 转发 BACKSPACE + 立即恢复
-    // ⚠️ selection 必须在哨兵后（TextRange(1)）：TextFieldValue 默认光标在开头，
-    // 新输入会插到哨兵前，增量截取末尾 → 每次发送的都是哨兵（用户看到"发了个空格"）
+    // Zero-width space sentinel: TextField is never truly empty—the soft keyboard’s backspace key leaves no text when the text is empty
+    // Changes and onValueChange are not triggered (existing characters in Mac input fields cannot be deleted—user feedback).
+    // Sentinel ensures Backspace always has something to delete: delete sentinel → forward BACKSPACE + immediately restore
+    // ⚠️ The selection must be after the sentinel (TextRange(1)): The TextFieldValue cursor is positioned at the beginning by default,
+    // New input is inserted before the sentinel, and the end is incrementally truncated → Each time, only the sentinel is sent (the user sees “a space was sent”).
     var keyState by remember { mutableStateOf(TextFieldValue(KEY_SENTINEL, TextRange(KEY_SENTINEL.length))) }
-    // IME 组合开始前的文本（组合结束对比它取上屏增量——组合中 keyState
-    // 已更新为组合文本，直接 diff 会丢失上屏内容：单字母/首汉字被吞）
+    // Text preceding the start of an IME composition (compare it to the text displayed on the screen at the end of the composition to determine the incremental change—keyState during the composition)
+    // (Updated to composition text; a direct diff would lose on-screen content: single letters/first Chinese characters are omitted.)
     var preComposeText by remember { mutableStateOf("") }
-    // 粘性修饰键（⌘/⌃/⌥/⇧ 点按激活，随下一个键发出后保持；再点取消）
+    // Sticky modifier keys (⌘/⌃/⌥/⇧—tapped to activate, remain active until the next key is pressed; tapped again to cancel)
     var activeMods by remember { mutableStateOf(0) }
     var capsOn by remember { mutableStateOf(false) }
-    // 全屏手势（单指平移 + 双指缩放桌面）：zoomScale 放大倍数、panOffset 画面左上角偏移
+    // Fullscreen gestures (single-finger translate + two-finger scale on the desktop): zoomScale zoom level, panOffset offset from the top-left corner of the screen
     var zoomScale by remember { mutableStateOf(1f) }
     var panOffset by remember { mutableStateOf(Offset.Zero) }
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
     var videoViewportSize by remember { mutableStateOf(IntSize.Zero) }
     var virtualMouseOpen by remember { mutableStateOf(false) }
     var rightControlAreaPx by remember { mutableFloatStateOf(0f) }
-    // 未被右缘钳制的累积 anchor X（NaN=未初始化，首次拖拽从当前 anchor 同步）：
-    // 拖过右缘的过冲量必须持久化，否则 overlap 每帧只剩当次 delta，视频推不开
-    // （用户反馈：拖到右缘卡住，光标点不到视频最右列——对齐 ToDesk 整体左移效果）
+    // Cumulative anchor X not constrained by the right boundary (uninitialized; syncs with the current anchor on the first drag):
+    // Overshoot past the right edge must be persisted; otherwise only the current frame's delta is kept, and the video cannot be pushed left.
+    // (User feedback: It gets stuck when dragged to the right edge; the cursor can’t reach the rightmost column of the video—alignment with the overall left-shift effect of ToDesk.)
     var virtualMouseRawX by remember { mutableFloatStateOf(Float.NaN) }
     var virtualMouseAnchorPosition by remember { mutableStateOf<Offset?>(null) }
     var virtualMouseLeftHeld by remember { mutableStateOf(false) }
@@ -230,7 +230,7 @@ fun ScreenContent(
         if (!state.controlMode || !state.connected) closeVirtualMouse()
     }
 
-    // 点击涟漪（远程操作反馈）：按下点扩散圆圈动画，ToDesk/向日葵同款
+    // Tap Ripple (Remote Operation Feedback): Press to trigger a rippling circle animation, similar to ToDesk/Sunflower.
     data class RippleFx(
         val x: Float,
         val y: Float,
@@ -248,9 +248,9 @@ fun ScreenContent(
     }
 
     /**
-     * 触摸点 → 归一化画面坐标（0-1）：视频按 Fit 居中显示（letterbox），
-     * 叠加本地缩放/平移后即为画面实际显示区域——操作模式下按此映射，
-     * 任意推流分辨率/缩放态下与远端屏幕坐标一致。
+     * Touch point → Normalized screen coordinates (0–1): The video is shown centered using the “Fit” option (letterbox),
+     * After applying local scaling and translating, this represents the actual display region—use this mapping in operation mode,
+     * Coordinates match those on the remote screen regardless of streaming resolution or scale.
      */
 
     fun screenFrame(
@@ -314,14 +314,14 @@ fun ScreenContent(
                 viewportHeight = viewportSize.height.toFloat(),
                 controlHeight = mouseControlHeightPx,
                 topInset = mousePanelTopInsetPx,
-                // 与 onMovePanel 一致：面板右边缘贴视口右缘（完整可见，放大态
-                // 同样如此），避免 effect 重启时 anchor 跳变导致面板闪动
+                // Consistent with onMovePanel: the right edge of the panel aligns with the right edge of the viewport (fully visible, zoomed state)
+                // (Similarly), avoid panel flickering caused by anchor jumps when the effect restarts
                 viewportWidth =
                     (viewportSize.width.toFloat() - mouseControlWidthPx).coerceAtLeast(0f),
             )
         virtualMouseAnchorPosition = Offset(clamped.x, clamped.y)
-        // 重钳制后回同步 rawX：保持不变式 overlap = rawX - maxAnchorX，
-        // 否则 effect 重启（旋转/首帧尺寸上报）后第一次拖拽 rawX 漂移、视频跳变
+        // After re-anchoring, sync back to rawX: maintain the formula overlap = rawX - maxAnchorX,
+        // Otherwise, after the effect restarts (rotate/report first-frame size), the first drag causes rawX to drift and the video to jump.
         virtualMouseRawX = clamped.x + rightControlAreaPx
     }
     Column(
@@ -335,12 +335,12 @@ fun ScreenContent(
                 .weight(1f)
                 .onSizeChanged { viewportSize = it },
         ) {
-            // 右侧停靠时只把原尺寸画面整体左移并裁掉左侧，播放器容器宽度不变，
-            // 因而不会重新 Fit 缩小；腾出的右侧黑区专门放虚拟鼠标。
-            // ⚠️ 容器保持全宽且不加 clipToBounds：左移后越界的部分由屏幕边界自然
-            // 裁剪。「被祖先 clip 的 SurfaceView」在部分设备上表面内容会被缩放而
-            // 不是裁剪（用户反馈：推右时画面跟着缩小）——屏幕边界裁 SurfaceView
-            // 是所有设备上最成熟的路径。
+            // When docked on the right, simply shift the entire original-sized image to the left and crop the left side; the player container width remains unchanged,
+            // Therefore, it will not be resized to fit; the freed-up black area on the right is reserved specifically for the virtual mouse.
+            // ⚠️ Keep containers full-width and do not apply `clipToBounds`: portions that are out of bounds after left-alignment should be
+            // clipped by the screen bounds, not by the Compose tree. “SurfaceView clipped by its ancestor” causes the surface content to be
+            // scaled on some devices (user feedback: the picture shrinks when swiping right), so clip to the screen bounds with SurfaceView;
+            // this is the most established path across all devices.
             val fullVideoWidthPx = viewportSize.width.coerceAtLeast(1).toFloat()
             val visibleVideoWidthPx = (fullVideoWidthPx - rightControlAreaPx).coerceAtLeast(1f)
             Box(
@@ -363,15 +363,15 @@ fun ScreenContent(
                                 Modifier
                                     .fillMaxSize()
                                     .graphicsLayer {
-                                        // 以左上角为缩放原点：translation 即画面左上角偏移，钳制边界与 panOffset 语义一致
+                                        // Using the top-left corner as the scale origin: “translation” refers to the offset from the top-left corner of the screen; the bounds have the same meaning as “panOffset.”
                                         transformOrigin = TransformOrigin(0f, 0f)
                                         scaleX = zoomScale
                                         scaleY = zoomScale
                                         translationX = panOffset.x
                                         translationY = panOffset.y
                                     },
-                                // 键盘完全到位后视频才贴底（与 Spacer 同步，避免弹出动画
-                                // 期间先下拉再顶起——用户反馈）
+                                // The video only reaches the bottom once the keyboard is fully in place (sync with Spacer to avoid pop-up animations).
+                                // (Pull down first, then push up—user feedback)
                                 alignBottom = keyboardOpen && imeHeightFixed > 0,
                             )
                         }
@@ -379,64 +379,64 @@ fun ScreenContent(
                 }
             }
 
-            // 全屏手势层：观看模式 = 单指平移 + 双指缩放本地视图；
-            // 操作模式 = 触摸→鼠标（单指左键/拖动、双指滚轮）。
-            // 先于连接中/错误态/header 声明：这些覆盖层后声明、优先命中触摸，
-            // 手势层只接收它们未覆盖区域的触摸（正常播放时即整个画面）。
+            // Fullscreen gesture layer: View mode = single-finger translate + two-finger scale for the local view;
+            // Operation mode = Touch → Mouse (single-finger left click/drag, two-finger scroll).
+            // Declared before the connecting/error/header overlays: those are declared later and take touch precedence;
+            // The gesture layer only accepts touches from regions it does not cover (i.e., the entire screen during normal play).
             if (onClose != null) {
                 Box(
                     Modifier
                         .fillMaxHeight()
                         .width(with(density) { visibleVideoWidthPx.toDp() })
-                        // ⚠️ key 必须同时包含 state 实例与 controlMode：切画质会重建
-                        // ScreenSession/ScreenUiState。如果手势协程不重启，它会继续
-                        // 捕获旧 state，把触摸发到已关闭的 controlSender；虚拟鼠标
-                        // 回调经重组后却正常，因而表现为“手指失效、鼠标正常”。
+                        // ⚠️ `key` must contain both the `state` instance and `controlMode`: switching quality recreates
+                        // `ScreenSession`/`ScreenUiState`. If the gesture coroutine is not restarted it keeps
+                        // capturing the old state and sends touch events to the closed `controlSender`; the virtual mouse
+                        // callback still works after recomposition, showing up as “finger input broken, mouse fine”.
                         .pointerInput(state, state.controlMode, videoViewportSize) {
                             if (state.controlMode) {
-                                // 远程操作：单指 = 鼠标左键（按下/拖动/抬起），双指垂直滑动 = 滚轮。
-                                // 坐标归一化到画面显示区域；事件不经队列即时发（丢包容忍）
+                                // Remote operation: single finger = left mouse button (down/drag/up); two-finger vertical swipe = scroll wheel.
+                                // Coordinates are normalized to the screen display region; events are dispatched immediately without a queue (loss tolerance).
                                 val slop = viewConfiguration.touchSlop
                                 awaitEachGesture {
                                     val down = awaitFirstDown()
                                     val sender = state.controlSender
-                                    // 点击涟漪反馈（ToDesk 同款）：按下点扩散圆圈
+                                    // Tap ripple feedback (ToDesk-style): an expanding circle at the press point
                                     val rippleId = (rippleSeq++)
                                     ripple = RippleFx(down.position.x, down.position.y, rippleId)
                                     var multi = false
                                     var moved = false
                                     var lastPos = down.position
                                     var lastN = toScreenNorm(down.position, state)
-                                    // 双指手势状态：捏合距离（本地缩放）+ 质心垂直位移（滚轮）
+                                    // Two-finger gesture state: pinch distance (local scale) + center-of-mass vertical displacement (scroll wheel)
                                     var prevDist = -1f
                                     var prevCentroid = Offset.Zero
                                     var scrollAccum = 0f
-                                    // 按下即左键 down（轻点 = down+up 点击；滑动 = 拖动画布，
-                                    // 不模拟鼠标移动——用户手势定义：单指滑动就是滑动）
+                                    // Press = left-button down (tap = down+up click; drag = drag the canvas,
+                                    // Do not mock mouse movement—user gesture definition: a single-finger swipe is simply a swipe.
                                     sender?.invoke(ScreenControlPacket.TYPE_DOWN, lastN.first, lastN.second, 0)
                                     while (true) {
                                         val event = awaitPointerEvent()
                                         val pressed = event.changes.filter { it.pressed }
                                         if (pressed.isEmpty()) {
-                                            // 全部抬起 = 左键 up（轻点 = 点击；滑动抬起无副作用）
+                                            // Lift all = Left-click up (Tap = Tap; swiping to lift has no side effects)
                                             sender?.invoke(ScreenControlPacket.TYPE_UP, lastN.first, lastN.second, 0)
                                             break
                                         }
                                         if (pressed.size >= 2) {
                                             multi = true
-                                            // 双指：捏合 = 本地放大（质心锚定）；距离稳定时
-                                            // 质心垂直滑动 = 滚轮（50px 一行）
+                                            // Two-finger pinch = local zoom (center-of-mass anchored); when the distance remains stable
+                                            // Two-finger centroid vertical swipe = scroll wheel (50px per row)
                                             val p1 = pressed[0].position
                                             val p2 = pressed[1].position
                                             val dist = (p2 - p1).getDistance()
                                             val centroid = (p1 + p2) / 2f
                                             if (prevDist > 0f) {
                                                 val factor = dist / prevDist
-                                                // 阈值 0.03：手指自然抖动（<3%）不算捏合
+                                                // Threshold 0.03: Natural finger jitter (<3%) does not count as a pinch.
                                                 if (abs(factor - 1f) > 0.03f) {
-                                                    // 捏合 → 本地缩放：放大后点击坐标经
-                                                    // toScreenNorm 自动映射（含 zoom/pan），
-                                                    // 精确点小按钮（用户反馈：操作中太小）
+                                                    // Pinch → Local scale: After scaling, tap the coordinate path
+                                                    // toScreenNorm automatic mapping (including zoom/pan),
+                                                    // Make the small button more precise (user feedback: it’s too small during operation)
                                                     val old = zoomScale
                                                     val new = (old * factor).coerceIn(1f, MAX_SCREEN_ZOOM)
                                                     if (new != old) {
@@ -454,7 +454,7 @@ fun ScreenContent(
                                                     }
                                                     scrollAccum = 0f
                                                 } else {
-                                                    // 质心垂直位移 → 滚轮
+                                                    // Centroid vertical displacement → scroll wheel
                                                     scrollAccum += centroid.y - prevCentroid.y
                                                     val delta = (scrollAccum / 50f).toInt()
                                                     if (delta != 0) {
@@ -467,9 +467,9 @@ fun ScreenContent(
                                             prevCentroid = centroid
                                             event.changes.forEach { it.consume() }
                                         } else {
-                                            // 单指：slop 后 = 拖动画布（平移视口，放大后看
-                                            // 别处；zoom=1 时钳制归零自然无效）。不模拟鼠标
-                                            // 移动（用户手势定义：单指就是滑动）
+                                            // Single finger: after slop = drag the canvas (pan the viewport; zoomed-in view to see
+                                            // Elsewhere; when zoom=1, clamping to zero is naturally invalid). Do not mock the mouse
+                                            // Gestures (User gesture definition: a single finger means swiping)
                                             if (multi) {
                                                 multi = false
                                                 moved = false
@@ -507,10 +507,10 @@ fun ScreenContent(
                                     val old = zoomScale
                                     val new = (old * zoom).coerceIn(1f, MAX_SCREEN_ZOOM)
                                     val effective = new / old
-                                    // 围绕双指质心缩放 + 平移增量：质心处画面内容保持不动
+                                    // Two-finger center-of-gravity scale and translate: Content at the center of gravity remains stationary with incremental translation
                                     panOffset = centroid - (centroid - panOffset) * effective + pan
                                     zoomScale = new
-                                    // 钳制在视口内：放大后画面只能平移到边界，scale=1 时归零
+                                    // Constrained within the viewport: When zoomed in, the view can only be translated to the bounds; when scale=1, it resets to zero.
                                     if (videoViewportSize.width > 0 && videoViewportSize.height > 0) {
                                         val maxX = videoViewportSize.width * (zoomScale - 1f)
                                         val maxY = videoViewportSize.height * (zoomScale - 1f)
@@ -526,8 +526,8 @@ fun ScreenContent(
                 )
             }
 
-            // 点击涟漪层（远程操作模式）：按下位置的扩散圆环，随动画淡出。
-            // 声明于画面/手势层之后（覆盖其上）、错误态/header 之前
+            // Tap the ripple layer (remote operation mode): Press the expanding circle at the specified location; it fades out with an animation.
+            // Declare after the UI/gesture layer (overlaying it) and before error states/headers
             if (state.controlMode) {
                 ripple?.let { r ->
                     Canvas(Modifier.fillMaxSize()) {
@@ -543,7 +543,7 @@ fun ScreenContent(
                 }
             }
 
-            // 连接中：居中指示器（含已连通但首帧未到的等待态；全屏模式 session 为 null 也显示）
+            // Connecting: Centered indicator (includes the waiting state where a connection is established but the first frame has not yet arrived; also shows when the session is null in fullscreen mode)
             if (session == null || !state.connected || !state.videoReady) {
                 ConnectingIndicator(
                     visible = state.error == null && !state.videoReady,
@@ -554,9 +554,9 @@ fun ScreenContent(
                 )
             }
 
-            // 服务缺失：引导一键安装（含具体原因 + 安装日志）。此时 uiState.error
-            // 也被设置——不再渲染通用错误态，避免红色错误文案 + 「重新连接」按钮
-            // 与「安装」操作重复（v1.5.0 用户反馈）
+            // Service missing: Guide user through one-click installation (including specific reason + installation log). At this point, uiState.error
+            // Also configured—no longer renders generic error states, avoiding red error messages + a “Reconnect” button
+            // Duplicates the “Install” operation (user feedback from v1.5.0)
             if (state.serviceMissing) {
                 ScreenServiceGuide(
                     installing = state.installing,
@@ -567,7 +567,7 @@ fun ScreenContent(
                     modifier = Modifier.align(Alignment.Center),
                 )
             } else {
-                // 错误态：卡片（与安装引导同风格：图标 + 文案 + 主/次按钮）
+                // Error state: Card (same style as the install wizard: icon + text + primary/secondary buttons)
                 state.error?.let { msg ->
                     Box(
                         Modifier
@@ -585,7 +585,7 @@ fun ScreenContent(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(14.dp),
                             ) {
-                                // 错误图标：错误色浅底圆角容器（与安装引导同款）
+                                // Error icon: Light-colored, container with corner radius (same as the installation guide)
                                 Box(
                                     Modifier
                                         .size(56.dp)
@@ -633,8 +633,8 @@ fun ScreenContent(
                 }
             }
 
-            // 屏幕状态提示（息屏/锁屏，可恢复）：画面中央下方半透明小字，
-            // 画面到达自动清除（ScreenSession onReady）
+            // Screen status tooltip (screen off/locked, can be resumed): Small, semi-transparent text at the bottom center of the screen,
+            // Auto-clears when the first frame arrives (ScreenSession onReady)
             state.screenHint?.let { hint ->
                 Text(
                     hint,
@@ -650,7 +650,7 @@ fun ScreenContent(
                 )
             }
 
-            // 被控端控制状态提示：Linux 控制后端不可用 / macOS 缺辅助功能权限。
+            // Control tooltip for the controlled end: Linux control backend unavailable / macOS lacks accessibility permissions.
             if (state.controlMode && state.controlUnsupported) {
                 Text(
                     s.screen.controlUnsupportedHint,
@@ -709,16 +709,16 @@ fun ScreenContent(
                             val maxAnchorX =
                                 (viewportRight - mouseControlWidthPx).coerceAtLeast(0f)
                             val unpushedFrame = screenFrame(state, 0f)
-                            // rawX 全程累加 delta（不被右缘 clamp 吃掉）：超过 maxAnchorX
-                            // 的部分 = 视频左移量。推量上限 = 把画面右缘推到面板左缘所需
-                            // 的平移量：未放大时恰为面板宽；放大后画面右缘在视口外、上限
-                            // 自动变大——鼠标贴近右边时画面持续平移过来，鼠标永不滑出屏幕
+                            // rawX accumulates delta throughout the entire process (not consumed by the right-edge clamp): exceeds maxAnchorX
+                            // = video left shift. Push limit = the amount required to push the right edge of the picture to the left edge of the panel
+                            // Translate: When not zoomed in, it is exactly the width of the panel; when zoomed in, the right edge of the view is outside the viewport, and the upper limit
+                            // Auto-scaling — the screen continuously translates in as the mouse approaches the right edge, so the cursor never moves off the screen
                             val rawX =
                                 (if (virtualMouseRawX.isNaN()) current.x else virtualMouseRawX) +
                                     delta.x
-                            // 左/右边界渐进推开（对称）：面板拖过画面边缘的过冲量，
-                            // 转成画面反向平移——右推=画面左移（右边内容挤进来），
-                            // 左推=画面右移（放大后左边隐藏内容挤出来）
+                            // Gradual push past the left/right bounds (symmetrically): the overshoot when the panel is dragged past the screen bounds is
+                            // converted into a reverse horizontal translation — pushing right = the screen moves left (content on the right is squeezed in),
+                            // Left push = screen shifts to the right (hidden content on the left is pushed out when zoomed in)
                             val leftEdge = unpushedFrame.left.coerceAtLeast(0f)
                             val overLeft = leftEdge - rawX
                             val anchorX: Float
@@ -848,10 +848,10 @@ fun ScreenContent(
                 }
             }
 
-            // 全屏头部栏：与终端页 tab 栏同款（半透明黑底 + 返回 IconButton + 主机名 +
-            // 帧率角标），返回按钮不再裸露贴顶（用户反馈：应与终端页返回按钮同高度，
-            // 全屏应有头部）。⚠️ 最后声明（最顶层）：视频面/错误态都是 fillMaxSize
-            // 覆盖层，先声明会被盖住（v1.4.0 回归：看不到也点不到）。
+            // Fullscreen header bar: Same style as the terminal screen tab bar (semi-transparent black background + Back IconButton + hostname +
+            // (frame rate subscript), the back button is no longer exposed at the very top (user feedback: it should have the same height as the back button on the terminal screen),
+            // (Fullscreen should have a header). ⚠️ Declared last (topmost): the video surface and the error state are both fillMaxSize overlays;
+            // declared earlier they would be covered (v1.4.0 regression: invisible and untappable).
             Row(
                 Modifier
                     .align(Alignment.TopStart)
@@ -859,7 +859,7 @@ fun ScreenContent(
                     .zIndex(100f)
                     .background(Color.Black.copy(alpha = 0.45f))
                     .padding(horizontal = 4.dp, vertical = 4.dp)
-                    // 内容下移到状态栏高度（背景铺满顶部）：返回按钮与终端页 tab 栏同高度
+                    // Move content down to the status bar height (with the background filling the top): Align the back button with the terminal screen tab bar
                     .padding(top = with(density) { statusBarInsetTop.toDp() }),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -870,7 +870,7 @@ fun ScreenContent(
                         tint = Color.White.copy(alpha = 0.9f),
                     )
                 }
-                // 主机名（tab 栏同款标题位置）
+                // Hostname (same position as the tab bar title)
                 Text(
                     host.name.ifBlank { host.hostname },
                     color = Color.White.copy(alpha = 0.85f),
@@ -879,7 +879,7 @@ fun ScreenContent(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f).padding(start = 4.dp),
                 )
-                // 模式切换：默认操作模式（触摸→鼠标 + 键盘），可切纯观看（无键盘）
+                // Mode Toggling: Default operation mode (touch → mouse + keyboard); can toggle to view-only mode (no keyboard)
                 Text(
                     if (state.controlMode) s.screen.controlActive else s.screen.viewMode,
                     color = Color.White.copy(alpha = 0.9f),
@@ -892,14 +892,14 @@ fun ScreenContent(
                                 if (state.controlMode) Color(0xFF2563EB).copy(alpha = 0.8f) else Color.Black.copy(alpha = 0.45f),
                             ).padding(horizontal = 8.dp, vertical = 5.dp)
                             .clickable {
-                                // ⚠️ 不重置本地缩放：用户放大后切操作模式应保持放大
-                                // 状态（之前强制 zoom=1，用户反馈「一开始就是放大的，
-                                // 点操作又变小了」）
+                                // ⚠️ Do not reset local scale: After a user scales in, the operation mode should remain scaled in.
+                                // Status (previously enforced zoom=1; user feedback: “It’s zoomed in from the start,”
+                                // "The button has gotten smaller again")
                                 state.controlMode = !state.controlMode
                             },
                 )
-                // 帧率/画质切换按钮（右上角）：点击弹菜单选档位，
-                // 生效方式 = 写远端 relay 配置 + 重建推流会话
+                // Frame rate/image quality toggle button (top right): Tap to open the pop-up menu and select a setting,
+                // How to enable: Configure the remote relay configuration + rebuild the streaming session
                 StreamQualitySwitcher(
                     fps = state.streamFps,
                     quality = state.streamQuality,
@@ -916,9 +916,9 @@ fun ScreenContent(
                 )
             }
 
-            // 键盘按钮（画面右下角，操作模式 + 键盘收起时显示）：点击弹系统键盘 + 工具栏。
-            // navigationBarsPadding：避开屏幕底部导航栏（手势条）遮挡。
-            // 观看模式无键盘（纯看）
+            // Keyboard button (bottom-right corner of the screen; shows when in operation mode and the keyboard is collapsed): Tap to show the system keyboard and toolbar.
+            // navigationBarsPadding: Avoid being obscured by the bottom navigation bar (gesture bar).
+            // View mode: no keyboard (view only)
             if (!keyboardOpen && state.controlMode) {
                 Column(
                     Modifier
@@ -959,7 +959,7 @@ fun ScreenContent(
             }
         }
 
-        // 远程键盘工具栏（操作模式 + 键盘弹出时显示，在键盘上方；⌨ 固定在最右不随滚动）
+        // Remote Keyboard Toolbar (Shows in operation mode and when the keyboard pops up, above the keyboard; ⌨ is pinned to the far right and does not scroll)
         if (keyboardOpen && state.controlMode) {
             RemoteKeyBar(
                 activeMods = activeMods,
@@ -967,8 +967,8 @@ fun ScreenContent(
                 onKeyboardToggle = { keyboardOpen = false },
                 onModToggle = { mod ->
                     activeMods = if (activeMods and mod != 0) activeMods and mod.inv() else activeMods or mod
-                    // 工具栏键点击会抢走 TextField 焦点：立即归还，否则后续
-                    // 字母输入无处可去（用户反馈：点过工具栏后输入不生效）
+                    // Tapping a toolbar button steals focus from the TextField: return focus immediately, otherwise subsequent
+                    // Keyed-in letters have nowhere to go (user feedback: input doesn’t work after clicking the toolbar).
                     keyFocus.requestFocus()
                 },
                 onCapsToggle = {
@@ -981,24 +981,24 @@ fun ScreenContent(
                     keyFocus.requestFocus()
                 },
             )
-            // 隐藏输入框：获得焦点即弹软键盘；onValueChange 差异 → 文本/删除键。
-            // IME 组合（中文拼音）期间不发送，上屏（组合结束）发最终文本
+            // Hidden input field: Bring up the on-screen keyboard when focus is gained; onValueChange diff → text/delete keys.
+            // Do not send while composing (Chinese Pinyin); send the final text once it appears on screen (after composition is complete).
             Box(Modifier.fillMaxWidth().height(1.dp)) {
                 val keySenderLocal = state.keySender
                 BasicTextField(
                     value = keyState,
-                    // 关闭自动纠错：Gboard 英文输入不再进入组合态（否则字母
-                    // 积压到按空格才上屏——用户反馈输入字母不生效），逐字母实时
-                    // 转发；中文拼音组合行为不变（组合态不发送，上屏发最终文本）。
-                    // ⚠️ singleLine + imeAction：多行 TextField 的回车是换行（文本
-                    // \n）不走 action——用户反馈回车不行；单行后回车 = IME action
+                    // Turn off auto-correction: Gboard English input no longer enters the composing state (otherwise, letters
+                    // Backlog until a space is pressed to display on screen—user feedback indicates that input of letters has no effect), real-time letter-by-letter input
+                    // Forwarding; the behavior of Chinese pinyin compositions remains unchanged (the composing state is not sent; the final text is displayed on screen).
+                    // ⚠️ singleLine + imeAction: Pressing Enter in a multi-line TextField creates a line break (text
+                    // \n) Do not trigger an action—user feedback indicates that pressing Enter does not work; pressing Enter after a single row = IME action
                     keyboardOptions =
                         KeyboardOptions(
                             autoCorrectEnabled = false,
                             imeAction = ImeAction.Go,
                         ),
                     singleLine = true,
-                    // 软键盘回车键：IME action（Go/Done/Next/换行）→ 远端 Return
+                    // Soft keyboard Enter key: IME action (Go/Done/Next/line break) → Remote Return
                     keyboardActions =
                         KeyboardActions(
                             onAny = {
@@ -1014,17 +1014,17 @@ fun ScreenContent(
                         val new = newState.text
                         when {
                             composing && oldState.composition == null -> {
-                                // 组合开始：记录组合前文本（用于组合结束取增量）
+                                // Start of composition: Record the text before composition (used to calculate the incremental increment at the end of composition)
                                 preComposeText = old
                                 keyState = newState
                             }
                             composing -> {
-                                // 组合中：拼音中间态不发送，只更新状态
+                                // In compositions: Do not send intermediate Pinyin states; only update the status.
                                 keyState = newState
                             }
                             !composing && oldState.composition != null -> {
-                                // 组合结束：上屏内容 = 最终文本 - 组合前文本（去哨兵）。
-                                // 中文拼音/英文联想组合一次上屏多个字符，逐个 diff 会丢
+                                // Composition complete: Displayed content = Final text – Text before composition (remove "sentinel").
+                                // Chinese pinyin and English word compositions display multiple characters on the screen at once; diffing them one by one will result in characters being lost.
                                 keyState = newState
                                 val full = new.removePrefix(KEY_SENTINEL)
                                 val pre = preComposeText.removePrefix(KEY_SENTINEL)
@@ -1036,7 +1036,7 @@ fun ScreenContent(
                                 }
                             }
                             new.length > old.length -> {
-                                // 新增字符（哨兵后追加）：逐字符实时转发（英文不积压）
+                                // New characters (appended after the sentinel): Real-time character-by-character forwarding (no backlog of English characters)
                                 keyState = newState
                                 val added = new.substring(old.length)
                                 TermLog.i("screen") { "key add: ${added.length} chars" }
@@ -1044,7 +1044,7 @@ fun ScreenContent(
                             }
                             new.length < old.length -> {
                                 if (!new.contains(KEY_SENTINEL)) {
-                                    // 哨兵被删（空 TextField 按退格）：转发 BACKSPACE + 恢复哨兵
+                                    // Sentinel removed (press Backspace on an empty TextField): forwarding BACKSPACE + resume sentinel
                                     keyState = TextFieldValue(KEY_SENTINEL, TextRange(KEY_SENTINEL.length))
                                     sender(ScreenControlPacket.KeyCode.BACKSPACE, 0, "")
                                 } else {
@@ -1062,9 +1062,9 @@ fun ScreenContent(
                         Modifier
                             .fillMaxSize()
                             .focusRequester(keyFocus)
-                            // 软键盘退格键：TextField 为空时 onValueChange 无变化
-                            // 不触发（Mac 输入框删不动——用户反馈）。IME 的
-                            // KEYCODE_DEL 走 KeyEvent 通道，捕获直接转发
+                            // Soft keyboard Backspace key: no change in `onValueChange` when the TextField is empty
+                            // Does not trigger (cannot delete in Mac input fields—user feedback). IME’s
+                            // KEYCODE_DEL travels through the KeyEvent channel; catch and forward directly
                             .onPreviewKeyEvent { event: KeyEvent ->
                                 if (event.type == KeyEventType.KeyDown && event.key == Key.Backspace) {
                                     keySenderLocal?.invoke(ScreenControlPacket.KeyCode.BACKSPACE, 0, "")
@@ -1077,13 +1077,13 @@ fun ScreenContent(
             }
             LaunchedEffect(keyboardOpen) {
                 if (keyboardOpen) {
-                    // 焦点变更与输入连接建立是异步的，直接 requestFocus 常被忽略
-                    // （终端页同款处理）：延迟一小拍再显式拉起键盘
+                    // Focus changes and input connections are established async; the direct use of `requestFocus` is often ignored.
+                    // (Same handling for the terminal screen): Latency for a split second before explicitly bringing up the keyboard.
                     keyFocus.requestFocus()
                     delay(150)
                     keyboardController?.show()
-                    // 等键盘完全展开后记录高度：Spacer 用固定值，
-                    // 系统键盘收起动画期间不渐变（视频不随动）
+                    // Record the height after the keyboard is fully expanded: Use a fixed value for `Spacer`,
+                    // the viewport doesn't animate during the system-keyboard collapse animation (video doesn't follow)
                     delay(400)
                     imeHeightFixed = imeInsets.getBottom(density)
                 } else {
@@ -1092,10 +1092,10 @@ fun ScreenContent(
                 }
             }
         }
-        // 键盘高度让位（adjustNothing 下 imePadding 不生效）：键盘弹起时
-        // 占位把工具栏顶到键盘上方——工具栏顶部 = 画面底部（不覆盖画面）。
-        // 用固定高度（键盘完全展开时记录）：收起动画期间画面区不渐变，
-        // 视频保持原位，动画结束直接回居中（用户反馈：先下来再上去）
+        // Keyboard height adjustment (imePadding does not take effect under adjustNothing): When the keyboard pops up,
+        // Place a placeholder to position the toolbar above the keyboard—the top of the toolbar = the bottom of the screen (without overlapping the screen).
+        // Use a fixed height (recorded when the keyboard is fully expanded): the viewport doesn't animate during the collapse animation,
+        // Keep the video in place; when the animation ends, return it directly to the center (user feedback: move it down first, then back up).
         if (keyboardOpen && imeHeightFixed > 0) {
             Spacer(Modifier.fillMaxWidth().height(with(LocalDensity.current) { imeHeightFixed.toDp() }))
         }
@@ -1103,9 +1103,9 @@ fun ScreenContent(
 }
 
 /**
- * 远程键盘工具栏：一行可横向滑动。
- * ⌘/⌃/⌥/⇧ 粘性修饰（点按激活高亮，随下一个键发出；再点取消），
- * ⌘Q/⌘C/⌘V 预设组合，特殊键带当前粘性修饰。
+ * Remote keyboard toolbar: A single row that can be swiped horizontally.
+ * ⌘/⌃/⌥/⇧ Sticky Modifiers (tap to activate highlighting; the next keystroke triggers it; tap again to cancel),
+ * ⌘Q/⌘C/⌘V preset compositions; special keys retain their current sticky modifiers.
  */
 @Composable
 private fun RemoteKeyBar(
@@ -1126,7 +1126,7 @@ private fun RemoteKeyBar(
         horizontalArrangement = Arrangement.spacedBy(5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 可横向滑动的键区（weight 1f 占满，滚动只作用于键区）
+        // Horizontal swipeable key area (weight 1f, fills the entire area; scrolling applies only to the key area)
         Row(
             Modifier
                 .weight(1f)
@@ -1160,7 +1160,7 @@ private fun RemoteKeyBar(
             RemoteKey("←", false) { onKey(ScreenControlPacket.KeyCode.LEFT, activeMods) }
             RemoteKey("→", false) { onKey(ScreenControlPacket.KeyCode.RIGHT, activeMods) }
         }
-        // ⌨ 固定按钮（工具栏最右，不随键区滚动）：点击收起键盘
+        // ⌨ Fixed button (far right of the toolbar; does not scroll with the keypad): Tap to collapse the keyboard
         Box(
             Modifier
                 .height(38.dp)
@@ -1180,7 +1180,7 @@ private fun RemoteKeyBar(
     }
 }
 
-/** 远程键盘按键（圆角方块；激活态蓝色高亮）。 */
+/** Remote keyboard keys (rounded blocks; highlighted in blue when active). */
 @Composable
 private fun RemoteKey(
     label: String,
@@ -1206,21 +1206,21 @@ private fun RemoteKey(
     }
 }
 
-/** 帧率（30/60/120）与画质档位切换：全屏 header 右上角。 */
+/** Toggle frame rates (30/60/120) and image quality levels: Top-right corner of the fullscreen header. */
 @Composable
 private fun StreamQualitySwitcher(
     fps: Int,
     quality: Int,
-    /** 解码器收到的真实尺寸；优先显示它，避免配置档位与实际推流不一致。 */
+    /** The actual resolution decoded by the decoder; show this first to avoid discrepancies between the configuration settings and the actual streaming. */
     videoDims: Pair<Int, Int>?,
-    /** 解码能力帧率上限（0 = 未知，全部显示）；隐藏解码器跑不满的档位。 */
+    /** Decoder frame-rate ceiling (0 = unknown, show all); hide tiers the decoder can't sustain. */
     maxFps: Int,
     deliveredFps: Int,
     bitrateKbps: Int,
     jitterMillis: Int,
     droppedPermille: Int,
     onSelect: (Int, String) -> Unit,
-    /** 帧率本地立即更新（异步重建前 UI 先反馈——用户反馈：帧率菜单点了不生效）。 */
+    /** Frame rate updates locally and immediately (the UI provides feedback before async rebuild—user feedback: clicking the frame rate menu has no effect). */
     onFpsIndex: (Int) -> Unit,
     onQualityIndex: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -1237,7 +1237,7 @@ private fun StreamQualitySwitcher(
     var menuOpen by remember { mutableStateOf(false) }
 
     Box(modifier) {
-        // 当前档位胶囊（点击展开菜单）
+        // Current Category Capsule (tap to expand menu)
         val qualityOrActualSize =
             videoDims?.let { (width, height) -> "$width×$height" }
                 ?: qualities.getOrElse(quality) { qualities[1] }.second
@@ -1277,7 +1277,7 @@ private fun StreamQualitySwitcher(
                 )
                 HorizontalDivider()
             }
-            // 帧率组
+            // Frame Rate Group
             fpsOptions.forEach { f ->
                 DropdownMenuItem(
                     text = {
@@ -1289,14 +1289,14 @@ private fun StreamQualitySwitcher(
                     },
                     onClick = {
                         menuOpen = false
-                        // 本地立即更新 + 远端写配置重建（与画质菜单对称）
+                        // Update locally immediately + rebuild remotely after writing configuration (mirroring the image quality menu)
                         onFpsIndex(f)
                         onSelect(f, qualities[quality].first)
                     },
                 )
             }
             HorizontalDivider()
-            // 画质组：超清保留更多远端细节，默认仍为标清以控制带宽与编码压力。
+            // Image Quality Group: Ultra HD preserves more remote details, but the default remains Standard Definition to control bandwidth and encoding load.
             qualities.forEachIndexed { i, (scale, label) ->
                 DropdownMenuItem(
                     text = {
@@ -1308,8 +1308,8 @@ private fun StreamQualitySwitcher(
                     },
                     onClick = {
                         menuOpen = false
-                        // 超清优先保证文字与细线：从 120fps 直接切超清时先降到
-                        // 60fps。用户仍可随后手动选回 120fps（远端会提高码率）。
+                        // Ultra HD prioritizes text and fine lines: when switching directly from 120 fps to Ultra HD, first reduce to
+                        // 60 fps. Users can still manually switch back to 120 fps later (which will increase the bitrate on the remote end).
                         val selectedFps = fpsForQualitySelection(fps, i)
                         onFpsIndex(selectedFps)
                         onQualityIndex(i)
@@ -1321,23 +1321,23 @@ private fun StreamQualitySwitcher(
     }
 }
 
-/** 超清首次选择优先清晰度；其它档位及用户后续手动选帧率不受限制。 */
+/** For "Ultra HD," prioritize clarity during the first resolution selection; there are no restrictions on other settings or subsequent manual frame rates selected by the user. */
 internal fun fpsForQualitySelection(
     currentFps: Int,
     qualityIndex: Int,
 ): Int = if (qualityIndex == 3 && currentFps > 60) 60 else currentFps
 
-/** 推流服务安装引导卡片：服务缺失时按具体原因（ffmpeg 缺失 / 服务未运行）引导一键安装，
- * 安装中实时日志；失败后保留日志尾巴可重试。 */
+/** Streaming Service Installation Guide Card: When a service is missing, guide users through one-click installation based on the specific reason (e.g., FFmpeg missing / service not running),
+ * Real-time logging during installation; retain the end of the log after a failure to allow for retries. */
 @Composable
 internal fun ScreenServiceGuide(
     installing: Boolean,
     installLog: String,
-    /** 缺失原因：true = 远端缺 ffmpeg；false = 服务未运行（端口无监听）。 */
+    /** Reason for failure: true = ffmpeg is missing on the remote server; false = the service is not running (no port has a listener). */
     ffmpegMissing: Boolean,
-    /** relay 版本过旧（引导升级而非首次安装）。 */
+    /** The relay version is too old (prompt for an upgrade rather than a first-time installation). */
     needsUpgrade: Boolean = false,
-    /** Linux 缺 ffmpeg 且 sudo 需要交互密码。 */
+    /** Linux is missing ffmpeg, and sudo requires interactive password authentication. */
     needsSudoPassword: Boolean = false,
     onInstall: (String?) -> Unit,
     modifier: Modifier = Modifier,
@@ -1359,7 +1359,7 @@ internal fun ScreenServiceGuide(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                // 图标：主题色浅底圆角容器，视觉更精致
+                // Icon: A light-colored, container with a corner radius in the theme color, for a more refined visual appearance
                 Box(
                     Modifier
                         .size(56.dp)
@@ -1381,7 +1381,7 @@ internal fun ScreenServiceGuide(
                     color = MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Center,
                 )
-                // 具体原因 + 动作说明（替代通用长文案，信息更准）
+                // Specific reason + action description (replaces generic, lengthy text and provides more accurate info)
                 Text(
                     when {
                         needsUpgrade -> s.screen.serviceUpgradeHint
@@ -1404,7 +1404,7 @@ internal fun ScreenServiceGuide(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    // 安装实时日志：显示最后 8 行，挂住时可见无新进展
+                    // Install real-time logging: Show the last 8 rows; visible when the process is hung and no new progress is being made.
                     if (installLog.isNotBlank()) {
                         Text(
                             installLog.lines().takeLast(8).joinToString("\n"),
@@ -1449,7 +1449,7 @@ internal fun ScreenServiceGuide(
                     ) {
                         Text(s.screen.installService)
                     }
-                    // 上次安装失败：错误提示 + 日志尾巴（可重试，按钮仍在）
+                    // Last installation failure: error message + log tail (can be retried; the button is still there)
                     if (installLog.isNotBlank()) {
                         Text(
                             s.screen.installFailed,
@@ -1478,46 +1478,46 @@ internal fun ScreenServiceGuide(
     }
 }
 
-/** 全屏画面最大放大倍数（双指缩放上限）。 */
+/** Maximum scale level for fullscreen view (upper limit for two-finger scale). */
 private const val MAX_SCREEN_ZOOM = 4f
 
-/** 隐藏输入框哨兵字符（零宽空格）：保证退格键永远有内容可删。 */
+/** The input field’s sentinel character (zero-width space) is hidden: Ensure the Backspace key always has content to delete. */
 private const val KEY_SENTINEL = "\u200B"
 
-/** 小窗默认尺寸（dp）。 */
+/** Default floating window size (dp). */
 const val PIP_DEFAULT_W = 160f
 const val PIP_DEFAULT_H = 100f
 
-/** 缩放范围（dp）。 */
+/** Scale range (dp). */
 private const val PIP_MIN_W = 120f
 private const val PIP_MIN_H = 75f
 private const val PIP_MAX_W = 360f
 private const val PIP_MAX_H = 240f
 
 /**
- * 终端页小窗（画中画）：**可拖动 + 右下角拖拽缩放 + ✕ 关闭**；点击切全屏。
- * [drag]/[pipW]/[pipH] 由调用方持有（remember 于会话 key 块内）：全屏展开/收起时
- * 本组件销毁重建也不会重置位置/尺寸（rememberSaveable 只在 Activity 重建时恢复，
- * 普通的离开组合不保存——v1.4.0 回归：全屏返回后小窗回到右上角默认大小）。
+ * Terminal screen (picture-in-picture): **Dragable + scale by dragging the bottom-right corner + ✕ to close**; tap to go fullscreen.
+ * [drag]/[pipW]/[pipH] Held by the caller (remember within the session key block): When expanding/collapsing to fullscreen
+ * Destroying and rebuilding this component will not reset its position or size (rememberSaveable is only resumed when the Activity is rebuilt,
+ * Normal exit compositions are not saved—v1.4.0 regression: After returning from fullscreen mode, the floating window returns to its default size in the top-right corner.
  */
 @Composable
 fun ScreenPiP(
     state: ScreenUiState,
     onClick: () -> Unit,
     onClose: () -> Unit,
-    /** 拖动偏移（会话内保持）。 */
+    /** Drag offset (persisted within the session). */
     drag: MutableState<Offset>,
-    /** 窗口宽度（dp，会话内保持）。 */
+    /** Window width (dp, preserved within the session). */
     pipW: MutableState<Float>,
-    /** 窗口高度（dp，会话内保持）。 */
+    /** Window height (dp, preserved within the session). */
     pipH: MutableState<Float>,
     modifier: Modifier = Modifier,
-    /** 画布尺寸（钳制边界，px）。 */
+    /** Canvas size (clipped bounds, px). */
     canvasSize: IntSize = IntSize.Zero,
 ) {
     var ownSize by remember { mutableStateOf(IntSize.Zero) }
-    // 钳制边界读最新值但不重启手势：缩放导致尺寸变化时，若 pointerInput 以
-    // ownSize 为 key 会重启并中断正在进行的拖动手势（v1.4.0 回归：缩放拖不动）
+    // Constrain the bounds to read the latest value without restarting the gesture: When scaling causes a size change, if pointerInput is
+    // When `ownSize` is set as the key, it restarts and interrupts the ongoing drag gesture (v1.4.0 regression: scaling cannot be dragged).
     val ownSizeState = rememberUpdatedState(ownSize)
     val player = state.player
     val s = LocalAppStrings.current
@@ -1529,10 +1529,10 @@ fun ScreenPiP(
             .clip(RoundedCornerShape(10.dp))
             .background(Color.Black)
             .onSizeChanged { ownSize = it }
-            // 手势统一处理：单指拖动移动（起点在右下角把手区则缩放尺寸）；
-            // 双指捏合/张开缩放尺寸（v1.4.0 回归：把手拖不动 + 水平缩放被系统返回抢走）。
-            // 不用 detectDragGestures：把手独立手势会被父节点事件先发抢走；
-            // 双指缩放需要自定义手势（transform 无法区分把手起点）。
+            // Unified gesture handling: Single-finger drag to move (if the starting point is in the handle area at the bottom right, the size will be scaled);
+            // Pinch with two fingers to scale up or down (v1.4.0 regression: the handle cannot be dragged + horizontal scale is intercepted by the system).
+            // Do not use `detectDragGestures`: independent hand gestures will be intercepted by parent node events;
+            // Two-finger scaling requires a custom gesture (`transform` cannot distinguish the handle's starting point).
             .pointerInput(canvasSize) {
                 val slop = viewConfiguration.touchSlop
                 awaitEachGesture {
@@ -1540,12 +1540,12 @@ fun ScreenPiP(
                     val sz0 = ownSizeState.value
                     val handlePx = 26.dp.toPx()
                     val p = down.position
-                    // ✕ / 全屏角标区域（左上/右上角）交给各自 clickable，不参与手势
+                    // ✕ / fullscreen badge areas (top-left/top-right) get their own clickable; not part of the gesture layer
                     val iconPx = 24.dp.toPx()
                     if ((p.x < iconPx && p.y < iconPx) || (p.x > sz0.width - iconPx && p.y < iconPx)) {
                         return@awaitEachGesture
                     }
-                    // 单指起点落在右下角把手区（26dp）→ 单指拖动为缩放
+                    // Single finger starting in the bottom-right handle area (26dp) → single-finger drag scales
                     var resizing = p.x >= sz0.width - handlePx && p.y >= sz0.height - handlePx
                     var moved = false
                     var multiTouch = false
@@ -1555,15 +1555,15 @@ fun ScreenPiP(
                         val event = awaitPointerEvent()
                         val pressed = event.changes.filter { it.pressed }
                         if (pressed.isEmpty()) {
-                            // 全部抬起：无移动且未多指 → 点击全屏。替代视频面 clickable：
-                            // clickable 先于本手势收到事件，双指捏合位移小时会误判点击（v1.4.0）
+                            // Lift all: no movement and no multiple fingers → Tap to enter fullscreen mode. Replace "video face" with "clickable":
+                            // "clickable" receives the event before this gesture; a two-finger pinch-to-zoom may be mistakenly interpreted as a tap (v1.4.0)
                             if (!moved && !multiTouch) onClick()
                             break
                         }
                         if (pressed.size >= 2) {
                             multiTouch = true
-                            // 双指：捏合/张开缩放。以两指质心为锚（质心绝对位置不动，
-                            // 窗口朝手指方向展开——用户反馈中心锚定「展开方向奇怪」）
+                            // Two-finger: Pinch to scale up/down. Use the center of mass of the two fingers as the anchor (the absolute position of the center of mass remains fixed,
+                            // The window expands toward the finger—User Feedback Center noted “strange expansion direction”)
                             val p1 = pressed[0].position
                             val p2 = pressed[1].position
                             val dist = (p2 - p1).getDistance()
@@ -1573,7 +1573,7 @@ fun ScreenPiP(
                                 val oldH = pipH.value
                                 val oldWpx = oldW * density
                                 val oldHpx = oldH * density
-                                // 质心在小窗内的相对位置（缩放前后保持 → 质心处内容不动）
+                                // Relative position of the center of mass within the floating window (content at the center of mass remains stationary before and after scaling)
                                 val centroid = (p1 + p2) / 2f
                                 val rx = (centroid.x / oldWpx).coerceIn(0f, 1f)
                                 val ry = (centroid.y / oldHpx).coerceIn(0f, 1f)
@@ -1581,15 +1581,15 @@ fun ScreenPiP(
                                 pipH.value = (oldH * zoom).coerceIn(PIP_MIN_H, PIP_MAX_H)
                                 val newWpx = pipW.value * density
                                 val newHpx = pipH.value * density
-                                // 质心锚定：左上角 = 质心绝对位置 - 相对位置×新尺寸
+                                // Center-of-Mass Anchoring: Top-left corner = Absolute position of center of mass - Relative position × New size
                                 drag.value =
                                     Offset(
                                         drag.value.x + centroid.x - rx * newWpx,
                                         drag.value.y + centroid.y - ry * newHpx,
                                     )
-                                // 缩放后钳制在画布内（防拖出屏幕）。
-                                // ⚠️ 保护条件须留 margin 余量：maxDown ∈ (0, 4) 时
-                                // coerceIn(0, maxDown-4) 会 min>max 抛异常崩溃（用户反馈）
+                                // After scaling, keep the content within the canvas (to prevent it from being dragged off the screen).
+                                // ⚠️ Margin must be preserved for conditional protection: when maxDown ∈ (0, 4)
+                                // coerceIn(0, maxDown-4) will throw an exception and crash if min > max (user feedback)
                                 if (canvasSize.width > 0) {
                                     val maxLeft = (canvasSize.width - newWpx).toFloat()
                                     val maxDown = (canvasSize.height - newHpx).toFloat()
@@ -1611,24 +1611,24 @@ fun ScreenPiP(
                             if (!moved && total.x * total.x + total.y * total.y > slop * slop) moved = true
                             if (moved) {
                                 if (resizing) {
-                                    // 单指把手：delta 是 px、pip 尺寸是 dp，除以 density 换算
+                                    // Single-finger handle: delta is in px, pip size is in dp; convert by dividing by density
                                     val oldW = pipW.value
                                     val oldH = pipH.value
                                     pipW.value = (oldW + delta.x / density).coerceIn(PIP_MIN_W, PIP_MAX_W)
                                     pipH.value = (oldH + delta.y / density).coerceIn(PIP_MIN_H, PIP_MAX_H)
-                                    // 中心锚定：与双指缩放一致（中心不动）
+                                    // Center-anchored: Consistent with two-finger scale (center remains fixed)
                                     drag.value =
                                         Offset(
                                             drag.value.x - (pipW.value - oldW) / 2f * density,
                                             drag.value.y - (pipH.value - oldH) / 2f * density,
                                         )
                                 } else {
-                                    // 移动：钳制在画布内（初始右上角，可全画布移动）
+                                    // Movement: Confined to the canvas (starts at the top-right corner; can move anywhere within the canvas)
                                     val sz = ownSizeState.value
                                     if (canvasSize.width > 0 && sz.width > 0) {
                                         val margin = 4f
-                                        // 初始位置 = 画布右上角（调用方 TopEnd + padding）：
-                                        // 向左最多到左边缘、向下最多到画布底；向右/向上不可（已贴边）
+                                        // Initial position = top-right corner of the canvas (caller’s TopEnd + padding):
+                                        // Align left to the left edge and down to the bottom of the canvas; do not align right or up (already flush with the edge).
                                         val maxLeft = (canvasSize.width - sz.width).toFloat()
                                         val maxDown = (canvasSize.height - sz.height).toFloat()
                                         if (maxLeft > margin && maxDown > margin) {
@@ -1648,11 +1648,11 @@ fun ScreenPiP(
             },
     ) {
         if (player != null) {
-            // 无 clickable：点击=全屏由父手势统一判定（clickable 先于手势收到事件，
-            // 双指捏合位移小时会误判点击全屏——v1.4.0 回归）
+            // No "clickable": Tap = fullscreen, determined uniformly by parent gestures (tap events are received before gesture events,
+            // (A two-finger pinch-to-zoom gesture may occasionally be misinterpreted as a fullscreen tap—reintroduced in v1.4.0)
             ScreenVideoSurface(player, Modifier.fillMaxSize())
         } else if (!state.serviceMissing && state.error == null) {
-            // 加载中（连接中/等首帧）：纯展示，点击进全屏看详情
+            // Loading (connecting/waiting for first frame): display-only; tap to enter fullscreen for details
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
                     "…",
@@ -1663,8 +1663,8 @@ fun ScreenPiP(
                 )
             }
         }
-        // 服务缺失：小窗中央提示（纯展示不操作；点击进全屏看完整安装引导/按钮）。
-        // 按具体原因给文案（ffmpeg 缺失 / relay 旧版 / 服务未运行），安装中显示进度
+        // Service missing: hint in the floating window center (display-only; tap to enter fullscreen for the full install guide/buttons).
+        // Provide specific reasons (e.g., ffmpeg missing, outdated relay version, service not running) and show progress during installation.
         if (state.serviceMissing) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(
@@ -1700,7 +1700,7 @@ fun ScreenPiP(
                 }
             }
         } else {
-            // 错误提示（连接失败/解码失败/首帧超时等）：纯展示，点击进全屏重连
+            // Error tooltips (connection failure/decoding failure/first frame timeout, etc.): Display only; tap to enter fullscreen mode and reconnect
             state.error?.let { msg ->
                 Box(
                     Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp),
@@ -1728,8 +1728,8 @@ fun ScreenPiP(
                 }
             }
         }
-        // 屏幕状态提示（息屏/锁屏/网络不稳，可恢复）：小窗顶部小条。
-        // 与 ✕/全屏角标错开（左右 padding 32dp），画面到达自动清除
+        // Screen status tooltips (screen off/locked/unstable network connection, can be resumed): a small bar at the top of the floating window.
+        // Offset from ✕/fullscreen badges (32dp horizontal padding); auto-clears when the first frame arrives
         state.screenHint?.let { hint ->
             Text(
                 hint,
@@ -1747,8 +1747,8 @@ fun ScreenPiP(
             )
         }
 
-        // 关闭按钮（左上角）：✕ 销毁屏幕会话。圆角半透明胶囊底 + 居中图标，
-        // 与全屏页返回按钮同风格（黑 0.55 / 圆角 8dp / 白 0.9）
+        // Close button (top-left corner): ✕ Closes the screen session. Icon with corner radius and semi-transparent capsule background + centered icon,
+        // Same style as the fullscreen page back button (black 0.55 / corner radius 8dp / white 0.9)
         Box(
             Modifier
                 .align(Alignment.TopStart)
@@ -1767,7 +1767,7 @@ fun ScreenPiP(
             )
         }
 
-        // 全屏角标（右上角）：点击 = 全屏（同点画面），与关闭按钮同款胶囊底
+        // Fullscreen badge (top-right): tap = fullscreen (same as tapping the video), same capsule background as the close button
         Box(
             Modifier
                 .align(Alignment.TopEnd)
@@ -1786,9 +1786,9 @@ fun ScreenPiP(
             )
         }
 
-        // 右下角缩放把手（视觉）：拖拽调整窗口大小由小窗 Box 的手势统一处理——
-        // 起点落在此 26dp 区域即缩放（独立手势会被父节点事件先发抢走）。
-        // 排除系统返回手势：把手贴屏幕右边缘时水平缩放会被边缘返回抢走
+        // Scale handle in the lower-right corner (visual): Scaling the window by dragging is handled uniformly via the "floating window" gesture—
+        // The starting point falls within this 26dp region, which triggers scale (independent gestures are preempted by parent node events).
+        // Exclude system-triggered gestures: When your finger is near the right edge of the screen, horizontal scaling is interrupted by the edge-triggered gesture.
         Box(
             Modifier
                 .align(Alignment.BottomEnd)

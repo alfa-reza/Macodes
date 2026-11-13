@@ -29,7 +29,7 @@ data class AgentBridgeSessionInfo(
     val waitingApproval: Boolean = false,
 )
 
-/** Agent CLI 自己保存在远端主机上的可恢复会话。 */
+/** A recoverable session that the Agent CLI saves on a remote host. */
 data class AgentNativeSessionInfo(
     val nativeId: String,
     val agent: String,
@@ -59,15 +59,15 @@ data class AgentApprovalRequest(
     val timeoutMs: Long = 0L,
 )
 
-/** 仅在当前 SSH 请求中传递的供应商凭据；Bridge 不持久化 [apiKey]。 */
+/** Provider credentials are passed only within the current SSH request; Bridge does not support persistence for the [apiKey]. */
 data class AgentProviderRuntime(
     val id: String,
     val type: String,
     val apiKey: String,
     val baseUrl: String,
-    /** claude 专用 anthropic 兼容端点（openai 类型供应商提供时可用）。 */
+    /** Anthropic-compatible endpoint dedicated to Claude (available when provided by OpenAI-type providers). */
     val anthropicBaseUrl: String = "",
-    /** Pi CLI 自己的 provider id（例如 deepseek），与 [type] 的 wire 协议分离。 */
+    /** Pi CLI’s own provider ID (e.g., deepseek), separate from the [type] wire protocol. */
     val piProvider: String = "",
 )
 
@@ -77,7 +77,7 @@ data class AgentAttachment(
     val size: Long,
 )
 
-/** Agent 在远端本轮生成或修改的可交付文件。 */
+/** Files generated or modified by the agent on the remote end during this round. */
 data class AgentArtifact(
     val name: String,
     val remotePath: String,

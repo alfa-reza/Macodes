@@ -5,7 +5,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertNull
 
 /**
- * 期望值来自独立的 AES-128-OCB 标准测试向量：nonce 96bit / tag 128bit / 无 AD，与线上一致。
+ * The expected values are derived from the independent AES-128-OCB standard test vectors: 96-bit nonce / 128-bit tag / no AD, consistent with the production environment.
  */
 class OcbTest {
     private fun hex(s: String): ByteArray = ByteArray(s.length / 2) { s.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
@@ -39,7 +39,7 @@ class OcbTest {
 
     @Test
     fun twentyFourBytes() {
-        // 一整块 + 8 字节尾部
+        // A single block + 8-byte trailer
         val out =
             Ocb(key).encrypt(
                 hex("BBAA99887766554433221103"),
@@ -53,7 +53,7 @@ class OcbTest {
 
     @Test
     fun thirtyThreeBytes() {
-        // 两整块 + 1 字节尾部
+        // Two full blocks + a 1-byte trailer
         val out =
             Ocb(key).encrypt(
                 hex("BBAA99887766554433221104"),
@@ -78,8 +78,8 @@ class OcbTest {
     }
 
     /**
-     * 独立解密向量：用标准 encrypt 向量反向验证 decrypt。
-     * round-trip 只能证明加解密自洽；这里用标准向量输出验证方向也正确。
+     * Independent decryption vector: Use the standard `encrypt` vector to verify the decryption.
+     * Round-trip verification only proves that encryption and decryption are consistent; here, using standard vector output also verifies that the direction is correct.
      */
     @Test
     fun decryptAgainstReferenceVectors() {

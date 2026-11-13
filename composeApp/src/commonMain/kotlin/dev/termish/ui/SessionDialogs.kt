@@ -21,8 +21,8 @@ import dev.termish.ssh.AuthPrompt
 import dev.termish.ssh.HostKeyInfo
 
 /**
- * 会话级弹窗（认证 / 主机密钥确认）。从 TerminalScreen 提升到全局：
- * 首页发起连接等待跳转时也会弹出授权，不必先进入终端页。
+ * Session-level dialogs (authentication / host key confirmation). Elevated from TerminalScreen to global:
+ * An authorization prompt will also appear when initiating a connection on the homepage and waiting to see the terminal screen redirect; there is no need to open the terminal screen first.
  */
 
 @Composable

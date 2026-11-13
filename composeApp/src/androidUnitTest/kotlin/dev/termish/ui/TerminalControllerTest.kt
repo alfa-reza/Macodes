@@ -41,9 +41,9 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * TerminalController 状态机与输出管线（fake SshSession + 可控主调度器）：
- * 连接状态转换、TOFU 指纹保存、启动命令、意外断线重连、close/destroy 语义、
- * CancellationException 不误报失败、输出经主线程消费进 buffer。
+ * TerminalController State Machine and Output Pipeline (fake SshSession + Controllable Main Dispatcher):
+ * Connection state transitions, TOFU fingerprint saving, launch commands, reconnection after unexpected disconnections, close/destroy semantics,
+ * CancellationException does not falsely report a failure; the output is consumed by the main thread and written to the buffer.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = TermishApplication::class)
@@ -66,10 +66,10 @@ class TerminalControllerTest {
 
     private fun host(startup: String = "") = Host(id = "h1", name = "dev", hostname = "example.com", username = "root", startupCommand = startup)
 
-    /** Mosh + Herdr 会话（mosh 引导直接跑 herdr）。 */
+    /** Mosh + Herdr session (the mosh bootstrap runs herdr directly). */
     private fun herdrMoshHost() = host().copy(connectionMode = ConnectionMode.MOSH)
 
-    // herdr --version 输出（探测判「已安装」用；snapshot 判 daemon 运行用）
+    // herdr --version output (used to detect if "installed"; snapshot is used to check if the daemon is running)
     private val versionOutput = "herdr 0.8.0"
 
     @Test
@@ -94,7 +94,7 @@ class TerminalControllerTest {
 
     private class FakeExec(
         val onWrite: (ByteArray) -> Unit = {},
-        /** true = read 立即返回 null（模拟脚本/程序已退出 EOF）；默认返回空块保持通道活跃。 */
+        /** true = read Immediately returns null (mocks that the script/program has reached EOF); by default, returns an empty block to keep the channel active. */
         val eof: Boolean = false,
     ) : SshExecChannel {
         var closed = false
@@ -243,17 +243,17 @@ class TerminalControllerTest {
         withTimeout(5_000) {
             while (c.status != expected) {
                 delay(10)
-                // 泵主线程消费者：fake exec 的读循环热转产空块会把 256 容量
-                // 输出队列灌满，不排干则读循环卡在背压上、后续状态永远等不到
+                // Main thread consumer: the read loop in `fake exec` rapidly produces empty chunks, filling the 256-capacity
+                // output queue; unless it is flushed, the read loop gets stuck on backpressure and later states are never reached.
                 scheduler.advanceUntilIdle()
             }
         }
     }
 
-    /** 等待 shell 发送内容包含目标命令（带超时）。
-     *  finishConnected 先置 CONNECTED 再 sendData（UI 先亮连接态再注入启动命令，
-     *  有意顺序）：awaitStatus 返回后注入可能尚未落地，直接断言 f.sent 会撞
-     *  窗口——CI 慢机器上必现 flaky（v1.1.7 tag run 即此）。轮询等注入到达。 */
+    /** Wait for the shell to send content containing the target command (with a timeout).
+     *  finishConnected: set CONNECTED first, then sendData (the UI displays the connection status first, then injects the launch command,
+     *  (Intentionally in this order): after `awaitStatus` returns the injection may not have taken effect yet; asserting on `f.sent` right away is racy because the injection may not have landed (flaky on slow CI), so poll and wait for it to arrive.
+     *  Race window—CI is bound to be flaky on slow machines (this is exactly what happens when running the v1.1.7 tag). Wait for the injection to arrive. */
     private fun awaitSent(
         f: FakeSsh,
         expected: String,
@@ -266,7 +266,7 @@ class TerminalControllerTest {
         }
     }
 
-    /** 等待 shell 注入 herdr 启动命令（延迟 + 清屏前缀形态；带超时）。 */
+    /** Wait for the shell injection command to launch herdr (latency + screen-clearing prefix; with timeout). */
     private fun awaitHerdrLaunch(
         f: FakeSsh,
         bin: String,
@@ -314,9 +314,9 @@ class TerminalControllerTest {
 
     @Test
     fun systemProbeDoesNotEraseFingerprint() {
-        // 回归：连接成功后系统探测用 c.host 创建时快照整条 upsert，把
-        // touchConnected/TOFU 刚记录的指纹抹掉 → 每次重连/新会话/SFTP
-        // 都重复弹确认窗（新主机 system 必为空，探测必触发）
+        // Regression: after a successful connection, the system probe upserts the whole row using the creation-time snapshot of `c.host`, which
+        // touchConnected/TOFU: Recently recorded fingerprints are erased → every time there is a reconnect, new session, or SFTP
+        // A confirmation dialog pops up repeatedly (the "system" variable on a new host is always empty, so the check will always trigger).
         val (c, _, r) =
             controller(
                 FakeSsh(commandHandler = { cmd ->
@@ -327,7 +327,7 @@ class TerminalControllerTest {
         c.connect(80, 24)
         awaitStatus(c, ConnStatus.CONNECTED)
 
-        // 等探测完成（system 落盘）后断言指纹仍在：两者共存
+        // After detection is complete (system writes to disk), make an assertion that the fingerprint remains: both coexist
         runBlocking {
             withTimeout(5_000) { while (r.getHost("h1")?.system.isNullOrBlank()) delay(10) }
         }
@@ -341,7 +341,7 @@ class TerminalControllerTest {
         val (c, fake, _) = controller(FakeSsh(), startup = "tmux new -A -s main")
         c.connect(80, 24)
         awaitStatus(c, ConnStatus.CONNECTED)
-        // CONNECTED 置位后启动命令在同一协程稍后发出：轮询等待，避免竞态
+        // When CONNECTED is set, the launch command is issued later in the same coroutine: poll and wait to avoid race conditions
         runBlocking {
             withTimeout(5_000) {
                 while (fake.sent.none { it.decodeToString().trim() == "tmux new -A -s main" }) delay(10)
@@ -366,7 +366,7 @@ class TerminalControllerTest {
     fun cancellationIsNotReportedAsError() {
         val (c, _, _) = controller(FakeSsh(connectError = CancellationException("cancelled")))
         c.connect(80, 24)
-        runBlocking { delay(200) } // 让 IO 上的连接协程跑完
+        runBlocking { delay(200) } // Let the connection coroutine on IO run to completion
 
         assertNotEquals(ConnStatus.ERROR, c.status)
         c.destroy()
@@ -657,12 +657,12 @@ class TerminalControllerTest {
         assertEquals(frameBefore, c.frame)
     }
 
-    // ---------- Herdr 会话启动类型 ----------
+    // ---------- Herdr Session Launch Types ----------
 
     @Test
     fun herdrProbeFailureGuidesInstall() {
-        // 全部候选 runCommand 返回 null → 远端无 herdr：保留 SSH 连接进入「待安装」
-        // （banner 引导安装），不报错、不降级、不重连（SSH + Herdr 会话）
+        // All candidates: runCommand returns null → No herdr on the remote: Keep the SSH connection open and enter “Pending Installation”
+        // (Banner-guided installation), no errors, no fallback, no reconnection (SSH + Herdr sessions)
         val (c, f) = herdrController(FakeSsh())
         c.connect(80, 24)
         awaitStatus(c, ConnStatus.CONNECTED)
@@ -674,8 +674,8 @@ class TerminalControllerTest {
 
     @Test
     fun installHerdrReProbesAndInjectsCommand() {
-        // 首次探测无 herdr → 引导安装；安装脚本执行后重新探测成功 → SSH 模式直接
-        // 向 shell 注入 herdr 命令（非 exec 通道：herdr 是 shell 子进程，退出回 shell）
+        // First scan shows no herdr → boot installation; success on rescan after the install script runs → direct SSH mode
+        // Perform injection of the `herdr` command into the shell (non-exec channel: `herdr` is a shell process that returns to the shell upon exit)
         var installed = false
         val fake =
             FakeSsh(
@@ -686,7 +686,7 @@ class TerminalControllerTest {
                     }
                 },
                 execFactory = { cmd ->
-                    // 安装脚本经 startExec 流式执行（不经过 commandHandler）：这里模拟安装成功
+                    // The installation script is executed via `startExec` in a streaming manner (without passing through `commandHandler`): This mocks success.
                     if (cmd.contains("install.sh")) installed = true
                     FakeExec(eof = true)
                 },
@@ -697,14 +697,14 @@ class TerminalControllerTest {
         assertTrue(c.herdrNeedsInstall)
 
         c.installHerdr()
-        // 安装成功后：退出待安装态，经 shell 注入 herdr（延迟 + 清屏前缀，
-        // 防 Ubuntu MOTD 迟到输出顶掉 herdr 画面）
+        // After success in installation: Exit the installation state and perform herdr injection via the shell (latency + screen-clearing prefix,
+        // (To prevent the Ubuntu MOTD from being pushed to the top of the screen by delayed output)
         runBlocking { withTimeout(5_000) { while (!(!c.herdrInstalling && !c.herdrNeedsInstall)) delay(10) } }
 
         assertTrue(!c.herdrNeedsInstall, "安装成功应退出待安装状态")
         assertTrue(!c.herdrInstalling)
         assertTrue(f.execCommands.any { it.contains("install.sh") }, "应执行安装脚本")
-        // 注入带 1.5s 延迟：轮询等待（scheduler 推进虚拟时间），断言清屏前缀 + 二进制路径
+        // Inject a 1.5-second latency: wait via polling (the scheduler advances virtual time), assertion of the screen-clearing prefix + binary path
         runBlocking {
             withTimeout(5_000) {
                 while (f.sent.none {
@@ -730,7 +730,7 @@ class TerminalControllerTest {
 
     @Test
     fun parseInstallPathExtractsFromLog() {
-        // install.sh 打印 "installed herdr to /path/herdr"（含颜色码前缀与多行日志）
+        // install.sh prints "installed herdr to /path/herdr" (including color-coded prefixes and multi-line logs)
         assertEquals(
             "/home/user/.local/bin/herdr",
             parseInstallPath("  > installed herdr to /home/user/.local/bin/herdr\n"),
@@ -742,14 +742,14 @@ class TerminalControllerTest {
 
     @Test
     fun shSingleQuoteEscapesForSudoPipe() {
-        // 普通密码：原样包单引号
+        // Regular passwords: Enclose them in single quotes as-is
         assertEquals("'abc'", shSingleQuote("abc"))
-        // 含单引号：拆段转义 `'` → `'\''`，shell 拼接后还原原密码
+        // For single quotes: split and escape `'` → `'\''`; restore the original password after shell concatenation.
         assertEquals("'a'\\''b'", shSingleQuote("a'b"))
         assertEquals("'a'\\''b'\\''c'", shSingleQuote("a'b'c"))
-        // 含 shell 敏感字符：单引号内全部安全，无需额外转义
+        // Contains shell-sensitive characters: All characters within single quotes are safe and do not require additional escaping.
         assertEquals("'a\$b c\\d\"e'", shSingleQuote("a\$b c\\d\"e"))
-        // 空密码
+        // Empty password
         assertEquals("''", shSingleQuote(""))
     }
 
@@ -797,9 +797,9 @@ class TerminalControllerTest {
 
     @Test
     fun herdrMoshMissingShowsInstallGuide() {
-        // Mosh + Herdr 会话：herdr 在但 mosh-server 未装 → mosh 引导安装卡片（非静默
-        // 降级——装上 mosh 才有漫游能力）；状态必须置 CONNECTED（回归：此前
-        // 状态停在 CONNECTING，banner 常驻「连接中…」）
+        // Mosh + Herdr Session: Herdr is running but mosh-server is not installed → Mosh installation card (non-silent)
+        // Fallback—roaming capability requires installing mosh); the status must be set to CONNECTED (regression: previously
+        // (Status stuck at CONNECTING, banner permanently displays “In the process of establishing a connection…”)
         val fake =
             FakeSsh(
                 commandHandler = { cmd ->
@@ -821,8 +821,8 @@ class TerminalControllerTest {
 
     @Test
     fun herdrDegradedInjectsShellCommand() {
-        // 已降级条目（moshDegradedToSsh）+ Herdr 会话：直走 SSH shell 并注入
-        // herdr 命令（herdr 是 shell 子进程，退出后回到 shell）
+        // Degraded entries (moshDegradedToSsh) + Herdr session: go straight to the SSH shell and inject
+        // herdr command (herdr is a shell process; upon exit, it returns to the shell)
         val fake =
             FakeSsh(
                 commandHandler = { cmd ->
@@ -844,7 +844,7 @@ class TerminalControllerTest {
 
     @Test
     fun herdrProbeUsesFullPathCandidates() {
-        // 裸 herdr 不在 PATH、全路径命中：探测记录候选顺序，命中路径贯穿注入命令
+        // Bare herdr not in PATH, full path matched: the probe records the candidate order, and the matched path carries through the injection command
         val probed = mutableListOf<String>()
         val fake =
             FakeSsh(
@@ -859,16 +859,16 @@ class TerminalControllerTest {
                 execFactory = { FakeExec() },
             )
         val (c, f) = herdrController(fake)
-        c.moshDegradedToSsh = true // 降级条目直走 SSH shell（跳过 mosh 引导）
+        c.moshDegradedToSsh = true // Fallback entry: Go straight to the SSH shell (skip the mosh boot)
         c.connect(80, 24)
         awaitStatus(c, ConnStatus.CONNECTED)
 
-        // 探测按候选顺序（HerdrProbe 固定候选为裸命令）：herdr →
-        // \$HOME/.local/bin/herdr → /usr/local/bin/herdr（命中）；注入为命中路径
+        // Probe in candidate order (HerdrProbe fixes the candidates as the bare command): herdr →
+        // \$HOME/.local/bin/herdr → /usr/local/bin/herdr (match); injection as the matching path
         assertEquals(3, probed.size)
         assertTrue(probed[0].startsWith("herdr "))
         assertTrue(probed[2].startsWith("/usr/local/bin/herdr "))
-        // 命中路径贯穿注入（非裸 herdr）；注入带 1.5s 延迟，需轮询等待
+        // The matched path runs through the injection (not a bare herdr); the injection carries a 1.5s delay, so poll and wait.
         awaitHerdrLaunch(f, "/usr/local/bin/herdr")
         assertTrue(
             herdrLaunchIn(f, "/usr/local/bin/herdr") != null,
@@ -879,12 +879,12 @@ class TerminalControllerTest {
 
     @Test
     fun herdrProbeResolvesHomeCandidateToAbsolutePath() {
-        // 真机踩坑（远端 Linux 服务器）：sshd 非交互 exec PATH 不含 ~/.local/bin →
-        // 裸 herdr 探测失败、$HOME 候选命中（经远端 shell 展开）；但下游
-        // mosh 引导 `-- '<bin>'` 单引号不展开、mosh-server 子进程直接 execvp
-        // 不过 shell，字面 $HOME 报
-        // `execvp: $HOME/.local/bin/herdr: No such file or directory`。
-        // 断言：命中后解析成绝对路径（echo $HOME），注入拿到绝对路径
+        // Physical device pitfall (remote Linux server): sshd non-interactive exec PATH does not include ~/.local/bin →
+        // Raw herdr probe failed; $HOME candidate matched (expanded via remote shell); but downstream
+        // mosh boot `-- '<BIN>'` (single quotes are not expanded); mosh-server processes use `execvp` directly
+        // Not via the shell, the literal $HOME reports
+        // `execvp: $HOME/.local/bin/herdr: No such file or directory`.
+        // Assertion: once matched, it is resolved to an absolute path (echo $HOME); the injection command gets the absolute path
         val commands = mutableListOf<String>()
         val fake =
             FakeSsh(
@@ -900,7 +900,7 @@ class TerminalControllerTest {
                 execFactory = { FakeExec() },
             )
         val (c, f) = herdrController(fake)
-        c.moshDegradedToSsh = true // 降级条目直走 SSH shell（跳过 mosh 引导）
+        c.moshDegradedToSsh = true // Fallback entry: Go straight to the SSH shell (skip the mosh boot)
         c.connect(80, 24)
         awaitStatus(c, ConnStatus.CONNECTED)
 
@@ -916,10 +916,10 @@ class TerminalControllerTest {
 
     @Test
     fun herdrMoshBootstrapUsesResolvedAbsolutePath() {
-        // mosh 引导命令必须带解析后的绝对路径：mosh-server 对 `--` 后参数直接
-        // execvp（不过 shell），字面 $HOME 必失败（见上）。Main 换 Unconfined：
-        // doConnectMosh 在引导解析后经 withContext(Main) 做主题准备，测试默认
-        // 的 StandardTestDispatcher 不会自跑，会把连接协程挂死在那
+        // The `mosh` command must be followed by a parsed absolute path: `mosh-server` directly processes parameters following `--`
+        // execvp (not via the shell); a literal `$HOME` will inevitably fail (see above). Main is changed to Unconfined:
+        // After initial parsing, doConnectMosh prepares the theme using withContext(Main) and tests the default
+        // The StandardTestDispatcher does not run on its own; it will leave the connection coroutine hanging there.
         val bootstraps = mutableListOf<String>()
         val fake =
             FakeSsh(
@@ -927,11 +927,11 @@ class TerminalControllerTest {
                     when {
                         cmd.contains("mosh-server new") -> {
                             bootstraps += cmd
-                            // key 必须 22 字符规范 base64：客户端构造会校验，
-                            // 非法 key 抛异常走 ERROR 分支到不了本断言
+                            // The key must follow the 22-character specification in Base64: the client construction will validate it,
+                            // An invalid key throws an exception and branches to the ERROR branch, so this assertion is never reached.
                             "MOSH CONNECT 60000 AAAAAAAAAAAAAAAAAAAAAA"
                         }
-                        // exec PATH 无 ~/.local/bin：裸 herdr 失败，$HOME 候选命中
+                        // exec PATH without ~/.local/bin: plain herdr fails, $HOME candidate matches
                         cmd == "herdr --version" -> null
                         cmd == "\$HOME/.local/bin/herdr --version" -> versionOutput
                         cmd == "echo \$HOME" -> "/root"
@@ -943,7 +943,7 @@ class TerminalControllerTest {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val (c, f) = herdrMoshController(fake)
         c.connect(80, 24)
-        // 等引导命令发出即断言（不等 UDP 首包确认：那是 5s 超时路径，与本断言无关）
+        // An assertion is triggered as soon as the command is issued (without waiting for confirmation of the first UDP packet: that is the 5-second timeout path, which is unrelated to this assertion).
         runBlocking { withTimeout(5_000) { while (bootstraps.isEmpty()) delay(10) } }
         assertTrue(
             bootstraps[0].contains("-- ${shSingleQuote("/root/.local/bin/herdr")}"),
@@ -1002,9 +1002,9 @@ class TerminalControllerTest {
 
     @Test
     fun herdrInstallMoshReGuidesWithHerdrArg() {
-        // Mosh + Herdr 会话 + mosh 未装 → 引导安装；安装完成后重新引导必须带
-        // -- 'herdr'（mosh 会话直接跑 herdr）。此处模拟装后 PATH 未刷新仍
-        // not found → 回到引导卡片，但引导命令必须已带上 herdr 参数
+        // Mosh + Herdr session + mosh not installed → guided installation; after installation completes, the re-bootstrap must include
+        // -- 'herdr' (mosh runs herdr directly in a session). This mocks a scenario where the PATH has not been refreshed after installation, yet
+        // not found → Return to the boot card, but the boot command must include the `herdr` parameter
         var installed = false
         val bootstraps = mutableListOf<String>()
         val fake =
@@ -1033,7 +1033,7 @@ class TerminalControllerTest {
         assertTrue(c.moshNeedsInstall)
 
         c.installMosh()
-        // 终态：安装完成 + 重引导仍 not found → 回到引导卡片（已带 herdr 参数）
+        // Final state: installation complete + re-bootstrap still reports not found → return to the guide card (already carries the herdr parameter)
         runBlocking {
             withTimeout(5_000) { while (!(!c.moshInstalling && c.moshNeedsInstall && bootstraps.size >= 2)) delay(10) }
         }
@@ -1046,9 +1046,9 @@ class TerminalControllerTest {
 
     @Test
     fun herdrDegradeButtonInjectsHerdrAndSticksForReconnect() {
-        // Mosh + Herdr 会话 + mosh 未装 → 卡片「降级 SSH」= 注入 herdr 命令；
-        // 用户明确选择后置 sticky 标记，断链重连直走 SSH shell（仍注入 herdr），
-        // 不再引导 mosh
+        // Mosh + Herdr session + mosh not installed → Card “Fallback SSH” = injection of the herdr command;
+        // After the user makes an explicit selection for the "sticky" flag, the broken connection is reconnected and proceeds directly to the SSH shell (still undergoing herdr injection),
+        // No longer goes through the mosh bootstrap
         var bootstrapCount = 0
         val fake =
             FakeSsh(
@@ -1069,18 +1069,18 @@ class TerminalControllerTest {
         awaitStatus(c, ConnStatus.CONNECTED)
         assertTrue(c.moshNeedsInstall)
 
-        // 用户点「降级 SSH」：注入 herdr（探到的裸命令）
+        // User clicks “Fallback SSH”: performs herdr injection (detected raw command)
         c.degradeMoshToSsh()
         awaitHerdrLaunch(f, "herdr")
         assertTrue(herdrLaunchIn(f, "herdr") != null, "降级应注入 herdr 命令，实际: ${f.sent.map { it.decodeToString() }}")
         assertTrue(c.moshDegradedToSsh, "降级应置 sticky 标记")
 
-        // 断链 → 自动重连 → 直走 SSH shell 注入 herdr（无 mosh 引导）
+        // Broken link → Automatic reconnection → Direct SSH shell injection into herdr (no mosh boot)
         fake.closed = true
         fake.callbacks.onClosed("lost")
         awaitStatus(c, ConnStatus.CONNECTING)
         awaitStatus(c, ConnStatus.CONNECTED)
-        // 第二次注入带 1.5s 延迟：轮询等到计数为 2 再断言
+        // Second injection with a 1.5-second latency: Poll until the count reaches 2, then make an assertion
         runBlocking {
             withTimeout(5_000) {
                 while (f.sent.count {
@@ -1108,7 +1108,7 @@ class TerminalControllerTest {
 
     @Test
     fun moshDegradedReconnectUsesPlainShell() {
-        // MOSH 模式同样遵守 sticky 降级：重连不再引导 mosh-server，直接 SSH shell
+        // The MOSH mode also follows the "sticky" fallback: reconnections no longer launch mosh-server, but instead open an SSH shell directly.
         var bootstrapCount = 0
         val fake =
             FakeSsh(
@@ -1131,12 +1131,12 @@ class TerminalControllerTest {
         c.destroy()
     }
 
-    // ---------- Mosh 引导安装 ----------
+    // ---------- Mosh Install Guide ----------
 
     @Test
     fun moshMissingGuidesInstall() {
-        // Mosh 模式：mosh-server 缺失（not found）→ 保留 SSH 连接进入「待安装」
-        // （引导卡片：安装或降级 SSH），不直接降级
+        // Mosh mode: mosh-server missing (not found) → Maintain SSH connection and enter “Pending Installation”
+        // (Guide card: Install or downgrade SSH), do not fallback directly
         val fake =
             FakeSsh(
                 commandHandler = { cmd ->
@@ -1158,14 +1158,14 @@ class TerminalControllerTest {
 
     @Test
     fun installMoshRunsPackageManagerAndReGuides() {
-        // 免密 sudo：安装命令（sudo -n apt-get…）执行 → command -v 验证通过 →
-        // 重新引导仍缺（模拟装后 PATH 未刷新）→ 回到引导卡片（可重试/降级）
+        // Password-less sudo: Install the command (sudo -n apt-get…) → Verify with command -v →
+        // Re-bootstrap still reports missing (PATH not refreshed after mock installation) → return to the guide card (can retry/fallback)
         var installed = false
         val fake =
             FakeSsh(
                 commandHandler = { cmd ->
                     when {
-                        // bootstrap 命令串也含 os-release：mosh-server 分支必须在最前
+                        // The `bootstrap` command string also includes `os-release`: the `mosh-server` branch must be listed first
                         cmd.contains("mosh-server new") -> "mosh: command not found"
                         cmd.contains("command -v mosh-server") ->
                             if (installed) "/usr/bin/mosh-server" else null
@@ -1187,8 +1187,8 @@ class TerminalControllerTest {
         assertTrue(c.moshNeedsInstall)
 
         c.installMosh()
-        // 等组合终态而非仅 !moshInstalling：安装完会重引导（失败才回置
-        // moshNeedsInstall），单等标志会抢在重引导完成前断言（flaky 根因）
+        // Wait for the combined end state rather than just !moshInstalling: after installation completes it will re-bootstrap (only revert in case of failure,
+        // moshNeedsInstall), waiting on the single flag will assert before the re-bootstrap completes (root cause of flakiness)
         runBlocking { withTimeout(5_000) { while (!(!c.moshInstalling && c.moshNeedsInstall)) delay(10) } }
 
         assertTrue(installed, "应执行包管理器安装命令")
@@ -1199,8 +1199,8 @@ class TerminalControllerTest {
 
     @Test
     fun installMoshWithSudoPasswordFeedsStdin() {
-        // 需要 sudo 密码：首次点击无密码 → 卡片提示输入；输入后安装命令走
-        // `sudo -S` 且密码经 exec stdin 写入（不进命令字符串）
+        // sudo password required: on the first tap with no password → the card prompts for input; after entering the password, the install command runs
+        // `sudo -S` and the password is written via `exec stdin` (not included in the command string)
         var passwordSeen = ""
         val fake =
             FakeSsh(
@@ -1228,14 +1228,14 @@ class TerminalControllerTest {
         awaitStatus(c, ConnStatus.CONNECTED)
         assertTrue(c.moshNeedsInstall)
 
-        // 首次点击（无密码）：探测发现需要 sudo 密码 → 卡片提示输入（终态 =
-        // !moshInstalling && moshNeedsSudoPassword）
+        // First tap (no password): detection finds a sudo password is required → the card prompts for input (final state =
+        // !moshInstalling && moshNeedsSudoPassword)
         c.installMosh()
         runBlocking { withTimeout(5_000) { while (!(!c.moshInstalling && c.moshNeedsSudoPassword)) delay(10) } }
         assertTrue(c.moshNeedsSudoPassword, "应提示输入 sudo 密码")
         assertTrue(!f.execCommands.any { it.contains("sudo -S") }, "无密码时不应执行安装")
 
-        // 输入密码后重试：sudo -S 经 exec stdin 收密码（终态 = 安装全链路结束）
+        // Retry after inputting the password: sudo -S accepts the password via exec stdin (terminal state = completion of the entire installation process)
         c.installMosh("p@ss'w0rd")
         runBlocking { withTimeout(5_000) { while (!(!c.moshInstalling && !c.moshNeedsSudoPassword)) delay(10) } }
 

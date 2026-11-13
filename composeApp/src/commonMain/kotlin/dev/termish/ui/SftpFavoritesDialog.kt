@@ -23,7 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import dev.termish.ui.theme.Sizes
 import dev.termish.ui.theme.Spacing
 
-/** 终端页与 Agent 页共用的收藏路径弹窗，确保两处交互保持一致。 */
+/** The favorites path dialog, shared by the terminal screen and the Agent page, ensures consistent interaction in both locations. */
 @Composable
 internal fun SftpFavoritesDialog(
     favorites: List<String>,

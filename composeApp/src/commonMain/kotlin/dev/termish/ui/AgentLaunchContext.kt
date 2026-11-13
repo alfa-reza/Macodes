@@ -3,15 +3,15 @@ package dev.termish.ui
 private const val MAX_AGENT_HANDOFF_TEXT_CHARS = 12_000
 private const val MAX_AGENT_HANDOFF_PATHS = 100
 
-/** 从终端/SFTP 交给 Agent 的一次性上下文，不写入主机或 Agent 默认配置。 */
+/** One-time context passed to the Agent from the terminal or via SFTP; it is not written to the host or the Agent’s default configuration. */
 data class AgentLaunchContext(
     val prompt: String,
     val directory: String? = null,
 )
 
 /**
- * 终端输出通常尾部最有价值（错误栈、退出状态），超长时保留末尾并明确标记截断。
- * [wrapPrompt] 负责本地化，同时应声明内容是不可信数据，避免把远端输出当作指令。
+ * The most valuable information in terminal output is usually at the end (error stack traces, exit status); if the output is very long, retain the end portion and clearly mark it as undergoing truncation.
+ * [wrapPrompt] Be responsible for localization, and clearly state that the content is untrusted data to avoid treating remote output as instructions.
  */
 internal fun terminalAgentLaunchContext(
     selection: String,
@@ -33,8 +33,8 @@ internal fun terminalAgentLaunchContext(
 }
 
 /**
- * SFTP 文件位于 Agent 所在的同一远端主机，只传绝对路径引用，不经手机下载再上传。
- * 去重和数量/文本上限避免一次多选制造超大 prompt。
+ * SFTP files are located on the same remote host as the Agent; only absolute paths should be referenced—do not download them to a phone and then upload them.
+ * Avoid duplicates and adhere to character and text limits to prevent selecting multiple items at once, which would create an excessively large prompt.
  */
 internal fun sftpAgentLaunchContext(
     paths: List<String>,

@@ -39,7 +39,7 @@ import platform.zlib.Z_STREAM_END
 import platform.zlib.compress2
 import platform.zlib.uncompress
 
-/** iOS 端 POSIX UDP 实现。 */
+/** POSIX UDP implementation for iOS. */
 @OptIn(ExperimentalForeignApi::class)
 internal actual class MoshUdpSocket actual constructor(
     ip: String,
@@ -72,7 +72,7 @@ internal actual class MoshUdpSocket actual constructor(
         data.usePinned { pinned ->
             val n = send(fd, pinned.addressOf(0), data.size.convert(), 0)
             if (n.toInt() == data.size) return SendResult.OK
-            // 报错时回传 errno：EMSGSIZE 让传输层把 MTU 降到保底值（mosh sendto 语义）
+            // When an error occurs, return errno: EMSGSIZE to instruct the transport layer to lower the MTU to the minimum guaranteed value (mosh sendto semantics).
             return if (errno == EMSGSIZE) SendResult.TOO_LARGE else SendResult.FAILED
         }
     }
@@ -85,7 +85,7 @@ internal actual class MoshUdpSocket actual constructor(
             setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, tv.ptr, sizeOf<timeval>().convert())
             val buf = allocArray<ByteVar>(4096)
             val n = recvfrom(fd, buf, 4096.convert(), 0, null, null)
-            if (n <= 0) return null // 超时或错误都按未收到处理
+            if (n <= 0) return null // Timeouts and errors are handled as not received.
             return UdpDatagram(ByteArray(n.toInt()) { i -> buf[i] })
         }
     }
@@ -98,7 +98,7 @@ internal actual class MoshUdpSocket actual constructor(
 @OptIn(ExperimentalForeignApi::class)
 internal actual fun zlibCompress(data: ByteArray): ByteArray =
     memScoped {
-        // mosh compressor：compress() 默认级别；目标缓冲留 size + 12.5% + 256 余量
+        // mosh compressor: compress() default level; reserve size + 12.5% + 256 in the target buffer
         val cap = data.size + data.size / 8 + 256
         val out = allocArray<UByteVar>(cap)
         val destLen = alloc<ULongVar>()
@@ -120,7 +120,7 @@ internal actual fun zlibCompress(data: ByteArray): ByteArray =
 @OptIn(ExperimentalForeignApi::class)
 internal actual fun zlibDecompress(data: ByteArray): ByteArray =
     memScoped {
-        // 与 mosh compressor 一致：上限 2MB（终端尺寸上限）
+        // Consistent with the Mosh Compressor: maximum size of 2 MB (terminal size limit)
         val cap = 2 * 1024 * 1024
         val out = allocArray<UByteVar>(cap)
         val destLen = alloc<ULongVar>()

@@ -19,7 +19,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 
-/** ScreenSession 只持有结构化行为；所有用户可见文案由 AppStrings 在创建时注入。 */
+/** ScreenSession contains only structured behavior; all user-visible text is injected by AppStrings during creation. */
 internal data class ScreenSessionMessages(
     val connectionFailed: String,
     val readChannelFailed: String,
@@ -53,19 +53,19 @@ internal data class ScreenSessionMessages(
 }
 
 /**
- * 屏幕推流会话：独立 SSH 连接 + direct-tcpip 转发远端回环视频服务，
- * TCP 显式分帧后将 H.264 Annex-B 完整帧喂给硬件解码器。
+ * Screen streaming session: Independent SSH connection + direct-tcpip forwarding to a remote loopback video service,
+ * After explicit TCP framing, feed the complete H.264 Annex-B frames to the hardware decoder.
  *
- * 架构（macOS 屏幕录制权限的硬约束决定）：
- * - macOS 的 TCC 只对 GUI 登录会话放行屏幕捕获，SSH/mosh 后台会话无论给
- *   sshd/ffmpeg 授权都无法抓屏（实测：挂起/黑帧/退出）。
- * - 因此推流进程（ffmpeg avfoundation 抓屏 → VideoToolbox 硬编 H.264；
- *   Linux 自动探测硬件编码，失败时回退 libx264）作为
- *   LaunchAgent 跑在用户 GUI 域（launchctl bootstrap gui/$(id -u)），常驻
- *   监听回环端口；手机侧复用 SSH 传输视频/控制 TCP 流，不需要
- *   额外公网端口或 UDP 回程。
- * - 服务缺失时远端上报 SCREEN_SERVICE_MISSING → uiState.serviceMissing，
- *   UI 引导一键安装（[installService]，与 herdr 安装引导同模式）。
+ * Architecture (determined by hard constraints on macOS screen recording permissions):
+ * - On macOS, TCC only allows screen captures for GUI login sessions; for SSH/mosh background sessions, regardless of whether
+ *   Screenshots cannot be captured for sshd/ffmpeg due to authorization issues (tested: suspend/black screen/exits).
+ * - Therefore, the streaming process (ffmpeg avfoundation screen capture → VideoToolbox hardware encoding to H.264;
+ *   (Linux automatically detects hardware encoding; in case of failure, it falls back to libx264) as
+ *   LaunchAgent runs in the user’s GUI domain (launchctl bootstrap gui/$(id -u)) and remains resident
+ *   Listen on the loopback port; on the phone side, reuse the SSH connection to transmit video and control the TCP stream—no need for
+ *   Additional public ports or UDP callbacks.
+ * - When the service is missing, the remote reports SCREEN_SERVICE_MISSING → uiState.serviceMissing,
+ *   UI-guided one-click install ( [installService], same mode as the herdr install guide).
  */
 class ScreenSession internal constructor(
     private val connection: SshConnection,
@@ -73,12 +73,12 @@ class ScreenSession internal constructor(
     private val scope: CoroutineScope,
     private val uiState: ScreenUiState,
     private val messages: ScreenSessionMessages,
-    /** 用户从权限错误主动重连；不用于断流自动重连。 */
+    /** The user initiates a reconnection due to a permission error; this is not used for automatic reconnection after a connection drop. */
     private val refreshPermissionsBeforeStart: Boolean = false,
-    /** 非主动关闭的断流回调（EOF/异常）：AppRoot 借此自动重连（用户反馈：
-     * relay 重启/会话切换导致「画面流已断开」需手动重连）。 */
+    /** Connection-termination callbacks not actively closed (EOF/exceptions): AppRoot uses these to automatically reconnect (user feedback:
+     * (Restarting relay or toggling sessions causes a “stream disconnected” error; you must manually reconnect.) */
     private val onStreamLost: (() -> Unit)? = null,
-    /** 播放器持续过载时请求 AppRoot 重写配置并重建会话。 */
+    /** When the player is continuously overloaded, request AppRoot to rewrite the configuration and rebuild the session. */
     private val onAdaptiveFpsRequested: ((Int) -> Unit)? = null,
 ) {
     private var ssh: SshSession? = null
@@ -88,7 +88,7 @@ class ScreenSession internal constructor(
     private var running = false
     private var installing = false
 
-    /** 首帧超时（连接建立后无帧到达视为推流异常，给可见提示）。 */
+    /** First-frame timeout (if no frames are received after the connection is established, treat it as a streaming exception and provide a visible notice). */
     private var firstFrameDeadline = 0L
     private var firstFrameError: String? = null
     private var waylandPortalExpected = false
@@ -103,15 +103,15 @@ class ScreenSession internal constructor(
             try {
                 val session = withContext(ioDispatcher()) { createSshSession(connection, callbacks) }
                 ssh = session
-                // close() 可能发生在 create/connect 的阻塞阶段（快速切画质、连续点
-                // 重连）。旧实现只把 running 置 false，但启动协程仍会继续建立
-                // direct-tcpip，成为“幽灵连接”并踢掉新画面，形成数秒一次的循环。
+                // close() may occur during the blocking phase of create/connect (quickly switching image quality, consecutive clicks
+                // reconnect). The old implementation simply set `running` to `false`, but the coroutine would still continue to establish a connection
+                // direct-tcpip becomes a “ghost connection” and kicks out the new screen, creating a loop that repeats every few seconds.
                 if (!running) {
                     session.close()
                     return@launch
                 }
-                // 先建立连接 + 认证，后续控制面 exec 与视频 direct-tcpip
-                // 都复用这条 SSH 连接。
+                // First establish a connection and authenticate; subsequently, use the control plane exec and video direct-tcpip
+                // All of them reuse this SSH connection.
                 val connected = withContext(ioDispatcher()) { session.connectAuthOnly() }
                 TermLog.i("screen") { "connectAuthOnly=${connected != null}" }
                 if (!running) {
@@ -124,8 +124,8 @@ class ScreenSession internal constructor(
                     return@launch
                 }
                 if (refreshPermissionsBeforeStart) {
-                    // CoreGraphics 可保留授权前的结果。只在用户主动重连时刷新
-                    // 自己的 GUI LaunchAgent，不修改系统授权或重签名应用。
+                    // CoreGraphics can retain results from before authorization. It only refreshes when the user actively reconnects.
+                    // Your own GUI LaunchAgent—without modifying system authorization or modifying the app's signature.
                     val refreshed =
                         withContext(ioDispatcher()) {
                             session.runCommandDetailed(REFRESH_PERMISSIONS_SCRIPT, 10_000)
@@ -142,9 +142,9 @@ class ScreenSession internal constructor(
                     }
                     TermLog.i("screen") { "permission refresh completed ${connection.host}" }
                 }
-                // 控制面探测：relay 存活 + 版本/ffmpeg/屏幕状态 + TCP 内部端口。
-                // 视频面随后用同一 SSH 连接的 direct-tcpip 通道访问远端回环端口，
-                // 不要求公网额外开放视频端口。
+                // Control Plane Probing: Relay availability + version/FFmpeg/screen status + internal TCP port.
+                // The video plane then uses the direct-tcpip channel over the same SSH connection to access the remote loopback port,
+                // No additional video ports need to be opened on the public network.
                 val result =
                     withContext(ioDispatcher()) {
                         session.runCommandDetailed(READ_STREAM_SCRIPT, 15_000)
@@ -158,7 +158,7 @@ class ScreenSession internal constructor(
                     running = false
                     return@launch
                 }
-                // 处理远端探测标记（版本过旧/缺 ffmpeg/无显示/服务未运行/屏幕状态）
+                // Handle remote detection flags (outdated version/missing FFmpeg/no display/service not running/screen status)
                 if (!handleReadStreamStderr(result.stderr)) {
                     running = false
                     return@launch
@@ -171,8 +171,8 @@ class ScreenSession internal constructor(
                         ?.trim()
                         ?.toIntOrNull()
                 val authToken = parseAuthToken(result.stdout)
-                // 远端推流参数回读：同步 UI 档位（relay 每连接读 conf，重装 App/
-                // 多端写入后远端值可能与本机默认不同——否则 UI 显示 30 实推 120）
+                // Reading remote streaming parameters: sync the UI settings (the relay re-reads conf on every connect; after a reinstall or
+                // writes from multiple devices the remote value may differ from the local default — otherwise the UI shows 30 while it pushes 120).
                 val (cfgFps, cfgScale) = parseStreamCfg(result.stdout)
                 cfgFps?.let {
                     uiState.streamFps = it
@@ -186,8 +186,8 @@ class ScreenSession internal constructor(
                     running = false
                     return@launch
                 }
-                // relay 与 SSH direct-tcpip 通道启动存在很短竞态（服务刚升级/重启时），
-                // 小步重试而不是直接把一次 connection-refused 暴露给用户。
+                // There is a very brief race condition between relay and SSH direct-tcpip channel launch (immediately after a service upgrade or restart),
+                // Retry in small steps rather than immediately exposing a “connection-refused” error to the user.
                 var videoChannel: SshExecChannel? = null
                 for (attempt in 0 until 6) {
                     videoChannel =
@@ -208,7 +208,7 @@ class ScreenSession internal constructor(
                     running = false
                     return@launch
                 }
-                // 播放器接管 H.264 硬解/渲染；首帧回调清超时。
+                // The player takes over H.264 hardware decoding/rendering; the first-frame callback clears the timeout.
                 val p =
                     ScreenPlayer(
                         targetFps = uiState.streamFps,
@@ -218,7 +218,7 @@ class ScreenSession internal constructor(
                                 val readyAt = Clock.System.now().toEpochMilliseconds()
                                 uiState.videoReadyAtMillis = readyAt
                                 uiState.videoReady = true
-                                // 画面到达：清除超时与息屏/锁屏提示（可恢复状态）
+                                // Frame arrived: clear timeout and screen-off/lock-screen notices (recoverable state)
                                 if (uiState.error == firstFrameError) uiState.error = null
                                 firstFrameError = null
                                 uiState.screenHint = null
@@ -233,9 +233,9 @@ class ScreenSession internal constructor(
                 player = p
                 uiState.player = p
                 p.start()
-                // 解码能力探测（按当前画质档位对应分辨率）：档位菜单据此
-                // 隐藏解码器跑不满的帧率项（旗舰机 1080p 通常 60+；若探测
-                // 值更低说明真瓶颈，推高了也白推——解码器满载排队延迟更高）
+                // Decoding Capability Detection (based on the resolution corresponding to the current image quality setting): The menu is based on this.
+                // Hidden frame rate entries that do not meet the decoder’s threshold (flagship devices typically run at 60+ fps at 1080p; if detection
+                // A lower value indicates the true bottleneck; increasing it further is pointless—the decoder is already at full capacity, so higher latency will result.
                 val capScale = uiState.streamQuality
                 val capW =
                     when (capScale) {
@@ -246,22 +246,22 @@ class ScreenSession internal constructor(
                     }
                 uiState.decoderMaxFps = probeDecoderMaxFps(capW, (capW * 9 / 16).coerceAtLeast(480))
                 TermLog.i("screen") { "decoder capability: ${uiState.decoderMaxFps}fps @ ${capW}p" }
-                // close() 也可能发生在播放器/解码能力初始化期间。必须在真正发送
-                // TCP 认证包前再核对一次，否则已被替换的旧会话仍会晚到远端，
-                // 抢占新会话并造成 3~6 秒一次的断开循环。
+                // close() may also occur during player/decoder initialization. It must be called before any actual data is sent
+                // Double-check the TCP authentication packet before sending it; otherwise, the old session that has already been replaced will still reach the remote end,
+                // It preempts new sessions and causes a disconnect loop occurring every 3–6 seconds.
                 if (!running) {
                     p.stop()
                     directChannel.close()
                     session.close()
                     return@launch
                 }
-                // Wayland 首次连接必须由被控端用户确认系统 RemoteDesktop 门户；
-                // 给足时间完成一次性授权，之后同一桌面会话复用权限并恢复 12s。
+                // The first Wayland connection must be confirmed by the client-side user via the system’s Remote Desktop portal;
+                // Allow sufficient time to complete the one-time authorization; afterward, reuse the permission within the same desktop session and resume it after 12 seconds.
                 val firstFrameTimeout =
                     if (waylandPortalExpected) SCREEN_WAYLAND_FIRST_VIDEO_TIMEOUT_MS else SCREEN_FIRST_VIDEO_TIMEOUT_MS
                 firstFrameDeadline = Clock.System.now().toEpochMilliseconds() + firstFrameTimeout
-                // 首帧超时监控：连接建立但迟迟无帧 → 提示（避免无限黑屏）。
-                // 首帧到达后 onReady 把 deadline 清零，本监控自然退出
+                // First-frame timeout monitoring: connection established but no frames arriving for a long time → show a notice (to prevent an endless black screen).
+                // After the first frame arrives, onReady resets the deadline to zero, and this monitor exits naturally.
                 scope.launch {
                     while (running && firstFrameDeadline > 0) {
                         if (Clock.System.now().toEpochMilliseconds() > firstFrameDeadline) {
@@ -274,8 +274,8 @@ class ScreenSession internal constructor(
                         delay(500)
                     }
                 }
-                // 双向视频通道复用已认证 SSH：远端 relay 仅监听回环地址，
-                // 视频与控制均不依赖运营商 UDP 回程或额外公网端口映射。
+                // Reusing bidirectional video channels over an authenticated SSH connection: The remote relay is a listener that listens only on the loopback address,
+                // Neither video nor control depends on carrier UDP backhaul or additional public port mapping.
                 val tcp =
                     ScreenTcpSession(
                         channel = directChannel,
@@ -285,8 +285,8 @@ class ScreenSession internal constructor(
                         onVideoPacket = { packet -> p.feed(packet.data) },
                         playerMetrics = p::metrics,
                         onStatus = { status ->
-                            // 首包与后续权限更新：0=OK，1=macOS 缺辅助功能权限，2=不支持控制，
-                            // 3=占用，4=缺录屏权限；明确拒绝时不进入自动重连。
+                            // Initial packet and subsequent permission updates: 0=OK, 1=macOS lacks accessibility permissions, 2=control not supported,
+                            // 3=Busy, 4=Lacks screen recording permission; do not attempt automatic reconnection if explicitly denied.
                             if (screenStatusRejectsConnection(status)) {
                                 uiState.recordingPermissionMissing = status == SCREEN_TCP_STATUS_CAPTURE_PERMISSION_MISSING
                                 running = false
@@ -320,8 +320,8 @@ class ScreenSession internal constructor(
                             }
                         },
                         onDisconnected = {
-                            // direct-tcpip 断开通常意味着底层 SSH 或 relay 已断；走
-                            // AppRoot 的完整重连，重新认证并重建干净通道。
+                            // A "direct-tcpip" disconnect usually means that the underlying SSH or relay connection has been lost; go
+                            // Completely reconnect AppRoot, re-authenticate, and rebuild a clean channel.
                             if (running) {
                                 running = false
                                 val readyFor =
@@ -345,9 +345,9 @@ class ScreenSession internal constructor(
                     session.close()
                     return@launch
                 }
-                // 视频包持续到达不代表画面仍在推进：部分 Android MediaCodec
-                // 驱动会在 native dequeue 中永久阻塞。检测显示层停滞后重建整条
-                // 播放链路，避免界面一直停在第一帧却仍显示“控制中”。
+                // The continuous arrival of video packets does not necessarily mean that the video is still playing: some Android MediaCodec
+                // The driver will enter blocking mode in `native dequeue`. After detecting a freeze in the display layer, rebuild the entire
+                // the playback pipeline, to prevent the UI from getting stuck on the first frame while still showing “Controlling.”
                 scope.launch {
                     val adaptiveController = ScreenAdaptiveFpsController()
                     var previousTransport = tcp.metrics()
@@ -439,11 +439,11 @@ class ScreenSession internal constructor(
                     }
                 }
                 uiState.connected = true
-                // 远程操作发送器：控制包走 TCP 通道
+                // Remote Operation Sender: Controls packet transmission over a TCP channel
                 uiState.controlSender = { type, x, y, extra ->
                     tcp.sendRaw(ScreenControlPacket.encode(type, x, y, extra))
                 }
-                // 远程键盘发送器：文本 / 键码+修饰 → TCP 控制包
+                // Remote Keyboard Transmitter: Text / Key Code + Modifiers → TCP Control Packet
                 uiState.keySender = { keyCode, mods, text ->
                     if (text.isNotEmpty()) {
                         runCatching { tcp.sendRaw(ScreenControlPacket.encodeText(text)) }
@@ -453,7 +453,7 @@ class ScreenSession internal constructor(
                 }
                 TermLog.i("screen") { "SSH direct-tcpip 视频会话已建立 remote=127.0.0.1:$tcpPort" }
             } catch (e: Exception) {
-                // message 可能为 null（如 NetworkOnMainThreadException），必须记全类名 + 堆栈
+                // The `message` may be null (e.g., `NetworkOnMainThreadException`); the full class name and stack trace must be recorded.
                 TermLog.w("screen") { "screen session error: ${e::class.qualifiedName}: ${e.message}" }
                 TermLog.w("screen") { e.stackTraceToString().take(1500) }
                 if (running) {
@@ -466,8 +466,8 @@ class ScreenSession internal constructor(
     }
 
     /**
-     * 处理读流脚本 stderr 的探测标记（一次性；替代原 readErr 循环）。
-     * 返回 false = 已设置错误态 / 引导安装态，调用方应停止。
+     * Handle detection flags for the stderr stream in the read script (one-time; replaces the original readErr loop).
+     * Returns false = an error state or boot installation state has been set; the caller should stop.
      */
     private fun handleReadStreamStderr(err: String): Boolean {
         if (err.contains("FFMPEG_MISSING")) {
@@ -509,7 +509,7 @@ class ScreenSession internal constructor(
             uiState.error = messages.serviceNotRunning
             return false
         }
-        // 提示类（不阻断推流）
+        // Notice-type (does not block streaming)
         if (err.contains("SCREEN_WAYLAND_ONLY")) {
             waylandPortalExpected = true
             uiState.screenHint = messages.waylandHint
@@ -523,9 +523,9 @@ class ScreenSession internal constructor(
     }
 
     /**
-     * 一键安装远端推流服务（幂等）：检测/安装 ffmpeg → 写 LaunchAgent plist
-     * → bootstrap 到用户 GUI 域并验证端口监听。与 herdr 安装引导同模式：
-     * 流式输出进 [onLog]（UI 实时展示），完成后回调 [onComplete]。
+     * One-click installation of remote streaming service (idempotent): Check for/install FFmpeg → Write LaunchAgent plist
+     * → Bootstrap to the user GUI domain and verify that the port is a listener. Follows the same mode as the herdr installation bootstrap:
+     * Stream the output to [onLog] (displayed in real-time on the UI), and callback to [onComplete] upon completion.
      */
     @OptIn(ExperimentalResourceApi::class)
     fun installService(
@@ -545,8 +545,8 @@ class ScreenSession internal constructor(
         scope.launch {
             var stagedBinary: String? = null
             try {
-                // 与 Mosh 安装一致：Linux 缺 ffmpeg 时先判断权限三态。
-                // 仅确实需要交互式 sudo 的场景显示密码框；密码不写进命令行。
+                // Consistent with the Mosh installation: On Linux, check the three permission states first if ffmpeg is missing.
+                // Show the password prompt only when interactive `sudo` is actually required; do not include the password in the command line.
                 val os = withContext(ioDispatcher()) { s.runCommand("uname -s", 3_000)?.trim() }
                 val arch = withContext(ioDispatcher()) { s.runCommand("uname -m", 3_000)?.trim() }
                 val sessionType =
@@ -668,7 +668,7 @@ class ScreenSession internal constructor(
                         INSTALL_SCRIPT
                 val ch = withContext(ioDispatcher()) { s.startExecRaw(screenInstallCommand(command)) }
                 if (ch != null) {
-                    // 无 PTY 的 stdin 不回显；sudo -S 只为本次安装读取这一行。
+                    // No stdin echoback without PTY; `sudo -S` reads this line only for this installation.
                     if (sudoNeedsPassword) {
                         withContext(ioDispatcher()) {
                             ch.write((sudoPassword + "\n").encodeToByteArray())
@@ -684,8 +684,8 @@ class ScreenSession internal constructor(
                         }
                     }
 
-                    // 远端合并 stdout/stderr，读到 EOF 后日志完整，避免提前关闭
-                    // 通道丢失最后的错误输出；StringBuilder 也只由一个读取者写入。
+                    // Merge stdout/stderr remotely; ensure the log is complete after reaching EOF to prevent premature termination.
+                    // The channel loses the last error output; StringBuilder is also written to by only one reader.
                     withContext(ioDispatcher()) {
                         while (true) {
                             val data = ch.read() ?: break
@@ -697,8 +697,8 @@ class ScreenSession internal constructor(
                 }
                 installing = false
                 uiState.installing = false
-                // 脚本 set -e 失败时通道 EOF 但退出码拿不到：以脚本的成功标记
-                // TERMISH_SCREEN_OK 判定，避免装失败也触发重连白转圈
+                // When the script fails under `set -e`, the channel reaches EOF but the exit code cannot be obtained: use the script's success marker
+                // TERMISH_SCREEN_OK check to prevent the installation failure from triggering a reconnect that results in an endless spinning wheel
                 val succeeded = log.contains("TERMISH_SCREEN_OK")
                 if (succeeded) uiState.needsSudoPassword = false
                 onComplete(succeeded)
@@ -718,15 +718,15 @@ class ScreenSession internal constructor(
     }
 
     /**
-     * 设置远端推流参数（帧率/分辨率）：SSH 写 relay 配置（~/.termish-screen.conf），
-     * 下次重建会话（relay 每连接读取）生效。
+     * Set remote streaming parameters (frame rate/resolution): Use SSH to write the relay configuration (~/.termish-screen.conf),
+     * Changes take effect the next time the session is rebuilt (read on each connection by relay).
      */
     suspend fun setStreamConfig(
         fps: Int,
         scale: String,
     ): Boolean {
         val s = ssh ?: return false
-        // scale 为受控常量（如 1280:-2，无引号字符），安全直接拼接
+        // "scale" is a controlled constant (e.g., 1280:-2, without quotation marks), so it is safe to concatenate directly.
         val cmd = "printf 'fps=%d\\nscale=%s\\n' $fps '$scale' > ~/.termish-screen.conf"
         return withContext(ioDispatcher()) { s.runCommand(cmd, 5_000) != null }
     }
@@ -755,13 +755,13 @@ class ScreenSession internal constructor(
     }
 
     companion object {
-        /** 推流服务 TCP 端口（LaunchAgent 常驻；读流脚本 lsof 探测存活）。 */
+        /** TCP port of the streaming service (resident via LaunchAgent; the read-stream script uses `lsof` to probe liveness). */
         const val SCREEN_PORT = ScreenServiceAssets.SCREEN_PORT
 
-        /** relay 内部 TCP 视频端口（仅监听远端回环，由 SSH direct-tcpip 访问）。 */
+        /** relay internal TCP video port (is a listener for remote loopback, accessed via SSH direct-tcpip). */
         const val SCREEN_TCP_PORT = SCREEN_PORT + 2
 
-        /** 刷新 macOS 进程内权限缓存；Linux 不需要重启。 */
+        /** Refresh the in-process permissions cache for macOS processes; no reboot is required on Linux. */
         internal val REFRESH_PERMISSIONS_SCRIPT =
             """
             if [ "${'$'}(uname)" = "Darwin" ]; then
@@ -779,7 +779,7 @@ class ScreenSession internal constructor(
             echo SCREEN_PERMISSION_REFRESH_OK
             """.trimIndent()
 
-        /** 安装前探测 ffmpeg；与读流/安装脚本使用同一组非交互 SSH PATH 兜底。 */
+        /** Check for ffmpeg before installation; use the same set of non-interactive SSH PATH fallbacks as the stream reader/installation script. */
         internal val FFMPEG_PROBE_SCRIPT =
             """
             for cand in ${'$'}(command -v ffmpeg 2>/dev/null) "${'$'}HOME/bin/ffmpeg" /opt/homebrew/bin/ffmpeg /usr/local/bin/ffmpeg /usr/bin/ffmpeg; do
@@ -787,7 +787,7 @@ class ScreenSession internal constructor(
             done
             """.trimIndent()
 
-        /** Linux 远程控制依赖探测；缺失时与 ffmpeg 共用一次 sudo 授权安装。 */
+        /** Detect dependencies for Linux remote control; if missing, share a single sudo authorization with ffmpeg to install. */
         internal const val XCLIP_PROBE_SCRIPT = "command -v xclip >/dev/null 2>&1 && echo XLIB_OK"
 
         internal val SESSION_TYPE_PROBE_SCRIPT =
@@ -804,7 +804,7 @@ class ScreenSession internal constructor(
             if pgrep -u "${'$'}(id -u)" -x Xorg >/dev/null 2>&1 || pgrep -u "${'$'}(id -u)" -x X >/dev/null 2>&1; then echo x11; fi
             """.trimIndent()
 
-        /** Wayland 捕获使用系统 RemoteDesktop 门户 + PipeWire，经 GStreamer 转为 Y4M。 */
+        /** Wayland catches the system Remote Desktop portal + PipeWire, converted to Y4M via GStreamer. */
         internal val WAYLAND_PROBE_SCRIPT =
             """
             command -v gst-launch-1.0 >/dev/null 2>&1 \
@@ -813,7 +813,7 @@ class ScreenSession internal constructor(
               && echo WAYLAND_OK
             """.trimIndent()
 
-        /** Linux 缺依赖时是否需要弹出 sudo 密码输入；纯逻辑供各平台一致回归。 */
+        /** Should a sudo password input prompt appear when Linux is missing a dependency? This is a purely logical question for consistent regression testing across all platforms. */
         internal fun needsScreenSudoPassword(
             os: String?,
             ffmpegPresent: Boolean,
@@ -831,36 +831,36 @@ class ScreenSession internal constructor(
                 !sudoPasswordless
 
         /**
-         * relay 协议版本：客户端内置安装脚本部署的 relay 与远端已运行 relay
-         * 的匹配标识。更新 relay 行为（推流参数/自愈逻辑）时 +1——
-         * 读流脚本检测远端版本文件，不匹配时引导重新安装（用户反馈：
-         * 客户端脚本应与远端脚本版本匹配，否则旧 relay 跑不起新功能）。
+         * Relay protocol version: The relay deployed via the client’s built-in installation script and the relay already running on the remote server
+         * Match identifiers. Add +1 when updating relay behavior (streaming parameters/self-healing logic) —
+         * The read-stream script checks for remote version files and prompts the user to reinstall if there is a mismatch (user feedback:
+         * Client-side scripts must match the version of the remote scripts; otherwise, the old relay will not be able to run the new features.
          */
         const val RELAY_VERSION = ScreenServiceAssets.RELAY_VERSION
 
         /**
-         * 读流前置脚本：只做 relay/版本/ffmpeg/显示状态探测，成功时回报
-         * 远端回环 TCP 视频端口。实际视频不经 exec stdout，由 SSH direct-tcpip
-         * 建立独立双向通道。
+         * Read-stream pre-probe script: only probes relay/version/ffmpeg/display status; on success reports
+         * Remote TCP video port loopback. Actual video does not pass through `exec stdout`; it is transmitted via SSH direct-tcpip.
+         * Establish an independent two-way channel.
          */
         val READ_STREAM_SCRIPT =
             """
             PORT=$SCREEN_PORT
             OS=${'$'}(uname)
-            # 先确认远端确实是可抓取的桌面系统，再检查 relay 版本。否则无桌面的
-            # Linux 服务器/容器会被误判成“服务版本旧”，诱导用户执行无意义的安装。
+            # First confirm the remote really is a capturable desktop system, then check the relay version. Otherwise a desktop-less
+            # Linux server/container is misjudged as “service version too old”, pushing users into a pointless install.
             case "${'$'}OS" in
               Darwin)
-                # macOS：avfoundation 抓屏（LaunchAgent 服务）
+                # macOS: avfoundation screen capture (LaunchAgent service)
                 :
                 ;;
               Linux)
-                # 优先以 logind 的本地用户会话类型为准。Wayland 通常同时运行
-                # rootless Xwayland，不能仅凭 Xwayland 进程误判为 X11（那样
-                # x11grab 只能得到黑色根窗口和鼠标）。
-                # 不能把 GDM greeter 自己的 Xwayland 当成当前 SSH 用户桌面：
-                # 机器刚重启、用户尚未图形登录时它通常属于 gdm-greeter，当前
-                # 用户既读不到 Xauthority，也无法注入控制事件。
+                # Trust logind's local user session type first. Wayland usually also runs a
+                # rootless Xwayland; do not mistake it for X11 just because the process exists (that way
+                # x11grab only yields a black root window and the mouse).
+                # Do not treat the GDM greeter's own Xwayland as the current SSH user's desktop:
+                # right after a reboot, before the user has logged in graphically, it usually belongs to gdm-greeter, and the current
+                # user can neither read Xauthority nor inject control events.
                 HAS_USER_DISPLAY=0
                 USER_SESSION_TYPE=""
                 if command -v loginctl >/dev/null 2>&1; then
@@ -903,9 +903,9 @@ class ScreenSession internal constructor(
                 exit 1
                 ;;
             esac
-            # relay 版本匹配：远端版本文件缺失/不一致
-            # → 旧 relay（不支持新协议）→ 引导重新安装（用户反馈：客户端脚本
-            # 应与远端脚本版本匹配）
+            # relay version match: remote version file missing/inconsistent
+            # → old relay (no support for the new protocol) → guide a reinstall (user feedback: the client script
+            # should match the remote script version)
             if [ ! -f "${'$'}HOME/.termish-screen.version" ] || [ "${'$'}(cat "${'$'}HOME/.termish-screen.version" 2>/dev/null)" != "$RELAY_VERSION" ]; then
               echo "SCREEN_RELAY_OLD:have=${'$'}(cat "${'$'}HOME/.termish-screen.version" 2>/dev/null || echo none) expect=$RELAY_VERSION" >&2
               exit 1
@@ -916,8 +916,8 @@ class ScreenSession internal constructor(
               echo "SCREEN_AUTH_MISSING" >&2
               exit 1
             fi
-            # ffmpeg 查找：SSH 非交互会话 PATH 受限（无 brew 目录），command -v 常漏掉
-            # brew 安装的 ffmpeg → 误报 FFMPEG_MISSING（v1.5.0 用户反馈：装过还提示安装）
+            # ffmpeg lookup: the PATH of a non-interactive SSH session is limited (no brew directory), so command -v often misses
+            # a brew-installed ffmpeg → false FFMPEG_MISSING (v1.5.0 user feedback: prompted to install it although it was installed)
             FF=""
             for cand in ${'$'}(command -v ffmpeg 2>/dev/null) "${'$'}HOME/bin/ffmpeg" /opt/homebrew/bin/ffmpeg /usr/local/bin/ffmpeg /usr/bin/ffmpeg; do
               if [ -n "${'$'}cand" ] && [ -x "${'$'}cand" ]; then FF="${'$'}cand"; break; fi
@@ -931,7 +931,7 @@ class ScreenSession internal constructor(
               || ss -ltn 2>/dev/null | grep -q ":${'$'}((PORT + 2)) "); then
               echo "SCREEN_VIDEO_SERVICE_MISSING" >&2; exit 1
             fi
-            # 屏幕状态探测仅提示，不阻断推流；Linux 同样查询当前用户图形会话。
+            # The display-state probe is advisory only and never blocks streaming; Linux likewise queries the current user's graphical session.
             if [ "${'$'}OS" = "Darwin" ]; then
               NATIVE="${'$'}HOME/Library/Application Support/termish/Termish Helper.app/Contents/MacOS/Termish Helper"
             else
@@ -941,28 +941,28 @@ class ScreenSession internal constructor(
             if [ -x "${'$'}NATIVE" ] && { [ "${'$'}BACKEND" = "rust" ] || [ "${'$'}BACKEND" = "python-macos" ]; }; then
               "${'$'}NATIVE" --display-state 2>&1 | grep -E 'SCREEN_(ASLEEP|LOCKED)' >&2 || true
             fi
-            # 推流参数回读（客户端同步档位显示；conf 可能为其它端写入的旧值）
+            # Stream-parameter readback (the client syncs the quality-tier display; conf may hold an old value written by another device)
             CFG="${'$'}HOME/.termish-screen.conf"
             [ -f "${'$'}CFG" ] && grep -E '^(fps|scale)=' "${'$'}CFG" | sed 's/^fps=/SCREEN_CFG_FPS:/;s/^scale=/SCREEN_CFG_SCALE:/' || true
-            # 视频流走 SSH direct-tcpip：只回报 relay 的远端回环 TCP 端口，
-            # 客户端无需也不会直接访问公网端口。token 仅经已认证 SSH stdout
-            # 返回，不写日志；direct-tcpip 建连后先用它做握手。
+            # The video stream goes over SSH direct-tcpip: only the relay's remote loopback TCP port is reported back,
+            # so the client neither needs nor tries to reach a public port. The token only travels over authenticated SSH stdout
+            # and is never logged; once direct-tcpip is connected it is used for the handshake first.
             echo "SCREEN_TCP_PORT:${'$'}((PORT + 2))"
             echo "SCREEN_AUTH_TOKEN:${'$'}TOKEN"
             """.trimIndent()
 
         /**
-         * 推流服务安装脚本（幂等，远端执行）：检测/安装 ffmpeg（brew 或静态包
-         * 到 ~/bin）→ 校验手机上传的 Rust 可执行文件
-         * → 注册图形会话服务 → 验证端口监听。
-         * macOS 图形登录会话与屏幕录制/辅助功能授权均需满足。
+         * Streaming Service Installation Script (Idempotent, Remote Execution): Check for/install FFmpeg (via Homebrew or static package)
+         * (to ~/bin) → Verify the Rust executable file uploaded from your phone
+         * → Register the graphical session service → Verify that the port is a listener.
+         * Both the macOS graphical login session and screen recording/accessibility authorization must be granted.
          */
         val INSTALL_SCRIPT: String
             get() = ScreenServiceAssets.INSTALL_SCRIPT
 
         /**
-         * 从读流脚本 stdout 解析远端推流参数（SCREEN_CFG_FPS / SCREEN_CFG_SCALE 行；
-         * 缺项为 null——conf 缺失时不覆盖客户端本地默认档位）。
+         * Parse remote streaming parameters from the stream script's stdout (rows containing SCREEN_CFG_FPS / SCREEN_CFG_SCALE;
+         * Missing entries are set to null—client local defaults are not overridden when `conf` is missing.
          */
         internal fun parseStreamCfg(stdout: String): Pair<Int?, String?> {
             var fps: Int? = null
@@ -987,7 +987,7 @@ class ScreenSession internal constructor(
             return Pair(fps, scale)
         }
 
-        /** 从已认证 SSH 探测输出提取 relay bearer token；格式异常一律拒绝。 */
+        /** Extract the relay bearer token from the output of an authenticated SSH probe; reject any output that contains an exception in the format. */
         internal fun parseAuthToken(stdout: String): String? =
             stdout
                 .lineSequence()
@@ -996,7 +996,7 @@ class ScreenSession internal constructor(
                 ?.trim()
                 ?.takeIf { token -> token.length == 64 && token.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' } }
 
-        /** scale 字符串 → 画质档位 index（流畅/标清/高清/原画；未知按标清）。 */
+        /** "scale" character → image quality level index (Smooth/SD/HD/Original; if unknown, use SD). */
         internal fun qualityIndexFor(scale: String): Int =
             when (scale) {
                 "960:-2" -> 0
@@ -1014,8 +1014,8 @@ class ScreenSession internal constructor(
             }
 
         /**
-         * 测试用推流脚本：lavfi 测试图源（不依赖屏幕录制权限）。
-         * 集成测试用它回归「exec raw 通道 + stderr 协程 + NAL 解析」链路。
+         * Test streaming script: lavfi test video source (does not depend on screen recording permissions).
+         * Use it in integration tests to regression test the “exec raw channel + stderr coroutine + NAL parsing” pipeline.
          */
         val LAVFI_SCRIPT =
             """
@@ -1030,6 +1030,6 @@ class ScreenSession internal constructor(
 
 internal fun screenShellQuote(value: String): String = "'" + value.replace("'", "'\"'\"'") + "'"
 
-// SSH exec 默认使用账号登录 shell；zsh 的未匹配 glob 会中断 POSIX 安装脚本。
-// 显式选择 sh，保留 stdin 给 sudo，并将错误输出与进度放进同一个流。
+// SSH exec uses the account to perform the shell login by default; unmatched glob patterns in zsh will interrupt POSIX installation scripts.
+// Explicitly perform a selection on `sh`, reserve `stdin` for `sudo`, and place both error output and progress in the same stream.
 internal fun screenInstallCommand(script: String): String = "exec /bin/sh -c ${screenShellQuote(script)} 2>&1"

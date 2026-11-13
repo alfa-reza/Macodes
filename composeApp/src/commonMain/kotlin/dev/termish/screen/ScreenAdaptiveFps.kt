@@ -5,8 +5,8 @@ internal const val SCREEN_ADAPTIVE_HEALTHY_WINDOWS = 20
 internal const val SCREEN_ADAPTIVE_RECOVERY_COOLDOWN_MS = 30_000L
 
 /**
- * 根据播放器累计指标做帧率调档。连续压力才降档，长时间健康才逐级恢复，
- * 避免瞬时抖动导致远端编码器频繁重启。
+ * Adjust the frame rate based on the player’s cumulative metrics. Only reduce the frame rate under sustained load, and gradually resume it in stages only after a prolonged period of stable performance,
+ * Avoid transient jitter that causes the remote encoder to restart frequently.
  */
 internal class ScreenAdaptiveFpsController {
     private var previous = ScreenPlayerMetrics()

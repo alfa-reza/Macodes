@@ -52,28 +52,28 @@ import dev.termish.util.monospaceFontFamily
 import kotlin.math.PI
 import kotlin.math.sin
 
-/** 语音输入 FAB 的 UI 状态（由调用方驱动）。 */
+/** UI state of the voice input FAB (driven by the caller). */
 enum class VoiceUiState { IDLE, LISTENING, RECOGNIZING }
 
-/** 波浪条数量。 */
+/** Number of wave bars. */
 private const val WAVE_BARS = 13
 
-/** 各条静态权重（中间高、两边低，弧形轮廓）。 */
+/** The static weight of each bar (high in the middle, low at both ends; arc-shaped profile). */
 private val WAVE_WEIGHTS =
     FloatArray(WAVE_BARS) { i ->
         val x = (i - (WAVE_BARS - 1) / 2f) / ((WAVE_BARS - 1) / 2f)
-        (0.35f + 0.65f * (1f - x * x)).toFloat() // 二次曲线：中间 1.0，两端 0.35
+        (0.35f + 0.65f * (1f - x * x)).toFloat() // Quadratic curve: 1.0 in the middle, 0.35 at both ends
     }
 
-/** 每根条独立的流动相位（错开 → 波浪横向流动感）。 */
+/** Each bar has its own flowing phase (staggered → lateral wave-flow feel). */
 private val WAVE_PHASES = FloatArray(WAVE_BARS) { i -> i * 0.55f }
 
-/** 每根条独立的波动频率（高低错落，模拟真实声波）。 */
+/** Each bar has its own oscillation frequency (varying rates emulating real sound waves). */
 private val WAVE_FREQS = FloatArray(WAVE_BARS) { i -> 2.2f + (i % 3) * 0.45f }
 
 /**
- * 重置小角标：语音按钮被拖动后出现在右上角，点击把按钮重置回屏幕水平中央。
- * 小巧（26dp）、不喧宾夺主；未拖动时不显示。
+ * Reset the small indicator: After the voice button is dragged, it appears in the upper-right corner; tap it to reset the button to the center of the screen horizontally.
+ * Compact (26dp) and unobtrusive; does not show when not dragged.
  */
 @Composable
 fun VoiceResetBadge(
@@ -100,9 +100,9 @@ fun VoiceResetBadge(
 }
 
 /**
- * 屏幕正中（水平）的语音开始按钮：大号品牌绿圆钮 + 麦克风（点一下直接开始，
- * 免去右下角菜单两步）。外层负责拖动，**长按 = 重置回默认位置**。
- * 点击后原地切换为录音态组件（红按钮 + 浮层）。
+ * Voice recording start button centered on the screen (horizontally): large, brand-green circular button + microphone (tap once to start immediately,
+ * (Skip the two steps in the bottom-right menu.) The outer layer handles dragging; **long press = reset to default position**.
+ * Tap to instantly toggle to the recording mode component (red button + overlay).
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -129,10 +129,10 @@ fun VoiceStartButton(
     }
 }
 
-/** 录音态中间大按钮（水平居中、大于菜单 FAB）：
- * - LISTENING：72dp 红色圆钮 + 白色麦克风（点击 = 结束并发送）
- * - RECOGNIZING：转圈
- * 与浮层（转写 + 声波）同列居中排布在工具栏上方。
+/** Large central button in the recording state (horizontally centered, larger than the menu FAB):
+ * - LISTENING: 72dp red circle button + white microphone (tap = end and send)
+ * - RECOGNIZING: Going in circles
+ * Align it in the central column above the toolbar, alongside the overlay (transcription + sound wave).
  */
 @Composable
 fun BigVoiceStopButton(
@@ -174,16 +174,16 @@ fun BigVoiceStopButton(
     }
 }
 
-/** 录音态底部浮层（微信/讯飞式）：不遮挡终端中部内容。 */
+/** Bottom-floating layer for voice recording (WeChat/iFlytek style): Does not obscure content in the middle of the terminal. */
 @Composable
 fun VoiceRecordingOverlayHost(
     visible: Boolean,
     state: VoiceUiState,
-    /** 实时音量 0..1（录音回调每 ~200ms 更新，动画层平滑）。 */
+    /** Real-time volume 0..1 (recording callback updates every ~200 ms, smooth animation layer). */
     level: Float,
-    /** 实时转写文本（中间结果，随包替换更新）。 */
+    /** Transcribe text in real-time (interim results, updated as packages are replaced). */
     partialText: String,
-    /** 录音已进行秒数。 */
+    /** The recording has been running for [number] seconds. */
     seconds: Int,
     theme: TerminalTheme,
     modifier: Modifier = Modifier,
@@ -223,7 +223,7 @@ private fun VoiceRecordingOverlay(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // 实时转写：边说边出字（等宽，最多 2 行）
+        // Real-time transcription: Text appears as you speak (monospaced, up to 2 rows)
         Text(
             partialText.ifBlank { if (recognizing) s.voice.recognizing else s.voice.listening },
             color = if (partialText.isBlank()) muted else onSurface,
@@ -235,12 +235,12 @@ private fun VoiceRecordingOverlay(
             modifier = Modifier.widthIn(max = 480.dp),
         )
 
-        // 流动声波：Canvas 单时间驱动，每根条独立相位/频率 → 横向流动感
+        // Flowing Sound Waves: Canvas single-time-driven, with each bar having independent phase/frequency → creating a sense of lateral flow
         if (!recognizing) {
             FlowingWave(level = level, accent = accent, modifier = Modifier.height(36.dp))
         }
 
-        // 状态行：录音计时 / 识别提示
+        // Status row: Recording timer / Recognition tooltip
         Text(
             if (recognizing) s.voice.recognizing else s.voice.recordingSeconds(seconds),
             color = muted,
@@ -250,8 +250,8 @@ private fun VoiceRecordingOverlay(
 }
 
 /**
- * 流动声波：音量调制整体振幅，每根条叠加独立相位/频率的正弦 → 波浪横向流动。
- * 单一 infinite transition 驱动（不每根条各开一个动画）。
+ * Traveling sound waves: The overall amplitude is modulated by volume, and each waveform superimposes sine waves with independent phases and frequencies → resulting in a lateral wave motion.
+ * Single infinite transition driver (do not start a separate animation for each item).
  */
 @Composable
 private fun FlowingWave(
@@ -273,7 +273,7 @@ private fun FlowingWave(
         var x = (size.width - totalW) / 2f
         val maxH = size.height
         for (i in 0 until WAVE_BARS) {
-            // 音量振幅 + 独立正弦波动（相位错开 → 流动感）
+            // Volume amplitude + independent sine waves (phase shift → sense of flow)
             val wobble = (sin(time * WAVE_FREQS[i] + WAVE_PHASES[i]) * 0.5f + 0.5f).toFloat()
             val h = maxH * (0.16f + (level * WAVE_WEIGHTS[i] * 0.7f + wobble * 0.14f).coerceIn(0f, 1f))
             drawRoundRect(

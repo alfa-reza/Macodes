@@ -9,8 +9,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Mosh 客户端会话：由纯 Kotlin 实现（dev.termish.mosh 包，SSP 协议）。
- * UI 通过 sendData/resize 驱动，影子终端状态经 onStateUpdate 同步进 UI buffer。
+ * Mosh client session: The implementation is entirely in Kotlin (dev.termish.mosh package, SSP protocol).
+ * The UI is driven by `sendData` and `resize`, and the shadow terminal state is synced to the UI buffer via `onStateUpdate`.
  */
 interface MoshSession {
     fun isActive(): Boolean
@@ -25,13 +25,13 @@ interface MoshSession {
     fun close()
 }
 
-/** 解析 `mosh-server new` 输出里的 `MOSH CONNECT <port> <key>`。 */
+/** Parse `MOSH CONNECT <PORT> <KEY>` from the output of `mosh-server new`. */
 fun parseMoshConnect(output: String): Pair<Int, String>? {
     val m = Regex("MOSH CONNECT (\\d+) ([A-Za-z0-9+/=]+)").find(output) ?: return null
     return m.groupValues[1].toIntOrNull()?.let { it to m.groupValues[2] }
 }
 
-/** 解析 `mosh-server new` 脱离终端时报告的服务端 PID，用于引导失败后精确清理。 */
+/** Parse the service PID reported by `mosh-server new` when detached from the terminal, to enable precise cleanup after a boot failure. */
 internal fun parseMoshServerPid(output: String): Int? =
     Regex("\\[mosh-server detached, pid = (\\d+)]")
         .find(output)
@@ -41,15 +41,15 @@ internal fun parseMoshServerPid(output: String): Int? =
         ?.takeIf { it > 1 }
 
 /**
- * 系统探测命令（Termius 同款思路：连接后用 exec 通道读取 /etc/os-release 与
- * uname，自动识别远端系统，用户无需手动填写）。
+ * System detection command (same approach as Termius: after the connection, use the exec channel to read /etc/os-release and
+ * uname (automatically identifies the remote system; users do not need to enter it manually).
  */
 const val SYSTEM_PROBE_COMMAND = "cat /etc/os-release 2>/dev/null; uname -s"
 
 /**
- * 从探测输出解析系统标识：
- * - 优先取 os-release 的 `ID=`（ubuntu / debian / centos / fedora …）
- * - 否则按 `uname -s` 归一到 linux / macos / freebsd / openbsd
+ * Parse system identifiers from the probe output:
+ * - Give priority to the `ID=` from os-release (ubuntu / debian / centos / fedora …)
+ * - Otherwise, normalize to `uname -s` to `linux`, `macos`, `freebsd`, or `openbsd`.
  */
 fun detectSystemFromOutput(output: String): String? {
     val id =
@@ -59,7 +59,7 @@ fun detectSystemFromOutput(output: String): String? {
             ?.get(1)
             ?.lowercase()
     if (!id.isNullOrBlank()) return id
-    // uname -s 输出在最后一行；trim 掉尾部换行/空白后取最后一段
+    // The output of `uname -s` is on the last line; trim trailing newline/whitespace and take the last segment
     return when (output.trim().substringAfterLast('\n').trim()) {
         "Linux" -> "linux"
         "Darwin" -> "macos"
@@ -70,7 +70,7 @@ fun detectSystemFromOutput(output: String): String? {
 }
 
 /**
- * 纯 Kotlin mosh 客户端（dev.termish.mosh 包）：把影子终端状态同步进 [uiBuffer]。
+ * Pure Kotlin mosh client (dev.termish.mosh package): Syncs the shadow terminal state to [uiBuffer].
  */
 fun createKmpMoshSession(
     ip: String,
@@ -83,22 +83,22 @@ fun createKmpMoshSession(
     onTitle: (String) -> Unit,
     onClipboard: (String) -> Unit,
     onExit: (MoshExitReason) -> Unit,
-    /** 状态已同步进 [uiBuffer]，请求 UI 重绘（TerminalBuffer 不是 Compose 状态，
-     *  不通知的话新内容要等下一个偶发 frame 变更才上屏）。 */
+    /** State has been synced into [uiBuffer]; request a UI redraw (TerminalBuffer is not a Compose state,
+     *  (If no notification is issued, new content will not appear on the screen until the next sporadic frame update.) */
     onFrame: () -> Unit,
-    /** 收到对端首包（mosh 会话真正建立）时回调。 */
+    /** Callback triggered upon receiving the first packet from the other end (indicating that the Mosh session has been successfully established). */
     onPeerConnected: () -> Unit,
-    /** 链路健康度：距上次收到对端包的秒数（0~3 正常；UI 据此显示失联提示）。 */
+    /** Link Health: seconds since the last packet was received from the peer (0–3 is normal; the UI shows a “disconnected” notice based on this). */
     onLinkStatus: (Int) -> Unit,
 ): MoshSession {
-    // 渲染合并：CONFLATED 通道只保留最新状态，突发更新时最多一个主线程拷贝在途
+    // Rendering and merging: The CONFLATED channel retains only the latest state; during burst updates, at most one main thread copies data in transit.
     val pending = Channel<KmpMoshSession.ShadowTerminalView>(Channel.CONFLATED)
     scope.launch(Dispatchers.Main) {
         for (view in pending) {
-            // 拷贝持影子锁：会话协程正在 applyDiff/resize 时不能读，
-            // 否则 resize 中途行状态不一致导致 cloneLine 越界
+            // Copy-holding shadow lock: Session coroutines cannot read while applyDiff/resize is in progress,
+            // Otherwise, inconsistent row states during resizing cause `cloneLine` to be out of bounds.
             view.lock.withLock {
-                // 行级/字段级增量比对：视觉无变化的推送（如预测收编后的重放）不触发重绘
+                // Row-level/field-level incremental comparison: Pushes with no visual changes (such as replaying after a prediction of incorporation) do not trigger a repaint.
                 if (uiBuffer.copyContentFrom(view.buffer)) onFrame()
             }
         }
@@ -112,8 +112,8 @@ fun createKmpMoshSession(
             rows = rows,
             scope = scope,
             onStateUpdate = { view ->
-                // 拷贝到 UI buffer 必须在主线程（Compose 渲染同时在读）；
-                // 通道消费协程已固定在 Main，这里只投递
+                // Copying to the UI buffer must occur on the main thread (Compose renders while reading);
+                // The channel-consuming coroutine has been fixed in Main; this is just a submission.
                 pending.trySend(view)
             },
             onExit = onExit,

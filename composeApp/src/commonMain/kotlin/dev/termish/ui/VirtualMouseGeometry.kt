@@ -3,13 +3,13 @@ package dev.termish.ui
 import kotlin.math.max
 import kotlin.math.min
 
-/** 不依赖 Compose 的浮点坐标，供虚拟鼠标边界逻辑与单元测试共用。 */
+/** Floating-point coordinates that do not depend on Compose, intended for use by both virtual mouse bounds logic and unit tests. */
 internal data class ScreenPoint(
     val x: Float,
     val y: Float,
 )
 
-/** 远程画面在播放器容器内的实际可见矩形。 */
+/** The actual visible rectangle of the remote screen within the player container. */
 internal data class ScreenRect(
     val left: Float,
     val top: Float,
@@ -21,8 +21,8 @@ internal data class ScreenRect(
 }
 
 /**
- * 计算 Fit 画面的实际矩形；公式须与 [ScreenVideoSurface] 和外层 graphicsLayer
- * 保持一致，虚拟光标才能落在真正的视频像素内而不是播放器黑边内。
+ * Calculate the actual rectangle for the Fit screen; the formula must be consistent with [ScreenVideoSurface] and the outer graphicsLayer
+ * Maintain consistency so that the virtual cursor lands within the actual video pixels rather than within the player’s black borders.
  */
 internal fun fittedScreenRect(
     containerWidth: Float,
@@ -52,7 +52,7 @@ internal fun fittedScreenRect(
     )
 }
 
-/** 固定在虚拟鼠标左上方的箭头热点，换算为发送给远端的 0..1 坐标。 */
+/** Fix the arrow hotspot at the top-left corner of the virtual mouse and convert it to 0..1 coordinates sent to the remote server. */
 internal fun cursorAtVirtualMouseAnchor(
     anchor: ScreenPoint,
     frame: ScreenRect,
@@ -64,7 +64,7 @@ internal fun cursorAtVirtualMouseAnchor(
     )
 }
 
-/** 归一化远端坐标在本地画面中的热点位置。 */
+/** Normalize remote coordinates to hotspot positions on the local screen. */
 internal fun cursorHotspot(
     cursor: ScreenPoint,
     frame: ScreenRect,
@@ -75,8 +75,8 @@ internal fun cursorHotspot(
     )
 
 /**
- * 箭头热点可到达画面四条边，但箭头图形本身不能越界：只移动绘制原点，
- * 不改变发送给远端的热点坐标。
+ * Arrow hotspots can extend to the four edges of the screen, but the arrow graphic itself must not be out of bounds: only the drawing origin may move,
+ * Do not change the hotspot coordinates sent to the remote server.
  */
 internal fun cursorVisualOrigin(
     hotspot: ScreenPoint,
@@ -92,51 +92,51 @@ internal fun cursorVisualOrigin(
     )
 }
 
-/** 箭头热点始终留在远程画面内，同时尽量让整块控制器留在手机屏幕内。 */
+/** Keep the arrow hotspot within the remote screen at all times, while ensuring the entire controller remains on the phone screen as much as possible. */
 internal fun clampVirtualMouseAnchor(
     proposed: ScreenPoint,
     frame: ScreenRect,
     viewportHeight: Float,
     controlHeight: Float,
     topInset: Float,
-    /** 视口宽度（px）：null=同 frame.right（旧行为），非 null=面板右边缘最多贴视口右缘（完整可见）。 */
+    /** Viewport width (px): null = same as `frame.right` (old behavior); non-null = the panel’s right edge aligns with the right edge of the viewport (fully visible). */
     viewportWidth: Float? = null,
 ): ScreenPoint {
     if (frame.width <= 0f || frame.height <= 0f || viewportHeight <= 0f) return proposed
     val minY = max(frame.top, topInset)
     val maxY = min(frame.bottom, viewportHeight - controlHeight).coerceAtLeast(minY)
-    // 面板左边缘可超出视频帧右边界（挤入右侧控制区），但面板右边缘不超出视口右边界
+    // The left edge of the panel may extend beyond the right bounds of the video frame (into the right-hand control area), but the right edge of the panel must not extend beyond the right bounds of the viewport.
     val maxX = viewportWidth ?: frame.right
     return ScreenPoint(
-        // 左界 = 画面左缘与屏幕左缘的较大者：放大后画面左缘在屏幕外（<0），
-        // 鼠标不能挪出屏幕（贴屏幕左缘触发左推）；未放大时画面左缘在屏幕内
-        // （黑边），鼠标仍限制在画面内
+        // Left Boundary = The greater of the left edge of the image and the left edge of the screen: when zoomed in, the left edge of the image is outside the screen (<0),
+        // The mouse cannot move off the screen (touching the left edge of the screen triggers a left push); when not zoomed in, the left edge of the screen remains within the display area.
+        // (Black border), the mouse is still restricted to the screen
         x = proposed.x.coerceIn(max(frame.left, 0f), maxX),
         y = proposed.y.coerceIn(minY, maxY),
     )
 }
 
-/** 右侧渐进挤开的换算结果：视频左移量 + 面板显示 anchor X。 */
+/** The conversion result, which gradually shifts to the right: video left offset + panel anchor X shown. */
 internal data class VirtualMousePush(
     val overlapPx: Float,
     val anchorX: Float,
 )
 
 /**
- * 虚拟鼠标拖到右缘后的「ToDesk 式」渐进推开：anchor 钉在右缘（面板右边缘贴
- * 视口右缘，完整可见不滑出屏幕——放大态同样如此），继续右拖的过冲量累积为
- * 视频整体左移（左侧裁掉），满推时光标恰好够到视频右列；左拖先回弹视频、
- * 回完面板才跟随左移。
+ * "ToDesk-style" progressive push when the virtual mouse is dragged to the right edge: anchor pinned to the right edge (panel right edge aligned with
+ * The right edge of the viewport remains fully visible without scrolling off the screen—this also holds true in zoomed-in mode—and the cumulative overshoot from continuing to drag to the right amounts to
+ * The video is shifted entirely to the left (cropped on the left side); when scrolled to the end, the cursor just reaches the right column of the video; dragging to the left first causes the video to bounce back,
+ * The panel moves to the left only after the drag ends.
  *
- * 推量上限 = 把画面右缘推到面板左缘所需的平移量：未放大时画面右缘在视口
- * 右缘（恰为 controlWidth，与旧行为一致）；放大/平移后画面右缘可能在视口外，
- * 上限自动变大——鼠标贴近右边时画面持续平移过来，鼠标永不滑出屏幕
- * （用户反馈：放大后鼠标直接移出屏幕不符合预期）。
+ * Push Limit = The translation required to translate the right edge of the viewport to the left edge of the panel: When not zoomed in, the right edge of the viewport is in the viewport
+ * Right edge (exactly `controlWidth`, consistent with previous behavior); after zooming or translating, the right edge of the view may fall outside the viewport,
+ * The upper limit automatically expands—as the mouse approaches the right edge, the screen continuously translates in, ensuring the cursor never translates off the screen.
+ * (User feedback: When zoomed in, the mouse cursor moves off the screen immediately, which is not as expected.)
  *
- * @param rawAnchorX 未被右缘钳制的累积 anchor X（拖拽 delta 全程累加，
- *   调用方持久化——过冲若随 clamp 丢弃，overlap 每帧只剩当次 delta，
- *   视频原地抖动永远推不开：用户反馈拖到右缘卡住、点不到最右列）
- * @param unpushedFrameRight 未推开时的画面右缘（screenFrame(controlArea=0).right）
+ * @param rawAnchorX The cumulative anchor X value not constrained by the right edge (accumulated over the entire drag delta,
+ *   Caller-side persistence—if overshoot is discarded by `clamp`, the overlap per frame is reduced to only the delta for that frame,
+ *   (The video jitters in place and can never be pushed away: User feedback indicates it gets stuck at the right edge and the far-right column cannot be clicked.)
+ * @param unpushedFrameRight The right edge of the screen when not pushed (screenFrame(controlArea=0).right)
  */
 internal fun computeVirtualMousePush(
     rawAnchorX: Float,
@@ -154,7 +154,7 @@ internal fun computeVirtualMousePush(
     )
 }
 
-/** 控制器右侧触到屏幕边缘时打开右侧控制区，避免面板遮住远端最右侧。 */
+/** Open the right-side control area when the controller touches the right edge of the screen to prevent the panel from obscuring the remote right edge. */
 internal fun shouldDockVirtualMouseRight(
     anchorX: Float,
     controlWidth: Float,

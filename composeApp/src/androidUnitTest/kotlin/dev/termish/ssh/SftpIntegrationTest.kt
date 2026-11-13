@@ -13,9 +13,9 @@ import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.rules.Timeout
 
-/** sshj SFTP 集成测试：连本地测试 sshd，验证列目录 / 建目录 / 上传。 */
+/** sshj SFTP integration test: Connect to the local test sshd to verify listing directories, creating directories, and uploading files. */
 class SftpIntegrationTest {
-    /** 护栏：任何用例挂死 90s 必失败而非拖死 CI（曾因 sshj 无限等回包挂死）。 */
+    /** Safety net: Any test case that hangs for 90 seconds must result in failure rather than cause the CI to hang indefinitely (previously hung due to sshj waiting indefinitely for a response). */
     @get:Rule
     @JvmField
     val timeout: Timeout = Timeout.seconds(90)
@@ -74,7 +74,7 @@ class SftpIntegrationTest {
             val payload = "hello sftp".encodeToByteArray()
             var served = false
             session.upload("$dir/hello.txt", payload.size.toLong()) {
-                // 必须返回一次后送 null（EOF）：nextChunk 永不返 null = 无限上传（曾致挂死 6.6 亿包）
+                // Must return null (EOF) after one return: nextChunk never returns null = infinite upload (which previously caused 660 million packets to hang)
                 if (served) {
                     null
                 } else {
@@ -104,8 +104,8 @@ class SftpIntegrationTest {
         try {
             val dir = "/tmp/termish_test/sftp_bin_${System.currentTimeMillis()}"
             session.mkdir(dir)
-            // 覆盖 0x00-0xFF 全部字节值（非 UTF-8 文本），验证 upload/download 字节无损；
-            // 分块回调模拟流式源（8KB 块 × 多块），验证多块路径与大块内存不驻留
+            // Cover all byte values from 0x00 to 0xFF (non-UTF-8 text) to verify that upload/download bytes are lossless;
+            // Chunk-based callback to mock a streaming source (8KB blocks × multiple blocks), verifying multi-block paths and ensuring no large chunks of memory are retained
             val data = ByteArray(256 * 257) { (it % 256).toByte() }
             val chunks =
                 data
@@ -133,7 +133,7 @@ class SftpIntegrationTest {
         val session = newSession()
         var reader: SftpReadHandle? = null
         try {
-            // 稀疏文件实际只占几 KB，验证 >4GB offset 不经 Int 截断。
+            // Sparse files actually only take up a few KB; verify that offsets greater than 4 GB do not suffer any truncation due to the `int` type.
             RandomAccessFile(path, "rw").use {
                 it.write(byteArrayOf(1, 2, 3))
                 it.seek(start)

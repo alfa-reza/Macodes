@@ -6,10 +6,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * 页面离开后短暂保留昂贵资源；超时仍未重新获取才释放。
+ * Expensive resources are retained briefly after the screen is left; they are released only if they have not been reacquired by the time the timeout expires.
  *
- * 所有调用都由同一个 UI scope 串行执行，不需要额外加锁。签名用于在主机配置或
- * 凭据变化时立即淘汰旧资源，避免复用过期连接。
+ * All calls are executed sequentially within the same UI scope; no additional locking is required. The signature captures the host configuration or
+ * credentials: an outdated resource is removed as soon as the signature changes, to avoid reusing obsolete connections.
  */
 internal class IdleResourcePool<K : Any, S, V : Any>(
     private val scope: CoroutineScope,
@@ -56,7 +56,7 @@ internal class IdleResourcePool<K : Any, S, V : Any>(
             }
     }
 
-    /** 显式结束某个资源（连接页关闭、删除主机），不等待闲置计时。 */
+    /** Explicitly terminate a resource (close a connection page, delete a host) without waiting for the idle timer to expire. */
     fun remove(key: K) {
         entries.remove(key)?.let(::closeEntry)
     }

@@ -34,29 +34,29 @@ import platform.posix.memcpy
 
 @Composable
 actual fun rememberMicPermissionRequester(): MicPermissionRequester {
-    // iOS 权限弹窗由 AVAudioSession.requestRecordPermission 驱动（任意线程可调），
-    // 无需 Compose 侧参与；这里返回单例。
+    // The iOS permission dialog is driven by `AVAudioSession.requestRecordPermission` (which can be called from any thread),
+    // No involvement from the Compose side is required; a singleton is returned here.
     return remember { IosMicPermission }
 }
 
 private object IosMicPermission : MicPermissionRequester {
     override fun request(onResult: (Boolean) -> Unit) {
         AVAudioSession.sharedInstance().requestRecordPermission { granted ->
-            // 回调线程不确定，统一回主线程（UI 状态更新）
+            // The callback thread is uncertain; consistently return to the main thread (UI state update).
             dispatch_async(dispatch_get_main_queue()) { onResult(granted) }
         }
     }
 }
 
-// ---- 录音：AVAudioEngine → 硬件采样率 float32 → 线性重采样到 16kHz → PCM16 ----
+// ---- Audio recording: AVAudioEngine → hardware sample rate float32 → linearly resampled to 16 kHz → PCM16 ----
 
 private const val SAMPLE_RATE = 16000
 private const val FRAME_MS = 200
 private const val FRAME_SAMPLES = SAMPLE_RATE * FRAME_MS / 1000
 
 /**
- * iOS 录音：输入节点 tap 硬件格式（通常 48k/44.1k float32），线性插值重采样到
- * 16kHz，转 PCM16 小端（火山 ASR 要求 pcm_s16le）；每 200ms 一块回调。
+ * iOS audio recording: input node taps the hardware format (usually 48k/44.1k float32), linear-interpolation resampled to
+ * 16 kHz, convert to PCM16 little-endian (Volcano ASR requires pcm_s16le); one callback block every 200 ms.
  */
 @OptIn(ExperimentalForeignApi::class)
 actual class MicrophoneRecorder actual constructor() {
@@ -95,13 +95,13 @@ actual class MicrophoneRecorder actual constructor() {
             try {
                 val frames = buf.frameLength.toInt()
                 if (frames <= 0) return@installTapOnBus
-                // floatChannelData: float** → CPointer<CPointer<FloatVar>?>，取 [0] 通道
+                // floatChannelData: float** → CPointer<CPointer<FloatVar>?>; takes channel [0]
                 val ch0 = buf.floatChannelData!![0]!!
-                // 线性插值重采样：输入 rate Hz → 16kHz
+                // Linear interpolation resampling: Input rate Hz → 16 kHz
                 val step = rate / SAMPLE_RATE.toDouble()
                 var outCount = (frames / step).toInt()
                 if (outCount <= 0) return@installTapOnBus
-                // 预留少量余量避免索引越界（浮点累计误差）
+                // Allow a small margin to prevent index out of bounds errors (cumulative floating-point error).
                 if (outCount > frames) outCount = frames
                 for (i in 0 until outCount) {
                     val srcPos = i * step
@@ -112,7 +112,7 @@ actual class MicrophoneRecorder actual constructor() {
                     val v = (s0 * (1 - frac) + s1 * frac) * 32767.0
                     pending.add(v.toInt().coerceIn(-32768, 32767).toShort())
                 }
-                // 按 200ms 分块回调
+                // Callback in 200ms blocks
                 while (pending.size >= FRAME_SAMPLES) {
                     val chunk = ShortArray(FRAME_SAMPLES)
                     for (i in 0 until FRAME_SAMPLES) chunk[i] = pending[i]
@@ -162,7 +162,7 @@ private fun shortToBytes(shorts: ShortArray): ByteArray {
     return out
 }
 
-// ---- WebSocket：NSURLSessionWebSocketTask ----
+// ---- WebSocket: NSURLSessionWebSocketTask ----
 
 actual fun createVoiceWebSocket(): VoiceWebSocket = IosVoiceWebSocket()
 
@@ -185,7 +185,7 @@ private class IosVoiceWebSocket : VoiceWebSocket {
             }
         val config = NSURLSessionConfiguration.defaultSessionConfiguration()
         config.timeoutIntervalForRequest = 10.0
-        // WebSocket 握手鉴权头：session 配置的 HTTPAdditionalHeaders 会随握手发送
+        // WebSocket handshake authentication headers: The HTTPAdditionalHeaders configured in `session` are sent during the handshake
         config.HTTPAdditionalHeaders = headers.toMap() as Map<Any?, *>
         val delegate =
             object :

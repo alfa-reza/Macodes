@@ -6,7 +6,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Git 面板解析器（git status --porcelain / git diff）单元测试。 */
+/** Unit tests for the Git panel parser (`git status --porcelain` / `git diff`). */
 class GitParseTest {
     @Test
     fun statusMixedStates() {
@@ -30,55 +30,55 @@ class GitParseTest {
         assertNull(res.error)
         assertEquals(9, res.entries.size)
 
-        // ` M`：仅工作区修改（首字符空格，易漏）
+        // ` M`: Modify workspace only (leading space, easy to overlook)
         val wtOnly = res.entries[0]
         assertEquals(' ', wtOnly.indexStatus)
         assertEquals('M', wtOnly.worktreeStatus)
         assertFalse(wtOnly.isStaged)
 
-        // `M `：仅暂存区
+        // `M `: Stage area only
         val idxOnly = res.entries[1]
         assertEquals('M', idxOnly.indexStatus)
         assertEquals(' ', idxOnly.worktreeStatus)
         assertTrue(idxOnly.isStaged)
 
-        // `MM`：两区都改 → diff 页可切换
+        // `MM`: Changes in both sections → Toggleable on the diff page
         val both = res.entries[2]
         assertEquals("MM", both.statusCode)
         assertTrue(both.isStaged)
 
-        // 新增
+        // New
         assertEquals("A ", res.entries[3].statusCode)
         assertTrue(res.entries[3].isStaged)
 
-        // 删除（工作区）
+        // Delete (workspace)
         assertEquals('D', res.entries[4].worktreeStatus)
 
-        // 重命名：displayPath 是新路径
+        // Rename: `displayPath` is the new path
         val rename = res.entries[5]
         assertEquals("new.kt", rename.displayPath)
         assertEquals("old.kt", rename.path)
         assertTrue(rename.isStaged)
 
-        // 未跟踪
+        // Not tracked
         val untracked = res.entries[6]
         assertTrue(untracked.untracked)
         assertEquals("??", untracked.statusCode)
         assertFalse(untracked.isStaged)
         assertTrue(untracked.diffable)
 
-        // 未跟踪目录
+        // Untracked directories
         val dir = res.entries[7]
         assertTrue(dir.isDir)
         assertFalse(dir.diffable)
 
-        // 冲突
+        // conflict
         assertTrue(res.entries[8].conflicted)
     }
 
     @Test
     fun statusBranchVariants() {
-        // 无 upstream / 无 ahead
+        // No upstream / No ahead
         val plain = parseGitStatus("## feature\n M a.kt\n")
         assertEquals("feature", plain.branch)
         assertEquals(0, plain.ahead)
@@ -116,7 +116,7 @@ class GitParseTest {
         val notFound = parseGitStatus("git: command not found\n")
         assertTrue(notFound.error!!.contains("command not found"))
 
-        // 干净工作区：只有分支行
+        // Clean workspace: Only branch rows
         val clean = parseGitStatus("## main\n")
         assertNull(clean.error)
         assertTrue(clean.entries.isEmpty())
@@ -156,7 +156,7 @@ class GitParseTest {
         assertEquals(3, bin.size)
         assertTrue(bin.all { it.kind == GitDiffKind.HEADER })
 
-        // --no-index 新文件 diff
+        // --no-index diff for new files
         val raw =
             """
             diff --git a//dev/null b/new.kt
@@ -184,7 +184,7 @@ class GitParseTest {
             +new
             """.trimIndent()
         val lines = parseGitDiff(out)
-        // 回显行被跳过
+        // Echo rows are skipped
         assertEquals(4, lines.size)
     }
 
@@ -209,7 +209,7 @@ class GitParseTest {
         assertEquals("a b.txt", unescapePorcelainPath("\"a b.txt\""))
         assertEquals("tab\there", unescapePorcelainPath("\"tab\\there\""))
         assertEquals("quote\"inside", unescapePorcelainPath("\"quote\\\"inside\""))
-        // 八进制转义 \ooo
+        // Octal escape \ooo
         assertEquals("a\u001bb", unescapePorcelainPath("\"a\\033b\""))
         assertEquals("", unescapePorcelainPath("\"\""))
     }

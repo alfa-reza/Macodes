@@ -9,7 +9,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
-/** SFTP 纯逻辑：路径拼接、搜索匹配、目录名清洗、递归下载。 */
+/** SFTP pure logic: path concatenation, search matching, directory name sanitization, recursive downloads. */
 class SftpLogicTest {
     // ---------- joinPath ----------
 
@@ -73,11 +73,11 @@ class SftpLogicTest {
         assertEquals("my_dir", sanitizeDirName("my dir"))
         assertEquals("a_b", sanitizeDirName("a/b"))
         assertEquals("download", sanitizeDirName(""))
-        // 空白会按"非法字符"替换成下划线而非视为空（与实现一致）
+        // Spaces will be replaced with underscores as "invalid characters" rather than being treated as empty (consistent with the implementation).
         assertEquals("___", sanitizeDirName("   "))
     }
 
-    // ---------- downloadDir 递归 ----------
+    // ---------- downloadDir Recursion ----------
 
     private fun entry(
         name: String,
@@ -161,7 +161,7 @@ class SftpLogicTest {
 
         downloadDir(sftp, "/root", sink)
 
-        // 目录下载不按 UI 的 showHidden 过滤：隐藏文件也下载，只跳过 . 和 ..
+        // Directory downloads do not follow the UI’s `showHidden` filter: hidden files are downloaded as well; only `.` and `..` are skipped.
         assertEquals(setOf("a.txt", "sub/b.log", ".hidden"), sink.files.keys)
         assertEquals("/root/a.txt", sink.files["a.txt"]!!.content())
         assertEquals("/root/sub/b.log", sink.files["sub/b.log"]!!.content())
@@ -198,12 +198,12 @@ class SftpLogicTest {
 
         assertFailsWith<IllegalStateException> { downloadDir(sftp, "/root", sink) }
 
-        // 失败文件已 close；异常沿调用栈传播，后续目录不再下载
+        // On failure the files have been closed; exceptions propagate up the call stack, and subsequent directories will no longer be downloaded.
         assertTrue(sink.files["a.txt"]!!.closed)
         assertFalse("sub/b.log" in sink.files)
     }
 
-    // ---------- searchRecursive 递归 ----------
+    // ---------- searchRecursive Recursion ----------
 
     @Test
     fun searchRecursiveFindsMatchesAcrossDirectories() =
@@ -230,7 +230,7 @@ class SftpLogicTest {
                         "/root/.hidden" to listOf(entry("secret.apk", false)),
                     ),
                 )
-            // 递归搜索不看 UI 的 showHidden：隐藏目录也遍历（与递归下载目录语义一致）
+            // Recursive search ignores the UI’s `showHidden`: hidden directories are also traversed (consistent with the semantics of recursive directory downloads).
             val hits = searchRecursive(sftp, "/root", "apk")
             assertEquals(listOf("secret.apk"), hits.map { it.name })
         }
@@ -251,7 +251,7 @@ class SftpLogicTest {
     @Test
     fun searchRecursiveToleratesUnlistableDir() =
         runBlocking {
-            // FakeSftp 对未知路径返回 emptyList（模拟权限不足目录）：不抛异常、不中断遍历
+            // FakeSftp returns an empty list for unknown paths (mocking a directory with insufficient permissions): does not throw exceptions or interrupt traversal
             val sftp =
                 FakeSftp(
                     mapOf(
@@ -282,7 +282,7 @@ class SftpLogicTest {
 
     // ---------- readSftpPreview ----------
 
-    /** 预览专用 fake：download 按 [chunkSize] 分块输出字节流（模拟真实循环读取）；fail=true 时抛传输异常。 */
+    /** Preview-only `fake`: `download` outputs a byte stream in blocks of [chunkSize] (mocking actual looped reading); throws a transfer exception when `fail=true`. */
     private class PreviewSftp(
         private val bytes: ByteArray,
         private val fail: Boolean = false,
@@ -315,8 +315,8 @@ class SftpLogicTest {
             onChunk: (ByteArray) -> Unit,
         ) {
             if (fail) throw IllegalStateException("download failed: $remotePath")
-            // 模拟真实实现的循环读取与 finally-close 语义：
-            // onChunk 抛异常时异常沿调用栈传播，后续块不再发送
+            // Mock the semantics of loop-based reading and `finally-close` as in the actual implementation:
+            // When `onChunk` throws an exception, the exception propagates up the call stack, and subsequent blocks are no longer dispatched.
             var off = 0
             while (off < bytes.size) {
                 val n = minOf(chunkSize, bytes.size - off)
@@ -341,7 +341,7 @@ class SftpLogicTest {
     @Test
     fun previewTruncatesAtLimit() =
         runBlocking {
-            // 超过 maxBytes 的后续块触发中断：只保留前 maxBytes 字节，并标记截断
+            // Subsequent blocks exceeding maxBytes trigger an interrupt: only the first maxBytes bytes are retained, and the rest is marked as subject to truncation.
             val bytes = "abcdefghij".encodeToByteArray()
             val r = readSftpPreview(PreviewSftp(bytes, chunkSize = 3), "/root/a.txt", maxBytes = 4)
             assertEquals("abcd", r.text)
@@ -367,7 +367,7 @@ class SftpLogicTest {
             Unit
         }
 
-    // ---------- 文件类型识别 / 图片预览分流 ----------
+    // ---------- File Type Recognition / Image Preview Routing ----------
 
     @Test
     fun extensionOfLowercases() {

@@ -49,7 +49,7 @@ import dev.termish.ui.theme.ScreenControlTokens
 import kotlin.math.roundToInt
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** 收起态：位于键盘按钮上方的虚拟鼠标入口。 */
+/** Collapse state: The virtual mouse cursor located above the keyboard buttons. */
 @Composable
 internal fun VirtualMouseButton(
     contentDescription: String,
@@ -74,8 +74,8 @@ internal fun VirtualMouseButton(
 }
 
 /**
- * ToDesk 风格虚拟鼠标：上半部左右键，中间滚轮，下半部整体拖动区。
- * 箭头与面板是固定组合，拖动不会向远端发送鼠标移动事件。
+ * ToDesk-style virtual mouse: left and right buttons in the upper half, a scroll wheel in the middle, and a drag area covering the entire lower half.
+ * Arrows and panels are a fixed composition; dragging them does not send mouse movement events to the remote end.
  */
 @Composable
 internal fun VirtualMousePanel(
@@ -157,9 +157,9 @@ internal fun VirtualMousePanel(
                                             }
                                             val fromDown = change.position - down.position
                                             if (fromDown.getDistance() > viewConfiguration.touchSlop) {
-                                                // 左键区本身就是“按住并拖”的入口：用户按下后
-                                                // 直接移动应立即进入拖态，不能在长按超时前因
-                                                // 越过 slop 反而取消整次手势。
+                                                // The left-click area itself serves as the entry point for “hold and drag”: when the user clicks it,
+                                                // A direct move should enter drag mode immediately; it must not be cancelled before the long-press timeout expires just because
+                                                // the finger moved past the touch slop.
                                                 change.consume()
                                                 initialDrag = fromDown
                                                 lastPosition = change.position
@@ -198,7 +198,7 @@ internal fun VirtualMousePanel(
                                         }
                                     }
                                     else -> {
-                                        // 指针流被系统取消时消费到抬手，避免残留点击。
+                                        // When the pointer stream is canceled by the system, consume it until the hand is raised to prevent residual taps.
                                         if (!pointerGone) {
                                             while (true) {
                                                 val event = awaitPointerEvent()
@@ -395,9 +395,9 @@ private fun MousePanelGrip(
 }
 
 /**
- * 画面内的本地箭头。尖端必须精确落在热点（点击位置）上——热点可到画面四边，
- * 靠近边缘时箭头尾巴超出画布的部分由 clip 裁掉（用户反馈：之前图形整体内收，
- * 尖端到不了边缘，点不到最边上一列像素）。
+ * On-screen local arrows. The tip must land precisely on the hotspot (the tap location)—the hotspot can extend to the edges of the screen,
+ * When near the edge, the portion of the arrow’s tail that extends beyond the canvas is clipped (user feedback: previously, the entire shape was indented,
+ * The tip cannot reach the edge; it cannot touch the outermost column of pixels).
  */
 @Composable
 internal fun VirtualMouseCursor(
@@ -410,7 +410,7 @@ internal fun VirtualMouseCursor(
         val cursorWidth = ScreenControlDimens.MouseCursorWidth.toPx()
         val cursorHeight = ScreenControlDimens.MouseCursorHeight.toPx()
         val hotspot = cursorHotspot(cursor, frame)
-        // 尖端 = 热点，不做图形内收；尾巴超出画布（边缘/被推开的画面外侧）裁掉
+        // "tip" = "hotspot"; do not indent the graphic; clip the tail beyond the canvas (edge / outside the pushed-out frame)
         clipRect(0f, 0f, size.width, size.height) {
             val path =
                 Path().apply {

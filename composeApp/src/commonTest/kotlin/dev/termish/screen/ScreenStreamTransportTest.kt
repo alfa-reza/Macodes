@@ -9,8 +9,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * 屏幕推流半可靠分片传输的单测（方案 A 传输原型）：
- * 验证复用 mosh 分片格式后的 round-trip、乱序、重复分片、丢包丢弃、连续多包。
+ * Unit test for semi-reliable fragmentation of screen streaming (Solution A streaming prototype):
+ * Verify round-trip, out-of-order, duplicate fragments, packet loss and discard, and consecutive multiple packets after reusing the Mosh fragment format.
  */
 class ScreenStreamTransportTest {
     private val mtu = 400
@@ -21,13 +21,13 @@ class ScreenStreamTransportTest {
         val sender = ScreenStreamSender { datagrams.add(it) }
         val receiver = ScreenStreamReceiver()
 
-        // 固定种子随机数据，避免 zlib 把内容压成单片
+        // Use a fixed seed for random data to prevent zlib from compressing the content into a single block
         val payload = Random(42).nextBytes(5000)
         sender.send(payload, mtu)
         assertTrue(datagrams.size > 3, "5000B @ mtu=$mtu 应切成多片，实际 ${datagrams.size}")
 
         var result: ByteArray? = null
-        // 乱序喂入：同 id 按 num 放置，应仍能重组
+        // Randomized input: Elements with the same ID are sorted by num; reassembly should still be possible.
         for (dg in datagrams.reversed()) {
             receiver.onDatagram(dg)?.let { result = it }
         }
@@ -44,10 +44,10 @@ class ScreenStreamTransportTest {
         val payload = Random(7).nextBytes(2000)
         sender.send(payload, mtu)
 
-        // 第一片重复喂两次，其余正常；重复分片应被忽略不破坏重组
+        // The first segment is fed twice; the rest are normal. Fragmentation should be ignored without disrupting the reassembly.
         var result: ByteArray? = null
         receiver.onDatagram(datagrams[0])
-        receiver.onDatagram(datagrams[0]) // 重复
+        receiver.onDatagram(datagrams[0]) // Duplicate
         for (dg in datagrams.drop(1)) {
             receiver.onDatagram(dg)?.let { result = it }
         }
@@ -61,16 +61,16 @@ class ScreenStreamTransportTest {
         val sender = ScreenStreamSender { datagrams.add(it) }
         val receiver = ScreenStreamReceiver()
 
-        // 第一包：丢中间一片（num=1）→ 永远不完整（半可靠：整包丢弃）
+        // First packet: one segment missing in the middle (num=1) → always incomplete (semi-reliable: discard the entire packet)
         val p1 = Random(11).nextBytes(3000)
         sender.send(p1, mtu)
         assertTrue(datagrams.size > 3)
         for ((i, dg) in datagrams.withIndex()) {
-            if (i == 1) continue // 丢 num=1
+            if (i == 1) continue // dropped: num=1
             assertNull(receiver.onDatagram(dg), "丢片后不应重组出包")
         }
 
-        // 第二包：同一 sender（id 递增），完整喂入 → 新 id 触发重置，正常重组
+        // Second batch: Same sender (id increments), complete input → new id triggers reset, normal reassembly
         val p2 = Random(13).nextBytes(3000)
         val before = datagrams.size
         sender.send(p2, mtu)
@@ -93,7 +93,7 @@ class ScreenStreamTransportTest {
         for (p in packets) {
             val before = datagrams.size
             sender.send(p, mtu)
-            // 逐包喂入（每个包的新 id 边界自然切换）
+            // Feed in package by package (naturally toggling at the new ID bounds for each package)
             for (dg in datagrams.subList(before, datagrams.size)) {
                 receiver.onDatagram(dg)?.let { results.add(it) }
             }

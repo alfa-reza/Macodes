@@ -24,7 +24,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** SessionManager：会话增删、最近会话持久化与恢复、主机删除连带清理。 */
+/** SessionManager: Add and delete sessions; enable session persistence and resume recent sessions; clean up associated data when deleting a host. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = TermishApplication::class)
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -113,8 +113,8 @@ class SessionManagerTest {
 
     @Test
     fun closeAllForHostDisconnectsSftpButKeepsEntry() {
-        // 语义变更：卡片「关闭」= 断开保留（与终端一致），不再直接删除条目；
-        // 进 tab 可重连恢复原浏览路径
+        // Semantic change: "Close" card = "Disconnect and retain" (consistent with the terminal); entries are no longer directly deleted;
+        // Entering the tab can reconnect and resume the original browsing path.
         val r = repo()
         val m = SessionManager(r)
         val h = host("a")
@@ -181,7 +181,7 @@ class SessionManagerTest {
         val h = host("a")
         val base = m.signatureFor(h)
 
-        // 连接参数任一变化 → 签名变化（旧会话应判为过期）
+        // Any change to connection parameters → signature change (old sessions should be marked as expired)
         assertNotEquals(base, m.signatureFor(h.copy(hostname = "other.example.com")))
         assertNotEquals(base, m.signatureFor(h.copy(username = "other")))
         assertNotEquals(base, m.signatureFor(h.copy(port = 2222)))
@@ -202,7 +202,7 @@ class SessionManagerTest {
         val r = repo()
         val h = host("sftp-host")
         r.upsertHost(h)
-        // 持久化带路径的 SFTP 条目（杀 App 前的浏览位置）
+        // Persistence of SFTP entries with paths (browsing location from before the app was killed)
         r.saveRecentSftpEntries(listOf(HostRepository.RecentSftpEntry(h.id, "/var/www", createdAt = 1234L)))
 
         val m = SessionManager(r)
@@ -210,8 +210,8 @@ class SessionManagerTest {
 
         assertEquals(1, m.sftpSessions.size)
         assertEquals(h.id, m.sftpSessions[0].host.id)
-        assertEquals(null, m.sftpSessions[0].session) // 未连接条目
-        assertEquals("/var/www", m.sftpSessions[0].uiState.path) // 路径恢复
+        assertEquals(null, m.sftpSessions[0].session) // Not-connected entries
+        assertEquals("/var/www", m.sftpSessions[0].uiState.path) // Path Recovery
         assertEquals(1234L, m.sftpSessions[0].createdAt)
     }
 
@@ -240,7 +240,7 @@ class SessionManagerTest {
         val r = repo()
         val h = host("sftp-host")
         val m = SessionManager(r)
-        // 先有恢复条目（session=null），再连接同一主机 → 替换而非重复
+        // First there is a restored entry (session=null), then connecting to the same host → replace rather than duplicate.
         m.sftpSessions.add(SftpSessionEntry(h, null, createdAt = 1234L))
 
         val fake =

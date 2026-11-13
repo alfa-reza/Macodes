@@ -3,13 +3,13 @@ package dev.termish.voice
 import androidx.compose.runtime.Composable
 
 /**
- * 语音输入平台抽象（expect/actual）：
- * - [MicrophoneRecorder]：16kHz / PCM16 / 单声道 录音器
- * - [VoiceWebSocket]：二进制 WebSocket 客户端
- * - [rememberMicPermissionRequester]：麦克风权限请求（Android 运行时权限弹窗；
- *   iOS 走 AVAudioSession 内部请求）
+ * Voice Input Platform Abstraction (expect/actual):
+ * - [MicrophoneRecorder]: 16 kHz / PCM16 / Mono Recorder
+ * - [VoiceWebSocket]: Binary WebSocket client
+ * - [rememberMicPermissionRequester]: Microphone permission request (Android runtime permission dialog;
+ *   (iOS uses internal requests via AVAudioSession)
  *
- * 麦克风权限请求器：request 幂等，已授予立即回调 true。
+ * Microphone permission requester: `request` is idempotent; if permission was already granted, call back `true` immediately.
  */
 
 interface MicPermissionRequester {
@@ -20,12 +20,12 @@ interface MicPermissionRequester {
 expect fun rememberMicPermissionRequester(): MicPermissionRequester
 
 /**
- * 录音器：16kHz / 16bit / 单声道 PCM（火山 ASR 的标准输入格式）。
- * 平台线程回调 [onData]（约 200ms 一块）；[onError] 报告不可恢复错误
- * （无设备/权限被收回等），随后录音停止。
+ * Recorder: 16 kHz / 16-bit / mono PCM (the standard input format for Volcano ASR).
+ * Platform thread callbacks: [onData] (approximately every 200 ms); [onError] reports unrecoverable errors
+ * (e.g., no device available or permissions revoked), after which the recording stops.
  */
 expect class MicrophoneRecorder() {
-    /** 启动录音；返回 false 表示无法启动（无设备/未授权，错误经 [onError] 给出）。 */
+    /** Launch recording; returning false indicates that recording cannot be launched (no device/no authorization; the error is provided via [onError]). */
     fun start(
         onData: (ByteArray) -> Unit,
         onError: (String) -> Unit,
@@ -34,7 +34,7 @@ expect class MicrophoneRecorder() {
     fun stop()
 }
 
-/** 二进制 WebSocket：connect 后异步回调；send 线程安全；close 幂等。 */
+/** Binary WebSocket: async callback after `connect`; `send` is thread-safe; `close` is idempotent. */
 interface VoiceWebSocket {
     fun connect(
         url: String,

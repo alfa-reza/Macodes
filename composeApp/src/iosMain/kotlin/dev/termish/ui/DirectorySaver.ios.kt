@@ -23,8 +23,8 @@ import platform.posix.open
 import platform.posix.write
 
 /**
- * iOS：递归下载到临时目录，[DirectorySink.close] 时用 UIDocumentPicker
- * 导出整个目录（用户可存到 Files/其他 App）。
+ * iOS: Recursively download to a temporary directory; use UIDocumentPicker when calling [DirectorySink.close]
+ * Export the entire directory (users can save it to Files or other apps).
  */
 @OptIn(ExperimentalForeignApi::class)
 @Composable
@@ -34,7 +34,7 @@ actual fun rememberDirectorySaver(onReady: (name: String, sink: DirectorySink) -
         if (tmpDir != null) {
             val safeName = sanitizeDirName(name)
             val root = "$tmpDir/termish-dir-$safeName"
-            // 清掉上次失败/中断残留的同名目录，避免陈旧文件混入本次导出（O_TRUNC 只覆盖同名文件）
+            // Delete any directories with the same name left over from the previous failure or interruption of the export to prevent obsolete files from being included in this export (O_TRUNC only overwrites files with the same name).
             NSFileManager.defaultManager.removeItemAtPath(root, null)
             NSFileManager.defaultManager.createDirectoryAtPath(root, true, null, null)
             onReady(
@@ -52,7 +52,7 @@ actual fun rememberDirectorySaver(onReady: (name: String, sink: DirectorySink) -
                                     var off = 0
                                     while (off < bytes.size) {
                                         val n = write(fd, pinned.addressOf(off), (bytes.size - off).toULong())
-                                        // 写失败/写 0 字节必须抛错：静默截断会让上层误报下载成功
+                                        // Writing "failure" or 0 bytes must throw an error: silent truncation will cause upper-level code to falsely report success for a download
                                         if (n < 0) throw IllegalStateException("写入失败: $relativePath")
                                         if (n == 0L) throw IllegalStateException("写入中断: $relativePath")
                                         off += n.toInt()

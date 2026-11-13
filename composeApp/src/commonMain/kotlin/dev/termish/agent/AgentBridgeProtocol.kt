@@ -27,7 +27,7 @@ internal fun classifyAgentEvent(
         else -> AgentEventDecision.APPLY
     }
 
-/** prompt.send 的响应交接闸门；同一 SSH reader 内保持事件原始到达顺序。 */
+/** Response handoff for `prompt.send`; maintain the original order in which events arrived within the same SSH reader. */
 internal class AgentPromptEventBuffer {
     private val queues = mutableMapOf<String, MutableList<JsonObject>>()
 
@@ -55,7 +55,7 @@ internal class AgentPromptEventBuffer {
     }
 }
 
-/** 有上限、复用缓冲区的 NDJSON 解码器，避免每个 SSH chunk 都复制剩余字节。 */
+/** An NDJSON decoder with a size limit and a reused buffer to avoid copying the remaining bytes for every SSH chunk. */
 internal class AgentNdjsonDecoder(
     private val maxLineBytes: Int = AGENT_MAX_NDJSON_LINE_BYTES,
 ) {
@@ -111,7 +111,7 @@ internal data class AgentStreamDelta(
     val text: String,
 )
 
-/** 将高频 token 合并成帧级更新，保持不同 activity 首次出现的顺序。 */
+/** Merge high-frequency tokens into frame-level updates, while preserving the order in which they first appear in different activities. */
 internal class AgentStreamBatcher {
     private data class PendingDelta(
         val role: String,

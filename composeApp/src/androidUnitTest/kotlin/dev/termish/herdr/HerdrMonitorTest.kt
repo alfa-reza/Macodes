@@ -7,9 +7,9 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * 真实 herdr 快照解析测试：fixture 抓自本机运行的 herdr 0.8.0
- * （`herdr api snapshot` 原样输出，见 resources/herdr-snapshot.json），
- * 保证模型与真实协议结构对齐（防 fixture 自洽偏差）。
+ * Real herdr snapshot parse test: fixture captured from herdr 0.8.0 running on the local machine
+ * (Output `herdr api snapshot` as-is; see resources/herdr-snapshot.json),
+ * Ensure alignment of the model with the actual protocol structure (to prevent inconsistencies in fixture self-consistency).
  */
 class HerdrSnapshotRealDataTest {
     private fun realSnapshot(): HerdrSessionSnapshot {
@@ -40,7 +40,7 @@ class HerdrSnapshotRealDataTest {
     @Test
     fun realSnapshotAgentsHaveExpectedShape() {
         val s = realSnapshot()
-        // 抓取时的真实状态：两个 pi agent（idle + working）
+        // Actual status at the time of capture: two Pi agents (idle + working)
         assertTrue(s.agents.isNotEmpty())
         for (a in s.agents) {
             assertNotNull(a.paneId)
@@ -55,16 +55,16 @@ class HerdrSnapshotRealDataTest {
         val m = HerdrAgentStateMachine()
         val events = m.update(s)
         assertEquals(s.agents.size, events.size, "首轮应为首状态事件")
-        // 同一快照再喂：无变化
+        // Same snapshot fed again: no changes
         assertTrue(m.update(s).isEmpty())
         println("real events: ${events.map { it::class.simpleName }}")
     }
 }
 
 /**
- * HerdrMonitor 轮询测试：kotlinx-coroutines-test 虚拟时间驱动，
- * fake runCommand 返回可控快照序列，验证轮询调用、状态事件回调、
- * blocked 确认通知文本、停止语义。
+ * HerdrMonitor polling test: kotlinx-coroutines-test virtual time-driven,
+ * `fake runCommand` returns a controllable sequence of snapshots to verify polling calls, state event callbacks,
+ * blocked: Confirm notification text and stop semantics.
  */
 class HerdrMonitorTest {
     private fun snapshotWith(vararg statuses: Pair<String, HerdrAgentStatus>): String {
@@ -89,7 +89,7 @@ class HerdrMonitorTest {
                     runCommand = { cmd ->
                         commands += cmd
                         round++
-                        // 第 1 轮：working；第 2 轮起：blocked
+                        // Round 1: working; Round 2 and beyond: blocked
                         if (round == 1) {
                             snapshotWith("w1:p1" to HerdrAgentStatus.WORKING)
                         } else {
@@ -102,13 +102,13 @@ class HerdrMonitorTest {
                 )
             monitor.start()
             testScheduler.advanceTimeBy(10_000)
-            // 断言在 stop 前：stop() 会重置状态机
+            // Assertions before `stop`: `stop()` resets the state machine
             assertEquals(HerdrAgentStatus.BLOCKED, monitor.currentStatus()["w1:p1"])
             monitor.stop()
 
             assertTrue(commands.isNotEmpty(), "轮询应执行 herdr api snapshot")
             assertTrue(commands.all { it == "herdr api snapshot" })
-            // 事件流：首轮 Working，之后一轮 Blocked（状态稳定后不再重复发）
+            // Event Stream: First round marked as “Working,” followed by one round marked as “Blocked” (will not be resubmitted once the status stabilizes).
             val all = received.flatten()
             assertIs<HerdrAgentEvent.Working>(all.first())
             assertIs<HerdrAgentEvent.Blocked>(all[1])
@@ -133,7 +133,7 @@ class HerdrMonitorTest {
                 cwd = "/repo",
             )
         assertEquals("codex 在 nas 等待回答：codex - refactor auth", monitor.blockedNotificationText("nas", a))
-        // 无 title 无 cwd 的兜底
+        // Fallback for cases with no title or cwd
         val bare = HerdrAgentInfo(paneId = "w1:p1", agentStatus = HerdrAgentStatus.BLOCKED)
         assertEquals("agent 在 nas 等待回答：请查看会话", monitor.blockedNotificationText("nas", bare))
     }
@@ -150,15 +150,15 @@ class HerdrMonitorTest {
                     runCommand = { cmd ->
                         calls += cmd
                         null
-                    }, // 永远失败（herdr 未装）
+                    }, // Always failure (herdr not installed)
                     scope = this,
                     pollIntervalMs = 1_000,
                 )
             monitor.start()
-            testScheduler.advanceTimeBy(120_000) // 2 分钟：3 次失败 → 暂停 → 恢复后重试
+            testScheduler.advanceTimeBy(120_000) // 2 minutes: 3 failures → Pause → Retry after resuming
             monitor.stop()
-            // 前 3 次退避 3+6+12=21s 内完成，之后每 60s 暂停 + 3 次重试（3+6+12）
-            // 120s 内约 6+6=12 次调用量级，但绝不能是每 1s 一次的 120 次（防轰炸）
+            // Complete within the first 3 backoff periods (3+6+12=21s); thereafter, pause every 60 seconds and retry 3 times (3+6+12).
+            // Approximately 6+6=12 calls within 120 seconds, but under no circumstances should this be 120 calls at a rate of one per second (to prevent flooding).
             assertTrue(calls.size < 30, "连续失败必须退避+暂停，实际调用 ${calls.size} 次")
             assertTrue(calls.size >= 6, "暂停后应自动恢复轮询，实际调用 ${calls.size} 次")
         }

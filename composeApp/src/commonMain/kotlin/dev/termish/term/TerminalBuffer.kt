@@ -2,20 +2,20 @@ package dev.termish.term
 
 import kotlin.concurrent.Volatile
 
-/** 单个字符单元。 */
+/** Single-character units. */
 class TerminalCell {
     var codePoint: Int = ' '.code
     var attrs: Int = 0
     var fg: Int = DEFAULT_FG
     var bg: Int = DEFAULT_BG
 
-    /** 该单元是前一个宽字符（占 2 列）的“尾巴”。 */
+    /** This unit is the “tail” of the previous wide character (spanning 2 columns). */
     var isWideTail: Boolean = false
 
-    /** 该单元占用的列数（1=窄，2=宽字符头部），写入时预计算，渲染不再调 wcwidth。 */
+    /** The number of columns occupied by this unit (1 = narrow, 2 = wide character header); pre-calculated when writing; wcwidth is no longer called during rendering. */
     var width: Int = 1
 
-    /** OSC 8 超链接目标；非超链接单元为 null。 */
+    /** OSC 8 hyperlink targets; non-hyperlink units are null. */
     var link: String? = null
 
     val isWide: Boolean get() = width == 2
@@ -41,24 +41,24 @@ class TerminalCell {
     }
 }
 
-/** 一行字符单元。 */
+/** A single row of characters. */
 class TerminalLine(
     var cols: Int,
 ) {
     var cells = Array(cols) { TerminalCell() }
 
-    /** 该行是否因自动换行而开始（用于选择 / 回看等）。 */
+    /** Whether this row began with an automatic line wrap (used for selection / scrollback, etc.). */
     var wrapped: Boolean = false
 
-    /** 行内容版本号：单元格实际被改写时递增，供渲染层做行级缓存失效。 */
+    /** Row content version number: Increments when a cell is actually overwritten, to enable row-level cache invalidation by the rendering layer. */
     @Volatile
     var version: Long = 0
         internal set
 
-    /** 逻辑行身份：克隆/COW 复制时保留，跨缓冲比较"同一行是否变过"用。 */
+    /** Logical row identity: Preserved during cloning/COW copying; used to compare across buffering to determine whether "the same row has changed." */
     internal var identity: Any = Any()
 
-    /** COW 共享标记：为 true 的行不可原地修改，写前必须克隆（mosh shared_ptr 行语义）。 */
+    /** COW (Copy-on-Write) shared marker: Rows marked as `true` cannot be modified in place; they must be cloned before writing (similar to the `mosh shared_ptr` row semantics). */
     internal var shared: Boolean = false
 
     fun touch() {
@@ -71,7 +71,7 @@ class TerminalLine(
         touch()
     }
 
-    /** 整行是否为默认空白（无字符/颜色/属性），resize 收缩时用于安全丢弃。 */
+    /** Whether the entire row consists of default whitespace (no characters, colors, or attributes); used for safe discarding when resizing. */
     fun isBlank(): Boolean {
         for (c in cells) {
             if (c.codePoint != ' '.code || c.attrs != 0 || c.fg != DEFAULT_FG || c.bg != DEFAULT_BG) return false
@@ -81,10 +81,10 @@ class TerminalLine(
 }
 
 /**
- * 终端屏幕缓冲：双缓冲（普通屏 + 备用屏）、滚动回看、光标与模式。
+ * Terminal screen buffering: double buffering (main screen + alternate screen), scrollback, cursor, and modes.
  *
- * 普通屏：一个 [ArrayDeque]，末尾 [rows] 行是可见屏幕，之前的行是滚动回看
- * （上限 [maxScrollbackLines]）。备用屏：固定 rows×cols，无回看（vim/tmux 等全屏程序）。
+ * Standard screen: An [ArrayDeque] where the last [rows] rows are the visible screen, and the preceding rows are the scrollback.
+ * (Maximum [maxScrollbackLines]). Secondary screen: Fixed rows × cols, no scrollback (fullscreen programs like vim or tmux).
  */
 class TerminalBuffer(
     var cols: Int,
@@ -94,7 +94,7 @@ class TerminalBuffer(
     private val normal = ArrayDeque<TerminalLine>()
     private var alt = Array(rows) { TerminalLine(cols) }
 
-    /** 上次拷贝时源缓冲普通屏窗口起点（normal[0] 对应的源行下标），增量同步用。 */
+    /** The starting point of the source buffer in the normal screen window (the source row index corresponding to `normal[0]`) when last copied, used for incremental sync. */
     private var copySourceOffset: Int = 0
 
     var altScreen: Boolean = false
@@ -107,7 +107,7 @@ class TerminalBuffer(
     var savedCursorRow: Int = 0
     var savedCursorCol: Int = 0
 
-    /** DECSC 一并保存的延迟换行标记与当前字符集（tmux 等依赖完整状态恢复）。 */
+    /** DECSC saves delayed line break markers along with the current character set (for example, tmux has a dependency on complete state resumption). */
     var savedPendingWrap: Boolean = false
     var savedCharset: Charset = Charset.ASCII
 
@@ -119,50 +119,50 @@ class TerminalBuffer(
     var insertMode: Boolean = false
     var applicationCursorKeys: Boolean = false
 
-    /** bracketed paste（DECSET 2004）：开启时粘贴内容需包在 ESC[200~ ... ESC[201~ 中。 */
+    /** bracketed paste (DECSET 2004): When enabled, pasted content must be enclosed within ESC[200~ ... ESC[201~. */
     var bracketedPaste: Boolean = false
 
-    /** 鼠标上报模式：0=关闭，1000=X10 点击，1002=按钮事件拖拽，1003=全事件。 */
+    /** Mouse reporting mode: 0=off, 1000=X10 taps, 1002=button event drag, 1003=all events. */
     var mouseTracking: Int = 0
 
-    /** 鼠标坐标格式：true=SGR(1006)，false=X10 字节偏移。 */
+    /** Mouse coordinate format: true=SGR(1006), false=X10 byte offset. */
     var mouseSgr: Boolean = false
 
-    /** 默认前景/背景（RGB），由 UI 按当前主题设置，用于应答 OSC 10/11 颜色查询。 */
+    /** Default foreground/background (RGB), with UI settings based on the current theme, used for response to OSC 10/11 color queries. */
     var defaultFgRgb: Int = 0xd5d8de
     var defaultBgRgb: Int = 0x0e0f13
 
-    /** 默认光标色（RGB），用于应答 OSC 12 查询；OSC 12 设置后覆盖。 */
+    /** Default cursor color (RGB), used for response to OSC 12 queries; OSC 12 settings overwrite the default cursor color. */
     var defaultCursorRgb: Int = 0x58a6ff
     var applicationKeypad: Boolean = false
 
-    /** DECSCUSR 光标样式：0=默认闪烁块，1=闪烁块，2=稳态块，3=闪烁下划线，4=稳态下划线，5=闪烁竖线，6=稳态竖线。 */
+    /** DECSCUSR cursor style: 0=default blinking block, 1=blinking block, 2=steady block, 3=blinking underscore, 4=steady underscore, 5=blinking vertical line, 6=steady vertical line. */
     var cursorStyle: Int = 0
 
-    /** OSC 12 设置的光标颜色；DEFAULT_CURSOR 表示用主题默认色。 */
+    /** OSC 12 sets the cursor color; DEFAULT_CURSOR indicates the theme’s default color. */
     var cursorColor: Int = DEFAULT_CURSOR
 
-    /** DECSET 1004：聚焦/失焦事件（CSI I / CSI O）上报。 */
+    /** DECSET 1004: Focus/defocus event (CSI I / CSI O) reporting. */
     var focusEvents: Boolean = false
 
-    /** DECSET 1007：备用屏下滚轮转方向键（alternate scroll）。 */
+    /** DECSET 1007: Use the scroll wheel as directional keys on the secondary screen (alternate scroll). */
     var alternateScroll: Boolean = false
 
-    /** DECSET 1015：urxvt 鼠标坐标格式（与 SGR 1006 互斥）。 */
+    /** DECSET 1015: urxvt mouse coordinate format (mutually exclusive with SGR 1006). */
     var mouseUrxvt: Boolean = false
 
-    /** OSC 8 当前超链接目标；OSC 8;; 结束链接时置 null。 */
+    /** OSC 8: Current hyperlink target; OSC 8;; Set to null at the end of the link. */
     var currentLink: String? = null
 
     var tabStops: BooleanArray = defaultTabStops(cols)
 
-    /** 最近写入的图形字符，供 CSI Ps b（REP）重复。 */
+    /** Recently written graphic characters, provided for CSI Ps b (REP) to repeat. */
     var lastPrintedCodePoint: Int = 0
 
-    /** 当前显示使用的字符集（DEC 特殊图形等）。 */
+    /** The character set currently used to show text (DEC special graphics, etc.). */
     var currentCharset: Charset = Charset.ASCII
 
-    /** 变更计数：UI 用于跳过重绘。 */
+    /** Change count: Used by the UI to skip repaints. */
     var changeSequence: Long = 0
         private set
 
@@ -171,13 +171,13 @@ class TerminalBuffer(
     }
 
     init {
-        // 初始化普通屏为一个空屏幕
+        // Initialize the default screen as a blank screen
         repeat(rows) { normal.addLast(TerminalLine(cols)) }
     }
 
     enum class Charset { ASCII, DEC_SPECIAL }
 
-    // ---------- 行访问 ----------
+    // ---------- Row Access ----------
 
     private fun lineIndex(row: Int): Int = normal.size - rows + row
 
@@ -187,7 +187,7 @@ class TerminalBuffer(
 
     fun lineAt(row: Int): TerminalLine = if (altScreen) alt[row] else normalLine(row)
 
-    /** 写访问：行被 COW 共享时先克隆，保证共享行（影子历史/UI 引用）永不被原地修改。 */
+    /** Write access: when a row is COW-shared, clone it first to ensure shared rows (shadow history/UI references) are never modified in place. */
     private fun mutableLine(row: Int): TerminalLine {
         val line = lineAt(row)
         if (!line.shared) return line
@@ -198,10 +198,10 @@ class TerminalBuffer(
 
     fun visibleLineCount(): Int = rows
 
-    /** 滚动回看行数（普通屏）或 0（备用屏）。 */
+    /** Number of scrollback rows (main screen) or 0 (alternate screen). */
     fun scrollbackSize(): Int = if (altScreen) 0 else normal.size - rows
 
-    /** 可见行（上→下），供渲染使用。 */
+    /** Visible rows (top → bottom), for rendering purposes. */
     fun visibleLines(): List<TerminalLine> =
         if (altScreen) {
             alt.toList()
@@ -210,16 +210,16 @@ class TerminalBuffer(
             (start until normal.size).map { normal[it] }
         }
 
-    /** 绝对行总数（回看 + 可见屏）。 */
+    /** Total number of absolute rows (scrollback + visible screen). */
     fun totalLines(): Int = if (altScreen) rows else normal.size
 
-    /** 绝对行（索引 0 = 最老的滚动回看行）。 */
+    /** Absolute row (index 0 = oldest row during scrollback). */
     fun absLine(index: Int): TerminalLine = if (altScreen) alt[index] else normal[index]
 
-    /** 光标的绝对行号。 */
+    /** The absolute row number of the cursor. */
     fun absCursorRow(): Int = if (altScreen) cursorRow else (normal.size - rows) + cursorRow
 
-    /** 渲染某列：解析有效前景色（考虑 inverse 等）。 */
+    /** Render a column: parse the effective foreground color (taking into account inverse, etc.). */
     fun resolveFg(
         cell: TerminalCell,
         defaultFg: Int,
@@ -246,11 +246,11 @@ class TerminalBuffer(
         }
     }
 
-    // ---------- 写操作 ----------
+    // ---------- Write Operations ----------
 
-    /** 在当前光标处写一个码点（宽字符占 2 列），必要时自动换行/滚动。 */
+    /** Insert a code point at the current cursor position (wide characters occupy 2 columns), automatically applying line breaks or scrolling as needed. */
     fun putChar(cp: Int) {
-        // 上个字符落在行末（pendingWrap）：先处理延迟换行
+        // The last character falls at the end of the line (pendingWrap): handle the deferred line wrap first
         if (pendingWrap) {
             pendingWrap = false
             if (autoWrap) {
@@ -259,7 +259,7 @@ class TerminalBuffer(
                 wrapLine.touch()
                 newline()
             } else {
-                // DECAWM 关闭：光标钳在行末，新字符覆盖最后一格（xterm 行为）
+                // DECAWM Off: The cursor is positioned at the end of the row, and new characters overwrite the last character (xterm behavior)
                 cursorCol = cols - 1
             }
         }
@@ -267,7 +267,7 @@ class TerminalBuffer(
         val line = mutableLine(cursorRow)
         val col = cursorCol
 
-        // 落点在宽字符尾巴上：先清掉头，避免残留半个宽字符
+        // Landing on a wide-character tail: clear the head first to avoid leaving half a wide character behind.
         if (col > 0 && line.cells[col].isWideTail) line.cells[col - 1].clear()
 
         if (width == 2) {
@@ -275,7 +275,7 @@ class TerminalBuffer(
                 writeNarrow(cp)
                 return
             }
-            // 宽字符：若处于行末，先换行（DECAWM 关闭时不换行，按窄字符覆盖最后一格）
+            // Wide characters: If at the end of a row, perform a line break (do not perform a line break when DECAWM is disabled; instead, use narrow characters to fill the last column).
             if (col >= cols - 1) {
                 if (autoWrap) {
                     newline()
@@ -296,19 +296,19 @@ class TerminalBuffer(
             c.link = currentLink
             val tail = line.cells[col + 1]
             tail.clear()
-            // 尾巴必须继承头的颜色/属性：否则宽字符右半格露出默认背景，
-            // 在带底色的行（如 pi 的消息条）上表现为黑块盖住半个字
+            // The tail must inherit the color/properties of the head; otherwise, the right half of wide characters will reveal the default background,
+            // On rows with a background color (such as the message bar in pi), display as a black block covering half a character.
             tail.attrs = currentAttrs
             tail.fg = currentFg
             tail.bg = currentBg
             tail.isWideTail = true
             tail.link = currentLink
-            // 尾巴盖掉了原宽字符的头：清掉它原来尾巴的标记，避免越雷悬空
+            // The tail covers the beginning of the wide character: Remove the original tail marker to prevent the character from hanging over the edge.
             if (col + 2 < cols && line.cells[col + 2].isWideTail) line.cells[col + 2].isWideTail = false
             cursorCol = col + 2
-            // 宽字符恰好填满行（尾落最后一列）：与窄字符行末同一语义——光标钳在
-            // 最后一格并挂起延迟换行；否则 cursorCol == cols，下一个字符访问
-            // cells[cursorCol] 越界崩溃（输出协程死亡、终端冻屏）
+            // Wide characters exactly fill the row (ending in the last column): Same semantics as narrow characters at the end of a row—the cursor is clamped at
+            // the last cell and arm a deferred line wrap; otherwise, if `cursorCol == cols`, the next character access
+            // cells[cursorCol] out of bounds crash (results in coroutine termination and terminal freeze)
             if (cursorCol >= cols) {
                 cursorCol = cols - 1
                 pendingWrap = true
@@ -326,7 +326,7 @@ class TerminalBuffer(
             insertCells(1)
         }
         val line = mutableLine(cursorRow)
-        // 落点在宽字符尾巴上：先清掉头
+        // Landing on a wide-character tail: clear the head first
         if (cursorCol > 0 && line.cells[cursorCol].isWideTail) line.cells[cursorCol - 1].clear()
         lastPrintedCodePoint = cp
         val c = line.cells[cursorCol]
@@ -336,13 +336,13 @@ class TerminalBuffer(
         c.fg = currentFg
         c.bg = currentBg
         c.link = currentLink
-        // 覆盖宽字符头时清掉尾巴标记
+        // Remove trailing delimiters when wrapping wide characters
         if (cursorCol + 1 < cols && line.cells[cursorCol + 1].isWideTail) {
             line.cells[cursorCol + 1].isWideTail = false
         }
 
         if (cursorCol == cols - 1) {
-            // 行末：标记 wrap，延迟到下一个字符再换行（pendingWrap 在 putChar 入口消费）
+            // End of line: Mark as "wrap" and apply latency to the line break until the next character (pendingWrap is processed at the putChar entry point).
             pendingWrap = true
         } else {
             cursorCol++
@@ -351,7 +351,7 @@ class TerminalBuffer(
         markChanged()
     }
 
-    /** CSI Ps b（REP）：在当前光标处重复最近写入的图形字符 Ps 次。 */
+    /** CSI Ps b (REP): Repeat the most recently written graphic character Ps times at the current cursor position. */
     fun repeatChar(n: Int) {
         if (lastPrintedCodePoint == 0) return
         repeat(n.coerceIn(1, 1024)) { putChar(lastPrintedCodePoint) }
@@ -359,32 +359,32 @@ class TerminalBuffer(
 
     var pendingWrap: Boolean = false
 
-    /** 当前写入使用的属性/颜色（由解析器在 SGR 时更新）。 */
+    /** Properties/colors currently being written (updated by the parser during SGR). */
     var currentAttrs: Int = 0
     var currentFg: Int = DEFAULT_FG
     var currentBg: Int = DEFAULT_BG
 
-    /** LF：换行（受 origin/scroll region 影响）。 */
+    /** LF: Line break (affected by the origin/scroll region). */
     fun lineFeed() {
         if (cursorRow == scrollBottom) {
             scrollUp(1)
         } else {
-            // 光标可能位于滚动区域下方（CUP 移过去再收到 LF）：钳在 rows-1，
-            // 否则 cursorRow 越界后 lineAt() 直接崩溃
+            // The cursor may be located below the scrollable region (CUP moves there and then receives an LF): clamped at rows-1,
+            // Otherwise, lineAt() will crash immediately after cursorRow goes out of bounds.
             cursorRow = (cursorRow + 1).coerceAtMost(rows - 1)
         }
         pendingWrap = false
         markChanged()
     }
 
-    /** CR：回车。 */
+    /** CR: Enter. */
     fun carriageReturn() {
         cursorCol = 0
         pendingWrap = false
         markChanged()
     }
 
-    /** 换行（LF + 自动换行处理）。 */
+    /** Line breaks (LF + automatic line break handling). */
     fun newline() {
         lineFeed()
         carriageReturn()
@@ -443,7 +443,7 @@ class TerminalBuffer(
         markChanged()
     }
 
-    // ---------- 擦除 ----------
+    // ---------- Erase ----------
 
     fun eraseToEndOfLine() {
         val line = mutableLine(cursorRow)
@@ -476,13 +476,13 @@ class TerminalBuffer(
         markChanged()
     }
 
-    /** ED 2：清屏。xterm 语义：不移动光标。 */
+    /** ED 2: Clear screen. xterm semantics: Do not move the cursor. */
     fun eraseScreen() {
         for (r in 0 until rows) mutableLine(r).clear()
         markChanged()
     }
 
-    /** ED 3：清屏并清空滚动回看（普通屏）。 */
+    /** ED 3: Clear the screen and clear the scrollback (standard screen). */
     fun eraseScreenAndScrollback() {
         eraseScreen()
         if (!altScreen) {
@@ -491,7 +491,7 @@ class TerminalBuffer(
         markChanged()
     }
 
-    /** 擦除指定数量的字符（ECH）。 */
+    /** Erase a specified number of characters (ECH). */
     fun eraseChars(n: Int) {
         val line = mutableLine(cursorRow)
         for (i in cursorCol until minOf(cursorCol + n, cols)) line.cells[i].clear()
@@ -499,7 +499,7 @@ class TerminalBuffer(
         markChanged()
     }
 
-    // ---------- 插入/删除 ----------
+    // ---------- Insert/Delete ----------
 
     fun insertCells(n: Int) {
         val line = mutableLine(cursorRow)
@@ -527,8 +527,8 @@ class TerminalBuffer(
         val count = minOf(n, scrollBottom - cursorRow + 1)
         if (cursorRow < scrollTop || cursorRow > scrollBottom) return
         for (r in scrollBottom downTo cursorRow + count) {
-            val src = lineAt(r - count) // 只读
-            val dst = mutableLine(r) // 写
+            val src = lineAt(r - count) // Read-only
+            val dst = mutableLine(r) // Write
             for (i in 0 until cols) {
                 dst.cells[i].copyFrom(src.cells[i])
             }
@@ -542,8 +542,8 @@ class TerminalBuffer(
         val count = minOf(n, scrollBottom - cursorRow + 1)
         if (cursorRow < scrollTop || cursorRow > scrollBottom) return
         for (r in cursorRow until scrollBottom - count + 1) {
-            val src = lineAt(r + count) // 只读
-            val dst = mutableLine(r) // 写
+            val src = lineAt(r + count) // Read-only
+            val dst = mutableLine(r) // Write
             for (i in 0 until cols) {
                 dst.cells[i].copyFrom(src.cells[i])
             }
@@ -553,12 +553,12 @@ class TerminalBuffer(
         markChanged()
     }
 
-    // ---------- 滚动 ----------
+    // ---------- Scroll ----------
 
-    /** 在滚动区域内上滚 [n] 行。 */
+    /** Scroll up [n] rows within the scroll region. */
     fun scrollUp(n: Int) {
         if (scrollTop == 0 && scrollBottom == rows - 1 && !altScreen) {
-            // 全屏滚动：追加新行（进入滚动回看）
+            // Fullscreen scroll: append a new row (enters the scrollback)
             repeat(n) {
                 normal.addLast(TerminalLine(cols))
                 if (maxScrollbackLines != Int.MAX_VALUE && normal.size > maxScrollbackLines + rows) {
@@ -580,7 +580,7 @@ class TerminalBuffer(
 
     fun scrollDown(n: Int) {
         if (scrollTop == 0 && scrollBottom == rows - 1 && !altScreen) {
-            // 全屏向下滚动（回看内容回到屏幕）
+            // Scroll fullscreen down (scrollback content returns to the screen)
             repeat(n) {
                 if (normal.size > rows) {
                     normal.removeLast()
@@ -611,13 +611,13 @@ class TerminalBuffer(
         dst.touch()
     }
 
-    // ---------- 模式切换 ----------
+    // ---------- Mode Toggle ----------
 
     fun enterAltScreen(clear: Boolean = false) {
         if (altScreen) return
         altScreen = true
-        // 1049 进入备用屏应清屏（xterm 行为）；1047/47 不清。
-        // 不清的话上次 vim/tmux 的残留会在再次进入时闪一帧。
+        // When entering the alternate screen via 1049, the screen should be cleared (xterm behavior); 1047/47 does not clear the screen.
+        // If not cleared, the previous vim/tmux remnants will cause a one-frame flicker on re-entry.
         if (clear) for (r in 0 until rows) mutableLine(r).clear()
         cursorRow = 0
         cursorCol = 0
@@ -663,7 +663,7 @@ class TerminalBuffer(
         markChanged()
     }
 
-    // ---------- 尺寸调整 ----------
+    // ---------- Size Adjustment ----------
 
     fun resize(
         newCols: Int,
@@ -671,13 +671,13 @@ class TerminalBuffer(
     ) {
         if (newCols == cols && newRows == rows) return
 
-        // 调整普通屏每行宽度（COW：共享行先克隆再改）
+        // Adjust the row width for standard screens (COW: Clone shared rows first, then modify them)
         for (i in normal.indices) {
             val line = normal[i]
             if (line.shared) normal[i] = cloneLine(line)
             resizeLine(normal[i], newCols)
         }
-        // 调整备用屏
+        // Adjust the secondary screen
         val newAlt = Array(newRows) { TerminalLine(newCols) }
         for (r in 0 until minOf(rows, newRows)) {
             val src = alt[r]
@@ -687,11 +687,11 @@ class TerminalBuffer(
         }
         alt = newAlt
 
-        // 调整行数
+        // Adjust row count
         if (newRows < rows) {
-            // 屏幕变矮（如键盘弹出）：优先丢弃光标下方的空白行，保证光标与
-            // 提示符仍留在可视区（xterm 行为）；仍不够的收缩量由
-            // “可见屏幕 = normal 末尾 newRows 行”自然把顶部行挤入回看。
+            // If the screen gets shorter (e.g., when the keyboard pops up): prioritize discarding blank rows below the cursor to ensure the cursor and
+            // The prompt remains in the visible area (xterm behavior); any remaining reduction is handled by
+            // "Visible screen = the last newRows rows of the normal buffer" naturally pushes the top rows into the scrollback.
             val cursorAbs = normal.size - rows + cursorRow
             var toDrop = rows - newRows
             while (toDrop > 0 && normal.size - 1 > cursorAbs && normal.last().isBlank()) {
@@ -700,12 +700,12 @@ class TerminalBuffer(
             }
             cursorRow = (cursorAbs - (normal.size - newRows)).coerceIn(0, newRows - 1)
         } else if (newRows > rows) {
-            // 屏幕变大：从回看中取出或新建空行
+            // Screen gets bigger: take rows out of the scrollback or create new blank rows
             repeat(newRows - rows) {
                 normal.addLast(TerminalLine(newCols))
             }
         }
-        // 限制回看总量（Int.MAX_VALUE = 无上限，影子终端用；普通 UI 缓冲保留上限）
+        // Limit the total scrollback size (Int.MAX_VALUE = no limit; used by the shadow terminal; the normal UI buffer keeps its limit)
         while (maxScrollbackLines != Int.MAX_VALUE && normal.size > maxScrollbackLines + newRows) {
             normal.removeFirst()
         }
@@ -722,14 +722,14 @@ class TerminalBuffer(
         markChanged()
     }
 
-    // ---------- 整体复制（mosh KMP 影子状态 / UI 同步用） ----------
+    // ---------- Copy in its entirety (for mosh KMP shadow state / UI sync) ----------
 
-    /** COW 浅分叉：行对象与源共享（写时复制），O(行数) 而非 O(单元格)。
-     *  供 mosh 影子状态保存（对应服务端时间戳状态的行拷贝）。 */
+    /** COW shallow forking: row objects share memory with the source (copy-on-write), O(number of rows) rather than O(cells).
+     *  For mosh shadow state saving (row copies corresponding to server-side timestamped states). */
     fun shallowFork(): TerminalBuffer {
-        // rows=0 构造：主构造器的 init 会预建 rows 行空白屏幕行，直接构造再追加
-        // 源行会让每个分叉顶部多出 rows 行幻影空行——幻影随分叉代数累积（每帧
-        // +rows 行），会话越久分叉/GC 成本越高；rows=0 则零分配零幻影
+        // rows=0 Construction: The `init` method of the main constructor pre-creates `rows` blank screen rows; construct directly and then append.
+        // The source rows add `rows` phantom blank lines to the top of each fork—phantoms accumulate with fork generations (per frame
+        // +rows), the longer the session, the higher the cost of forking/GC; rows=0 results in zero rows and zero phantom objects
         val dst = TerminalBuffer(cols, 0, maxScrollbackLines)
         dst.cols = cols
         dst.rows = rows
@@ -745,18 +745,18 @@ class TerminalBuffer(
         return dst
     }
 
-    /** 深拷贝：用于 mosh SSP 的影子终端状态分叉保存。 */
+    /** Deep copy: Used to save shadow terminal state forks in mosh SSP. */
     fun deepCopy(): TerminalBuffer {
         val dst = TerminalBuffer(cols, rows, maxScrollbackLines)
         dst.copyContentFrom(this)
         return dst
     }
 
-    /** 用 other 的显示状态替换本缓冲（保持实例不变，供 UI 渲染引用）。
-     *  行级增量：同一逻辑行（identity 相同）且版本未变则复用目标行，只克隆变化行，
-     *  避免大回看下每帧全量克隆单元格。
-     *  返回是否有实际变化：无变化时调用方可跳过重绘（预测收编后常会推入视觉
-     *  完全相同的状态）。 */
+    /** Replace the current buffer with the state shown for `other` (keeping the instance unchanged for UI rendering).
+     *  Line-level incremental: If the logical row is identical (same identity) and the version has not changed, reuse the target row and clone only the changed rows,
+     *  Avoid cloning all cells every frame when the scrollback is large.
+     *  Returns whether anything actually changed: if nothing changed, the caller may skip the redraw (after prediction coalescing this often pushes into the visual
+     *  (exactly the same state). */
     fun copyContentFrom(other: TerminalBuffer): Boolean {
         var changed = false
         val oldCols = cols
@@ -764,8 +764,8 @@ class TerminalBuffer(
         val oldSize = normal.size
         val oldOffset = copySourceOffset
 
-        // 目标缓冲设了上限时只拷贝保留段（最后 maxScrollback+rows 行），
-        // 避免影子无上限后每帧先克隆全部再丢弃（影子 Int.MAX_VALUE 则全量拷贝）
+        // When the target buffer has an upper limit, only copy the retained portion (the last maxScrollback+rows rows),
+        // Avoid cloning everything every frame and then discarding it when the shadow size exceeds the limit (if the shadow size is Int.MAX_VALUE, perform a full copy).
         val keep =
             if (maxScrollbackLines == Int.MAX_VALUE) {
                 other.normal.size
@@ -777,9 +777,9 @@ class TerminalBuffer(
         cols = other.cols
         rows = other.rows
 
-        // 增量对齐：源回看只增长（unbounded 不删行），目标窗口起点前移 drop 行；
-        // 剩余行与源按 identity/version 逐行比对复用，末尾追加新行。
-        // 形状变化（resize）或回看被清（ED3）时 drop 越界 → 全量重建。
+        // Incremental alignment: the source scrollback only grows (unbounded deletes no rows); the target window start moves forward by `drop` rows;
+        // Reuse the remaining rows by comparing them row by row with the source based on identity/version, and append new rows at the end.
+        // When the shape changes (resize) or the scrollback is cleared (ED3), `drop` goes out of bounds → full rebuild.
         val drop = if (oldCols == other.cols && oldRows == other.rows) offset - oldOffset else -1
         if (drop < 0 || drop > oldSize) {
             normal.clear()
@@ -811,8 +811,8 @@ class TerminalBuffer(
         }
         copySourceOffset = offset
 
-        // 备用屏行同样按 identity/version 增量复用（此前每帧全量克隆所有行，
-        // vim/htop 等 alt 屏程序每个输出帧都白拷 O(行数×列数)）
+        // Alternate-screen rows are also reused incrementally based on identity/version (previously, every frame fully cloned all rows,
+        // Alt-screen programs like vim and htop copy every output frame as-is (O(number of rows × number of columns)).
         if (alt.size != other.alt.size) {
             alt = Array(other.rows) { cloneLine(other.alt[it]) }
             changed = true
@@ -834,10 +834,10 @@ class TerminalBuffer(
         return changed
     }
 
-    /** 拷贝显示状态字段；返回是否有字段实际变化。 */
+    /** Copy the display-state fields; returns whether any field actually changed. */
     private fun copyStateFieldsFrom(other: TerminalBuffer): Boolean {
         var changed = false
-        // 枚举/Int/Boolean 标量字段逐组比较赋值
+        // Comparison and assignment of enumeration/Int/Boolean scalar fields in groups
         if (altScreen != other.altScreen) {
             altScreen = other.altScreen
             changed = true
@@ -966,12 +966,12 @@ class TerminalBuffer(
     }
 
     private fun cloneLine(src: TerminalLine): TerminalLine {
-        // 用 cells.size 而非 cols：防御 resize 中途 cols 与 cells 瞬时不一致
+        // Use `cells.size` instead of `cols`: to prevent a momentary mismatch between `cols` and `cells` during resizing.
         val n = src.cells.size
         val dst = TerminalLine(n)
         for (i in 0 until n) dst.cells[i].copyFrom(src.cells[i])
         dst.wrapped = src.wrapped
-        // 保留逻辑身份与内容版本：跨缓冲行级增量比较依赖它
+        // Preserve logical identity and content version: Incremental line-by-line comparison across buffers depends on this
         dst.identity = src.identity
         dst.version = src.version
         dst.shared = false
@@ -988,8 +988,8 @@ class TerminalBuffer(
         for (i in 0 until n) {
             newCells[i].copyFrom(line.cells[i])
         }
-        // 修正：若截断导致宽字符尾巴悬空，清掉
-        line.cols = newCols // 必须与 cells 同步：cloneLine 按 cols 循环读 cells
+        // Correction: If truncation causes the trailing part of a wide character to be left hanging, remove it.
+        line.cols = newCols // Must sync with `cells`: `cloneLine` reads `cells` in a loop based on `cols`
         line.cells = newCells
         line.touch()
     }

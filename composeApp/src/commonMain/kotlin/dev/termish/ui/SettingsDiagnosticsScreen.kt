@@ -33,7 +33,7 @@ import dev.termish.util.monospaceFontFamily
 import dev.termish.util.shareDiagnosticLogs
 
 /**
- * 诊断设置二级页：诊断日志开关（release 也可开启，写文件）+ 导出分享。
+ * Diagnostics Settings subpage: Diagnostics log switch (can also be enabled in release mode; writes to a file) + Export and Share.
  */
 @Composable
 fun SettingsDiagnosticsScreen(
@@ -42,16 +42,16 @@ fun SettingsDiagnosticsScreen(
     onBack: () -> Unit,
 ) {
     val s = LocalAppStrings.current
-    // TermLog.diagnosticsEnabled 是普通属性（非 Compose state），赋值不触发重组：
-    // 必须用本地 state 承接，点击开关才能即时刷新（历史教训：点击后视觉不变，
-    // 退出重进页面才更新）。
+    // TermLog.diagnosticsEnabled is a regular property (not Compose state); assigning a value to it does not trigger reassembly:
+    // It must use local state to handle this; tapping the switch should trigger an immediate refresh (lesson learned: the visual display doesn’t change after tapping,
+    // (The screen will only update after you exit and re-enter it.)
     var logEnabled by remember { mutableStateOf(enabled) }
 
     fun setEnabled(value: Boolean) {
         logEnabled = value
         onChangeEnabled(value)
     }
-    // 不 remember：每次重组读最新（开关开启后日志路径才出现）
+    // Note: Read the latest version each time the project is reassembled (the log path only appears after the switch is enabled).
     val logPath = TermLog.logFilePath
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(
@@ -92,7 +92,7 @@ fun SettingsDiagnosticsScreen(
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
 
-            // 导出（仅日志文件存在时可用）
+            // Export (available only when log files exist)
             TextButton(
                 onClick = {
                     shareDiagnosticLogs()

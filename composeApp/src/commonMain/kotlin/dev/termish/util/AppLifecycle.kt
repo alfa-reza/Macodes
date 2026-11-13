@@ -1,12 +1,12 @@
 package dev.termish.util
 
 /**
- * 平台前后台生命周期观察。
+ * Observing the platform foreground/background lifecycle.
  *
- * 目前只有 iOS 真正接入：退到桌面后系统会挂起进程、掐断 SSH socket，
- * 回前台时据此自动重连活跃会话（缓冲保留）。Android 由前台服务 + wakelock
- * 保活，对应实现为空操作。
+ * Currently, only iOS is fully integrated: after returning to the home screen, the system suspends the process and closes the SSH socket,
+ * Automatically reconnect to active sessions (while retaining the cache) when returning to the foreground. On Android, this is handled by a foreground service + wakelock.
+ * Keep alive; the corresponding implementation is a null operation.
  *
- * 返回反注册函数（空操作实现返回空 lambda）。
+ * Returns an unregistration function (the implementation of an empty operation returns an empty lambda).
  */
 expect fun observeAppLifecycle(listener: (foreground: Boolean) -> Unit): () -> Unit
