@@ -57,9 +57,9 @@ macOS builders can build all four targets as described in the screen service gui
 
 ### iOS
 
-iOS is not built in this repository. The Android and shared-KMP code keep
-their platform seams, so iOS support can be added later by registering an
-iOS target and filling `iosMain` without touching `commonMain`.
+iOS is not built in this repository. The shared KMP code retains platform
+seams that may help contributors add iOS support later, though restoring it
+will require platform implementations, build tooling, and testing.
 
 Run `make help` for other tasks. Release signing is only needed for release
 builds; [`.env.example`](.env.example) documents the optional configuration.

@@ -30,7 +30,6 @@ composeApp/
 ├── androidMain/               # MainActivity + SessionService (foreground service keepalive) + Keystore
 │   ├── ssh/SshSessionSshj     # sshj + BouncyCastle (ed25519 / chacha20 / RSA / kb-int)
 │   └── mosh/MoshPlatform.android # UDP socket + java.util.zip implementation
-├── iosMain/                   # MainViewController + libssh2 engine + Keychain + POSIX UDP
 ├── commonTest/                # crypto RFC vectors + terminal emulator + mosh unit tests
 └── androidUnitTest/           # local JVM tests: session/repository/sshj/SFTP (real sshd, 127.0.0.1:22222)
 ```
@@ -52,23 +51,22 @@ Build tooling lives in `tools/service-build/`; both service kinds generate the K
 | Platform | SSH engine | Authentication | Mosh client | Key storage |
 |------|----------|------|-------------|----------|
 | Android | sshj + BouncyCastle | password / publickey / keyboard-interactive | pure Kotlin `dev.termish.mosh` (direct UDP) | Android Keystore (AES-GCM) |
-| iOS | libssh2 + OpenSSL (static link) | same as above | pure Kotlin `dev.termish.mosh` | Keychain |
 
 ## expect/actual seams
 
 Platform code is only allowed behind these seams:
 
-| Seam | commonMain | androidMain | iosMain |
-|------|-----------|-------------|---------|
-| `ssh.createSshSession` | expect | sshj engine | libssh2 engine |
-| `ssh.createSftpSession` | expect | SftpSessionSshj | SftpSessionLibssh2 |
-| `data.SecretStore` | expect | Keystore AES-GCM | Keychain |
-| `util.SessionKeepAlive` | expect | foreground service + wakelock | no-op |
-| `util.NetworkChange` | expect | ConnectivityManager | no-op |
-| `util.Dispatchers` | expect | IO/Default | custom IO queue |
-| `util.MonoFont` | expect | bundled JetBrains Mono | PingFang SC |
-| `mosh.MoshUdpSocket` / zlib | expect | JVM socket + java.util.zip | POSIX socket + system zlib |
-| `ui.FilePicker/FileSaver/DirectorySaver` | expect | SAF/DocumentFile | UIDocumentPicker |
+| Seam | commonMain | androidMain |
+|------|-----------|-------------|
+| `ssh.createSshSession` | expect | sshj engine |
+| `ssh.createSftpSession` | expect | SftpSessionSshj |
+| `data.SecretStore` | expect | Keystore AES-GCM |
+| `util.SessionKeepAlive` | expect | foreground service + wakelock |
+| `util.NetworkChange` | expect | ConnectivityManager |
+| `util.Dispatchers` | expect | IO/Default |
+| `util.MonoFont` | expect | bundled JetBrains Mono |
+| `mosh.MoshUdpSocket` / zlib | expect | JVM socket + java.util.zip |
+| `ui.FilePicker/FileSaver/DirectorySaver` | expect | SAF/DocumentFile |
 
 ## Threading model (conventions after the 2026-08 refactor)
 
@@ -77,7 +75,7 @@ The constraint in one sentence: **all reads and writes of `TerminalBuffer` (rend
 ### SSH output path
 
 ```
-sshj/libssh2 reader coroutine (IO thread)
+sshj reader coroutine (IO thread)
     └─ onOutput/onStderr (suspending callbacks)
          └─ TerminalController.enqueueOutput
               └─ Channel<ByteArray>(256)   ← bounded queue
@@ -118,7 +116,6 @@ KmpMoshSession event-loop coroutine (Default thread)
 ## Session keepalive and network events
 
 - Android: `SessionService` uses a `connectedDevice` foreground service + PARTIAL_WAKE_LOCK; active sessions are registered idempotently by `sessionId`, and it stops after the last session closes. On returning to the foreground it runs an SSH health check first and reconnects only when the check fails.
-- iOS: background suspension means disconnection; on returning to the foreground `SessionManager.reconnectDroppedSessions()` reconnects automatically (buffers preserved).
 - Network switch: on a "new network ready" event SSH runs a health check first and reconnects quickly only when the check fails (30s immunity window + 15s debounce + monotonic clock); mosh does not rebuild, relying on UDP roaming to self-heal.
 
 ## Persistence
