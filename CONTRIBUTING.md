@@ -1,6 +1,7 @@
-# Contributing to Termish
+# Contributing to Macodes
 
-Termish is an MIT-licensed mobile SSH/Mosh client and native Agent workspace.
+Macodes is an Apache-2.0-licensed mobile SSH/Mosh client and native Agent workspace,
+based on the MIT-licensed Termish (see NOTICE).
 Bug reports, documentation improvements and pull requests are welcome.
 You can contribute in English.
 
@@ -128,9 +129,10 @@ behavior changes. Changes to Agent Bridge belong in its protocol documentation.
 3. Explain the resulting behavior and the checks you ran in the PR template.
 4. Keep unrelated refactors, generated build output and personal settings out of the PR.
 
-Existing commit summaries are in Chinese; English contributions are welcome.
-Contributions use the project's [MIT License](LICENSE). Preserve third-party
-notices in `NOTICE`, `LICENSES/` and bundled resources. Community participation
+Contributions and commit messages are in English.
+Contributions use the project's [Apache License, Version 2.0](LICENSE). Preserve
+third-party notices in `NOTICE`, `LICENSES/` and bundled resources, including the
+upstream Termish MIT notice in `LICENSES/Termish-MIT.txt`. Community participation
 follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 Version bumps, signing and release tags are managed by the maintainers. A normal
