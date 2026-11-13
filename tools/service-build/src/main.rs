@@ -82,7 +82,7 @@ fn source_hash(service: &Path) -> Result<String> {
         service.join("rust/Cargo.toml"),
         service.join("rust/Cargo.lock"),
         service.join("service.properties"),
-        root().join("LICENSES/TermishScreen-Rust.txt"),
+        root().join("LICENSES/MacodesScreen-Rust.txt"),
     ]);
     if prefix(service) == "termish-screen" {
         files.extend([
@@ -100,7 +100,7 @@ fn source_hash(service: &Path) -> Result<String> {
         let name = path
             .strip_prefix(service)
             .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|_| "../LICENSES/TermishScreen-Rust.txt".into());
+            .unwrap_or_else(|_| "../LICENSES/MacodesScreen-Rust.txt".into());
         digest.update(name.as_bytes());
         if path.is_file() {
             digest.update(fs::read(path)?);
