@@ -15,7 +15,7 @@ permissions:
 jobs:
   screen-service:
     name: Rust remote services (macOS + Linux)
-    runs-on: macos-14
+    runs-on: macos-15
     permissions:
       contents: write # Read the signed payload asset from the release draft.
     steps:
