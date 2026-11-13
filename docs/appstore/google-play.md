@@ -2,7 +2,7 @@
 
 > Package name: `dev.termish.app`<br>
 > Category: Tools<br>
-> Default language: Simplified Chinese<br>
+> Default language: English (United States)<br>
 > Privacy policy URL: `https://termish.dev/privacy`<br>
 > Support URL: `https://termish.dev`
 
@@ -10,60 +10,6 @@ Before the first upload, confirm that `compileSdk` / `targetSdk` are both 36 and
 use the existing Termish production signing key as the Play App Signing app
 signing key, so the website APK and the Play version keep the same signature.
 Creating a separate upload key is recommended.
-
-## Store copy (Simplified Chinese)
-
-### App name (30 characters max)
-
-`Termish SSH 终端`
-
-### Short description (80 characters max)
-
-`支持 SSH、Mosh、SFTP、远程画面与 AI Agent 的本地优先终端`
-
-### Full description (4000 characters max)
-
-```text
-Termish 是一款为手机打造的 SSH 与 Mosh 终端，也是连接远程开发环境和 AI Agent
-的随身工作台。无需 Termish 账号，不接入广告和遥测；主机凭据保存在系统安全存储
-中，连接直接建立到你选择的服务器。
-
-稳定的远程会话
-• SSH 与纯 Kotlin Mosh 客户端
-• Wi-Fi、蜂窝网络切换后的连接恢复
-• 后台保活、断线检测和自动重连
-• 支持 tmux 等服务端持久会话
-
-真正的移动终端
-• 纯 Kotlin 终端模拟器，不使用 WebView
-• 支持 VT100/xterm、真彩色、CJK 宽字符和 OSC 8 超链接
-• 中文输入法组合态不会提前发送到服务器
-• CTRL、ALT、ESC、方向键及 TUI 鼠标操作
-• 多会话标签和自定义终端主题、字体、列数
-
-文件与桌面
-• SFTP 浏览、上传、下载和目录操作
-• 远程桌面画面及触控/虚拟鼠标操作
-• 文件传输进度与完成通知
-
-远程 AI Agent
-• 从手机连接运行在自己服务器上的 Agent 工具
-• 支持 Codex、Claude Code、Gemini CLI、OpenCode 和 Pi
-• 会话历史、附件、审批与任务状态
-• Agent 服务商由用户自行配置，流量不经过 Termish 服务器
-
-安全与隐私
-• 密码、私钥和 API Key 使用系统安全存储
-• 首次连接主机指纹确认
-• 禁止明文网络流量
-• 语音输入默认关闭；启用后仅在按住麦克风期间将音频加密发送给用户配置的
-  识别服务商
-• 无广告、无统计分析、无遥测
-
-Termish 官网：https://termish.dev
-开源代码（MIT）：https://github.com/ttermish/termish
-隐私政策：https://termish.dev/privacy
-```
 
 ## Store listing (English)
 
@@ -222,12 +168,6 @@ Use an unlisted YouTube link for the video and make sure reviewers can access it
 For the first internal test, use:
 
 ```text
-首个 Google Play 测试版本：支持 SSH、Mosh、SFTP、多会话、远程画面、语音输入和远程 Agent 工作台。
-```
-
-English:
-
-```text
 First Google Play test release with SSH, Mosh, SFTP, multiple sessions, remote screen, voice input, and remote Agent workflows.
 ```
 
@@ -240,12 +180,12 @@ First Google Play test release with SSH, Mosh, SFTP, multiple sessions, remote s
 
 Upload order and accessibility notes:
 
-| Order | File | Chinese alt text | English alt text |
-|---|---|---|---|
-| 1 | `hosts.png` | Termish 主机列表及活跃连接状态 | Host list with active connection status |
-| 2 | `terminal-menu.png` | 终端会话及 Git、上传、SFTP 和语音快捷菜单 | Terminal session with Git, upload, SFTP, and voice actions |
-| 3 | `sftp.png` | SFTP 文件列表与目录操作菜单 | SFTP file browser and directory actions |
-| 4 | `settings.png` | 主题、语言、通知和终端偏好设置 | Theme, language, notification, and terminal preferences |
+| Order | File | English alt text |
+|---|---|---|
+| 1 | `hosts.png` | Host list with active connection status |
+| 2 | `terminal-menu.png` | Terminal session with Git, upload, SFTP, and voice actions |
+| 3 | `sftp.png` | SFTP file browser and directory actions |
+| 4 | `settings.png` | Theme, language, notification, and terminal preferences |
 
 ## Console execution order
 

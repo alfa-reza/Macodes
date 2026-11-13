@@ -200,8 +200,8 @@ session and Xauthority.
 Linux implements StatusNotifierItem and D-Bus Menu natively in Rust, reusing the service's same
 lifecycle state; KDE and GNOME with a matching tray host enabled can show the Termish icon. It
 re-registers automatically when the host starts late or restarts.
-When GNOME has no tray support, open **Termish Helper** / **Termish 服务管理** from the app
-list, which offers the same management actions.
+When GNOME has no tray support, open **Termish Helper** / the "Termish service manager" launcher
+entry from the app list, which offers the same management actions.
 The installer deploys the branded SVG and a desktop entry; the management window depends on zenity,
 and when it is missing the existing sudo authorisation flow is shared with the other system
 dependencies.

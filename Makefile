@@ -1,10 +1,10 @@
-# Termish 本地工作流入口（薄壳）
+# Termish local workflow entry point (thin shell)
 #
-# 所有流程知识都在 Gradle tasks（根 build.gradle.kts）里，这里只做快捷别名；
-# 直接 ./gradlew <task> 等价可用，CI 亦复用同一组任务。
+# All process knowledge lives in Gradle tasks (root build.gradle.kts); these are just quick aliases;
+# calling ./gradlew <task> directly is equivalent, and CI reuses the same set of tasks.
 #
-# 变量注入：自动加载项目根 .env（gitignore）。注意 gradle daemon 不继承
-# 新环境变量，改动 secrets/.env 后执行 make gradle-stop。
+# Variable injection: the project root .env (gitignored) is loaded automatically. Note the Gradle
+# daemon does not pick up new environment variables; after changing secrets/.env run make gradle-stop.
 
 -include .env
 export
@@ -14,77 +14,77 @@ GRADLEW := ./gradlew
 .DEFAULT_GOAL := help
 
 .PHONY: help
-help: ## 显示本帮助
+help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
-## ---------- 日常开发（对应 gradle task） ----------
+## ---------- Daily development (maps to gradle tasks) ----------
 
 .PHONY: debug
-debug: ## 构建 debug APK
+debug: ## Build debug APK
 	$(GRADLEW) :composeApp:assembleDebug
 
 .PHONY: run
-run: ## 构建 + 安装 + 启动（gradle runDebug）
+run: ## Build + install + launch (gradle runDebug)
 	$(GRADLEW) runDebug
 
 .PHONY: reinstall
-reinstall: ## 卸载后重装（gradle reinstallDebug，治签名冲突）
+reinstall: ## Uninstall then reinstall (gradle reinstallDebug, fixes signature conflicts)
 	$(GRADLEW) reinstallDebug
 
-## ---------- 测试 ----------
+## ---------- Tests ----------
 
 .PHONY: screen-service
-screen-service: ## 构建 Rust 远端服务并打包到手机资源
+screen-service: ## Build the Rust remote service and package it into phone resources
 	$(GRADLEW) screenServiceBuild
 
 .PHONY: test
-test: ## 单元测试 + 集成测试（sshd/mosh 不在时自动 SKIP）
+test: ## Unit tests + integration tests (auto-SKIP when sshd/mosh are absent)
 	$(GRADLEW) agentBridgeTest screenServiceTest :composeApp:testDebugUnitTest
 
 .PHONY: test-integration
-test-integration: ## 集成测试：自动起 sshd 后跑（gradle testIntegration）
+test-integration: ## Integration tests: starts sshd automatically then runs (gradle testIntegration)
 	$(GRADLEW) testIntegration
 
 .PHONY: lint lint-kt
 lint: ## Android lint
 	$(GRADLEW) :composeApp:lintRelease
 
-lint-kt: ## ktlint 检查（规则读 .editorconfig；ktlintFormat 可自动修）
+lint-kt: ## ktlint check (rules read from .editorconfig; ktlintFormat can auto-fix)
 	$(GRADLEW) ktlintCheck
 
-## ---------- 发版 ----------
+## ---------- Release ----------
 
 .PHONY: release
-release: ## 构建已签名 release APK + AAB（先校验签名机密）
+release: ## Build signed release APK + AAB (validates signing secrets first)
 	$(GRADLEW) checkSigningSecrets :composeApp:assembleRelease :composeApp:bundleRelease
-	@echo "产物: composeApp/build/outputs/{apk,bundle}/release/"
+	@echo "Artifacts: composeApp/build/outputs/{apk,bundle}/release/"
 
 .PHONY: bump
-bump: ## Android / iOS 版本号联动，用法: make bump V=1.0.1（预览: DRY=1）
+bump: ## Bump Android / iOS versions together, usage: make bump V=1.0.1 (preview: DRY=1)
 	./scripts/bump-version.sh $(if $(DRY),--dry-run,) $(V)
 
-## ---------- iOS（一次性原生依赖） ----------
+## ---------- iOS (one-time native deps) ----------
 
 .PHONY: ios-native
-ios-native: ## 交叉编译 OpenSSL + libssh2 → iosApp/native/
+ios-native: ## Cross-compile OpenSSL + libssh2 → iosApp/native/
 	./scripts/build-ios-native.sh
 
 .PHONY: ios-framework
-ios-framework: ## 编译 Kotlin framework（模拟器 + 真机 debug）
+ios-framework: ## Build the Kotlin framework (simulator + device debug)
 	$(GRADLEW) :composeApp:linkDebugFrameworkIosSimulatorArm64 \
 	           :composeApp:linkDebugFrameworkIosArm64
 
-## ---------- 维护 ----------
+## ---------- Maintenance ----------
 
 .PHONY: gradle-stop
-gradle-stop: ## 停掉 gradle daemon（改了环境变量后必须执行）
+gradle-stop: ## Stop the Gradle daemon (required after changing environment variables)
 	$(GRADLEW) --stop
 
 .PHONY: clean
-clean: ## 清理构建产物
+clean: ## Clean build artifacts
 	$(GRADLEW) clean
 
 .PHONY: devices
-devices: ## 列出已连接设备/模拟器
+devices: ## List connected devices/emulators
 	adb devices -l

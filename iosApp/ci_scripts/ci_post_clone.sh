@@ -12,9 +12,9 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 
 if /usr/libexec/java_home -v 17 >/dev/null 2>&1; then
-  echo "== JDK 17 已存在：$(/usr/libexec/java_home -v 17) =="
+  echo "== JDK 17 already present: $(/usr/libexec/java_home -v 17) =="
 else
-  echo "== 安装 JDK 17（Adoptium Temurin，免 sudo） =="
+  echo "== Installing JDK 17 (Adoptium Temurin, no sudo) =="
   JDK_HOME="$HOME/Library/Java/JavaVirtualMachines/temurin-17.jdk"
   mkdir -p "$JDK_HOME"
   # For the Adoptium API, use `aarch64/x64` as the arch (macOS `uname` returns `arm64/x86_64`; naive URL construction gets a 404).
@@ -25,25 +25,25 @@ else
     x86_64|x64) ARCHES=(x64) ;;
     *) ARCHES=(aarch64 x64) ;;
   esac
-  echo "== uname -m: $RAW_ARCH → 尝试 arch: ${ARCHES[*]} =="
+  echo "== uname -m: $RAW_ARCH → trying arch: ${ARCHES[*]} =="
   ok=""
   for arch in "${ARCHES[@]}"; do
     url="https://api.adoptium.net/v3/binary/latest/17/ga/mac/${arch}/jdk/hotspot/normal/eclipse"
-    echo "== 下载 Temurin 17 (${arch}) =="
+    echo "== Downloading Temurin 17 (${arch}) =="
     if curl -fsSL --retry 3 "$url" -o /tmp/temurin17.tar.gz && tar tzf /tmp/temurin17.tar.gz >/dev/null 2>&1; then
       ok="$arch"; break
     fi
-    echo "== ${arch} 下载/校验失败，换下一个 =="
+    echo "== ${arch} download/verification failed, trying next =="
   done
   if [ -z "$ok" ]; then
-    echo "!! JDK 17 下载失败（uname=$RAW_ARCH，尝试过 ${ARCHES[*]}）"; exit 1
+    echo "!! JDK 17 download failed (uname=$RAW_ARCH, tried ${ARCHES[*]})"; exit 1
   fi
-  echo "== 使用 ${ok} 版 JDK =="
+  echo "== Using the ${ok} JDK =="
   tar xzf /tmp/temurin17.tar.gz -C "$JDK_HOME" --strip-components=1
-  echo "== JDK 17 安装完成：$(/usr/libexec/java_home -v 17) =="
+  echo "== JDK 17 install complete: $(/usr/libexec/java_home -v 17) =="
 fi
 
-echo "== 准备 Rust 远端画面与 Agent 服务 =="
+echo "== Preparing Rust remote screen and agent services =="
 if [ ! -x "$HOME/.cargo/bin/rustup" ]; then
   curl -fsSL --retry 3 https://sh.rustup.rs -o /tmp/termish-rustup-init.sh
   sh /tmp/termish-rustup-init.sh -y --profile minimal --no-modify-path --default-toolchain stable
@@ -54,7 +54,7 @@ cd "$ROOT"
 sh scripts/service-build.sh build-screen --all
 sh scripts/service-build.sh build-agent --all
 
-echo "== 构建 iOS 原生依赖（OpenSSL + libssh2 → iosApp/native/） =="
+echo "== Building iOS native deps (OpenSSL + libssh2 → iosApp/native/) =="
 cd "$ROOT"
 bash scripts/build-ios-native.sh
-echo "== ci_post_clone 完成 =="
+echo "== ci_post_clone done =="

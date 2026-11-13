@@ -58,7 +58,7 @@ emulator reaches the host at `10.0.2.2`.
 
 ## Documentation maintenance
 
-- Keep `README.md` and `README.zh-CN.md` consistent in structure and facts.
+- Keep `README.md` consistent in structure and facts.
 - Use English for contributor documentation in `docs/`.
 - Update `docs/terminal-emulator.md`, `docs/mosh.md`, or
   `docs/input-pipeline.md` when the corresponding behavior changes.

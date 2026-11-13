@@ -14,49 +14,6 @@ In-App Purchase implementation; this version of the copy does not promise that
 In-App Purchases are available, nor does it claim the app is permanently free;
 the download price is still to be determined.
 
-## Store information: Simplified Chinese (zh-Hans)
-
-- **App name** (30 characters max): `Termish 终端`
-- **Subtitle** (30 characters max): `SSH、Mosh 与远程工作台`
-- **Keywords** (100 UTF-8 bytes max, comma-separated):
-  `ssh,mosh,sftp,linux,server,shell,tmux,vim,远程,服务器,开发,运维`
-- **Promotional text** (170 characters max):
-  `随时连接服务器，处理终端任务、管理文件和切换远程工作区。为 iPhone 打造的 SSH、Mosh 与 SFTP 客户端。`
-- **Description** (4000 characters max):
-
-```text
-把远程工作台带在身边。
-
-Termish 是为 iPhone 打造的 SSH、Mosh 与 SFTP 客户端。无论是查看服务器状态、处理文件，还是继续远程开发任务，都可以从手机开始。
-
-连接你的服务器
-使用密码或私钥连接 SSH 主机，保存常用主机并管理多个会话。支持主机指纹确认，帮助你核对连接目标。
-
-适合手机的终端操作
-使用 Ctrl、Alt、Esc 和方向键操作终端程序，配合中文输入、多种终端配色与字体，让日常命令和交互式工具更易使用。
-
-应对网络变化
-通过 Mosh 连接，在网络恢复后继续可恢复的远程会话。Mosh 需要服务器安装 mosh-server，并允许相应 UDP 通信；恢复效果取决于网络、服务器状态和系统限制。
-
-随手管理文件
-使用 SFTP 浏览远程目录、上传和下载文件，在终端操作与文件管理之间切换。
-
-继续远程开发
-连接服务器上的 Herdr 工作区和已配置的 AI Agent 工具，查看任务进展、切换工作区并继续操作。相关工具和运行环境需要在服务器上安装或配置。
-
-可选语音输入
-配置兼容的语音识别服务后，可以按住麦克风按钮输入文字。启用该功能需要麦克风权限，录音会发送至你配置的识别服务商。
-
-无需注册 Termish 账号
-主机配置保存在设备上，密码、私钥和服务商密钥使用系统安全存储。Termish 不提供服务器或模型服务；使用远程功能需要你有权访问的服务器，语音和 AI 服务可能需要单独的服务商账号及费用。
-
-iOS 可能暂停后台连接。需要持续运行的远程任务，建议在服务器上配合 tmux 等会话管理工具使用。
-
-开源代码（MIT）：https://github.com/ttermish/termish
-隐私政策：https://termish.dev/privacy/
-支持与反馈：https://termish.dev/
-```
-
 ## Store information: English (en-US)
 
 - **App name**: `Termish`
@@ -111,7 +68,7 @@ Store names still need an availability check in App Store Connect.
 | --- | --- |
 | Platform and version | iOS, `1.7.1`; the version field does not include the `v` from the Git tag |
 | Bundle ID | `dev.termish.app` |
-| Primary language | Simplified Chinese; add an English store localization |
+| Primary language | English (U.S.) |
 | Category | Suggested primary category Developer Tools, secondary category Utilities; to be confirmed by the publisher |
 | Download price | To be determined; set separately from In-App Purchase product prices |
 | In-App Purchases | Not integrated in the current code; if you charge to unlock features at launch, complete the IAP implementation, product configuration, and testing first |

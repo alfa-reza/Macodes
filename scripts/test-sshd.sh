@@ -45,10 +45,10 @@ if [ ! -d /run/sshd ] && [ -w / ]; then
   mkdir -p /run/sshd
 fi
 
-echo "启动 sshd 于 127.0.0.1:$PORT（日志: $DIR/sshd.log）"
+echo "Starting sshd on 127.0.0.1:$PORT (log: $DIR/sshd.log)"
 # Clean up old instances left over from the last run (ports may be occupied when running repeatedly on the same runner).
 if [ -f "$DIR/sshd.pid" ] && kill -0 "$(cat "$DIR/sshd.pid")" 2>/dev/null; then
-  echo "停止残留旧 sshd pid=$(cat "$DIR/sshd.pid")"
+  echo "Stopping leftover sshd pid=$(cat "$DIR/sshd.pid")"
   kill "$(cat "$DIR/sshd.pid")" && sleep 0.5
 fi
 /usr/sbin/sshd -f "$DIR/sshd_config" -E "$DIR/sshd.log"
@@ -57,9 +57,9 @@ sleep 0.5
 # Also, nc scans may trigger false positives on other services (e.g., GitLab’s 2222) —
 # The only criterion for success must be the confirmation row in the sshd log indicating that the listener is running.
 if grep -q "Server listening on" "$DIR/sshd.log" 2>/dev/null; then
-  echo "OK: 端口 $PORT 已监听"
+  echo "OK: port $PORT is listening"
 else
-  echo "FAIL: sshd 未监听 $PORT，日志如下："
+  echo "FAIL: sshd is not listening on $PORT, log follows:"
   tail -20 "$DIR/sshd.log" 2>/dev/null || true
   exit 1
 fi

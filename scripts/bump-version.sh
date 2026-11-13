@@ -28,15 +28,15 @@ if [ "${1:-}" = "--dry-run" ]; then
 fi
 
 if [ $# -lt 1 ]; then
-  echo "用法: $0 [--dry-run] <新版本> [构建号]" >&2
-  echo "  例: $0 0.3.0          # 构建号自动 +1" >&2
-  echo "      $0 0.3.0 42       # 构建号固定 42" >&2
+  echo "Usage: $0 [--dry-run] <new-version> [build-number]" >&2
+  echo "  e.g.: $0 0.3.0          # build number auto-increments +1" >&2
+  echo "      $0 0.3.0 42       # build number fixed at 42" >&2
   exit 1
 fi
 
 VERSION="${1#v}"
 if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "版本号格式应为 x.y.z，收到: $VERSION" >&2
+  echo "Version format must be x.y.z, got: $VERSION" >&2
   exit 1
 fi
 GRADLE="composeApp/build.gradle.kts"
@@ -49,16 +49,16 @@ TODAY=$(date +%F)
 # Current Android versionCode, used for the default build number +1
 CURRENT_CODE=$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\).*/\1/p' "$GRADLE" | head -1)
 if [ -z "$CURRENT_CODE" ]; then
-  echo "未能在 $GRADLE 找到 versionCode" >&2
+  echo "Could not find versionCode in $GRADLE" >&2
   exit 1
 fi
 BUILD="${2:-$((CURRENT_CODE + 1))}"
 if ! [[ "$BUILD" =~ ^[0-9]+$ ]]; then
-  echo "构建号应为正整数，收到: $BUILD" >&2
+  echo "Build number must be a positive integer, got: $BUILD" >&2
   exit 1
 fi
 
-echo "版本: $VERSION  构建号: $BUILD  ($([ "$DRY_RUN" = 1 ] && echo DRY-RUN 仅预览 || echo 写入))"
+echo "Version: $VERSION  Build: $BUILD  ($([ "$DRY_RUN" = 1 ] && echo DRY-RUN preview only || echo write))"
 echo
 
 apply() {
@@ -71,7 +71,7 @@ apply() {
     rm -f "$tmp"
     return
   fi
-  echo "  [$([ "$DRY_RUN" = 1 ] && echo 预览 || echo 已改)] $label"
+  echo "  [$([ "$DRY_RUN" = 1 ] && echo preview || echo changed)] $label"
   if [ "$DRY_RUN" = 1 ]; then
     diff -u "$file" "$tmp" | tail -n +3 | sed 's/^/    /' || true
     rm -f "$tmp"
@@ -81,7 +81,7 @@ apply() {
 }
 
 apply "Android versionName -> $VERSION" "$GRADLE" "s/versionName = \"[^\"]*\"/versionName = \"$VERSION\"/"
-apply "设置页 APP_VERSION 常量 -> $VERSION" "$APP_INFO" "s/APP_VERSION = \"[^\"]*\"/APP_VERSION = \"$VERSION\"/"
+apply "Settings page APP_VERSION constant -> $VERSION" "$APP_INFO" "s/APP_VERSION = \"[^\"]*\"/APP_VERSION = \"$VERSION\"/"
 apply "Android versionCode -> $BUILD" "$GRADLE" "s/versionCode = [0-9][0-9]*/versionCode = $BUILD/"
 apply "iOS MARKETING_VERSION -> $VERSION" "$PBXPROJ" "s/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = $VERSION;/g"
 apply "iOS CURRENT_PROJECT_VERSION -> $BUILD" "$PBXPROJ" "s/CURRENT_PROJECT_VERSION = [0-9][0-9]*;/CURRENT_PROJECT_VERSION = $BUILD;/g"
@@ -96,11 +96,11 @@ apply "iOS CFBundleVersion -> $BUILD" "$INFO_PLIST" "/CFBundleVersion/{n;s/<stri
 update_changelog() {
   [ -f "$CHANGELOG" ] || return 0
   if grep -q "^## \[$VERSION\] - " "$CHANGELOG"; then
-    echo "  [跳过] CHANGELOG 已有 [$VERSION] 段落"
+    echo "  [skip] CHANGELOG already has a [$VERSION] section"
     return 0
   fi
   if ! grep -q '^## \[Unreleased\]' "$CHANGELOG"; then
-    echo "  [警告] $CHANGELOG 缺少 ## [Unreleased] 段落，未动 CHANGELOG" >&2
+    echo "  [warning] $CHANGELOG is missing the ## [Unreleased] section; CHANGELOG untouched" >&2
     return 0
   fi
 
@@ -136,7 +136,7 @@ update_changelog() {
 
   # Display a reminder when the "Unreleased" body is empty (empty releases are usually due to forgetting to add a changelog), but do not block the process.
   if ! awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' "$CHANGELOG" | grep -q '[^[:space:]]'; then
-    echo "  [警告] [Unreleased] 正文为空——确认本次发版无需记录 changelog" >&2
+    echo "  [warning] [Unreleased] body is empty — confirm this release needs no changelog entries" >&2
   fi
 
   # Rebuild the version link block: List versions in document order (newest → oldest); for each version, compare it to the previous version,
@@ -163,9 +163,9 @@ update_changelog() {
       fi
     done
   else
-    echo "[Unreleased]: <!-- TODO: 配上 git remote 后补 compare 链接 -->" >> "$tmp"
+    echo "[Unreleased]: <!-- TODO: add the compare link once a git remote is configured -->" >> "$tmp"
     for v in "${versions[@]}"; do
-      echo "[$v]: <!-- TODO: 配上 git remote 后补 releases 链接 -->" >> "$tmp"
+      echo "[$v]: <!-- TODO: add the releases link once a git remote is configured -->" >> "$tmp"
     done
   fi
 
@@ -173,7 +173,7 @@ update_changelog() {
     rm -f "$tmp"
     return 0
   fi
-  echo "  [$([ "$DRY_RUN" = 1 ] && echo 预览 || echo 已改)] CHANGELOG [$VERSION] - ${TODAY}（[Unreleased] 落盘 + 链接块重建）"
+  echo "  [$([ "$DRY_RUN" = 1 ] && echo preview || echo changed)] CHANGELOG [$VERSION] - ${TODAY} ([Unreleased] flushed + link block rebuilt)"
   if [ "$DRY_RUN" = 1 ]; then
     diff -u "$CHANGELOG" "$tmp" | tail -n +3 | sed 's/^/    /' || true
     rm -f "$tmp"
@@ -186,7 +186,7 @@ update_changelog
 
 echo
 if [ "$DRY_RUN" = 1 ]; then
-  echo "以上为将应用的改动。去掉 --dry-run 后执行即可写入。"
+  echo "Above are the changes that would be applied. Remove --dry-run to write them."
 else
-  echo "完成。建议确认 git diff 后提交：git diff --stat"
+  echo "Done. Review git diff before committing: git diff --stat"
 fi

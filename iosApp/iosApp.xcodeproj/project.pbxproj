@@ -20,7 +20,6 @@
 		A00000000000000000000015 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A00000000000000000000019 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A0000000000000000000001C /* en.lproj/InfoPlist.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
-		A0000000000000000000001D /* zh-Hans.lproj/InfoPlist.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -113,7 +112,6 @@
 			knownRegions = (
 				en,
 				Base,
-				"zh-Hans",
 			);
 			mainGroup = A00000000000000000000002;
 			productRefGroup = A00000000000000000000003 /* Products */;
@@ -175,7 +173,6 @@
 			isa = PBXVariantGroup;
 			children = (
 				A0000000000000000000001C /* en.lproj/InfoPlist.strings */,
-				A0000000000000000000001D /* zh-Hans.lproj/InfoPlist.strings */,
 			);
 			name = InfoPlist.strings;
 			sourceTree = "<group>";
@@ -285,9 +282,9 @@
 					VideoToolbox,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = dev.termish.app;
-				/* Swift target 模块名须与 Kotlin framework（Termish）不同：Xcode 26 显式模块
-				   编译下 PRODUCT_NAME=Termish 与 import Termish 大小写碰撞，报
-				   "cannot load module 'Termish' as 'Termish'" */
+				/* The Swift target module name must differ from the Kotlin framework (Termish): under
+				   Xcode 26 explicit module builds, PRODUCT_NAME=Termish collides with import Termish
+				   case-insensitively, reporting "cannot load module 'Termish' as 'Termish'" */
 				PRODUCT_MODULE_NAME = TermishApp;
 				PRODUCT_NAME = Termish;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -344,9 +341,9 @@
 					VideoToolbox,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = dev.termish.app;
-				/* Swift target 模块名须与 Kotlin framework（Termish）不同：Xcode 26 显式模块
-				   编译下 PRODUCT_NAME=Termish 与 import Termish 大小写碰撞，报
-				   "cannot load module 'Termish' as 'Termish'" */
+				/* The Swift target module name must differ from the Kotlin framework (Termish): under
+				   Xcode 26 explicit module builds, PRODUCT_NAME=Termish collides with import Termish
+				   case-insensitively, reporting "cannot load module 'Termish' as 'Termish'" */
 				PRODUCT_MODULE_NAME = TermishApp;
 				PRODUCT_NAME = Termish;
 				SWIFT_EMIT_LOC_STRINGS = YES;
