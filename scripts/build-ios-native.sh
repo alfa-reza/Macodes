@@ -20,7 +20,7 @@ OPENSSL_VER="3.0.16"
 LIBSSH2_VER="1.11.1"
 MIN_IOS="13.0"
 
-echo "== 下载源码 =="
+echo "== Downloading sources =="
 curl -sL --retry 3 "https://www.openssl.org/source/openssl-$OPENSSL_VER.tar.gz" | tar xz -C "$WORK"
 curl -sL --retry 3 "https://www.libssh2.org/download/libssh2-$LIBSSH2_VER.tar.gz" | tar xz -C "$WORK"
 OPENSSL_DIR="$WORK/openssl-$OPENSSL_VER"
@@ -49,9 +49,9 @@ build_openssl() {
 build_openssl "device"    "ios64-xcrun"          ""
 build_openssl "sim-arm64" "iossimulator-xcrun"   ""
 
-echo "== OpenSSL 头文件 =="
+echo "== OpenSSL headers =="
 mkdir -p "$WORK/out/include/openssl"
-# Use the header files in the build directory (including generated files such as opensslv.h, etc.)
+# Use headers from the build directory (includes generated files such as opensslv.h, etc.)
 cp "$WORK/build-openssl-device"/include/openssl/*.h "$WORK/out/include/openssl/"
 cp "$LIBSSH2_DIR"/include/*.h "$WORK/out/include/"
 
@@ -86,15 +86,15 @@ build_libssh2_single() {
 build_libssh2_single "device" "arm64" "$DEVSYSROOT" "-mios-version-min=$MIN_IOS"
 build_libssh2_single "sim-arm64" "arm64" "$SIMSDK" "-mios-simulator-version-min=$MIN_IOS"
 
-echo "== libssh2 构建完成（device / sim 分开）=="
+echo "== libssh2 build complete (device / sim separate) =="
 
-echo "== 整理产物（device / sim 分开，因同为 arm64 无法 lipo 合并）=="
+echo "== Organizing artifacts (device / sim separate, since both are arm64 and cannot be lipo-merged) =="
 rm -rf "$VENDOR"
 mkdir -p "$VENDOR/include" "$VENDOR/lib/device" "$VENDOR/lib/sim"
 cp -R "$WORK/out/include/." "$VENDOR/include/"
 cp "$WORK/out/lib/libcrypto-device.a" "$WORK/out/lib/libssl-device.a" "$WORK/out/lib/libssh2-device.a" "$VENDOR/lib/device/"
 cp "$WORK/out/lib/libcrypto-sim-arm64.a" "$WORK/out/lib/libssl-sim-arm64.a" "$WORK/out/lib/libssh2-sim-arm64.a" "$VENDOR/lib/sim/"
-# Naming Specification
+# Naming convention
 mv "$VENDOR/lib/device/libcrypto-device.a" "$VENDOR/lib/device/libcrypto.a"
 mv "$VENDOR/lib/device/libssl-device.a" "$VENDOR/lib/device/libssl.a"
 mv "$VENDOR/lib/device/libssh2-device.a" "$VENDOR/lib/device/libssh2.a"
@@ -102,6 +102,6 @@ mv "$VENDOR/lib/sim/libcrypto-sim-arm64.a" "$VENDOR/lib/sim/libcrypto.a"
 mv "$VENDOR/lib/sim/libssl-sim-arm64.a" "$VENDOR/lib/sim/libssl.a"
 mv "$VENDOR/lib/sim/libssh2-sim-arm64.a" "$VENDOR/lib/sim/libssh2.a"
 
-echo "== 完成 =="
+echo "== Done =="
 ls -la "$VENDOR/lib/device" "$VENDOR/lib/sim"
 file "$VENDOR/lib/device/libssh2.a" "$VENDOR/lib/sim/libssh2.a"

@@ -1,756 +1,751 @@
 # Changelog
 
-格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
-版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
+Format follows [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
+versioning follows [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
 ## [Unreleased]
 
 ## [1.8.14] - 2026-10-19
 
-### 新增
+### Added
 
-- **文件管理 SVG 预览**：Android / iOS 点击 SVG 直接查看图片，支持透明背景、viewBox 尺寸与现有适应屏幕 / 原始大小切换
-- **有界 SVG 渲染**：预览文件上限 8 MiB，栅格化最长边 2048 像素；损坏文件显示预览失败，仍可下载；使用静态渲染器，不执行 SVG 脚本
+- **File manager SVG preview**: Tapping an SVG on Android / iOS opens the image directly, with transparency, viewBox sizing, and the existing fit-to-screen / original-size toggle
+- **Bounded SVG rendering**: Preview files are capped at 8 MiB and rasterized to at most 2048 px on the longest side; corrupted files show a preview failure and remain downloadable; uses a static renderer that does not execute SVG scripts
 
-### 已知限制
+### Known limitations
 
-- SVG 为静态预览，动画和交互不执行；iOS 默认字体解析不完整，部分 `<text>` 文字可能缺失，可使用文字转路径的 SVG 或下载后查看
+- SVG previews are static: animations and interactivity are not executed; iOS default font parsing is incomplete, so some `<text>` text may be missing — use an SVG with text converted to paths or view after downloading
 
 ## [1.8.13] - 2026-10-18
 
-### 新增
+### Added
 
-- **文件管理在线视频播放**：点击视频进入 Android / iOS 原生播放器，通过独立 SFTP 连接按需读取，提供播放、暂停与进度跳转，无需先下载完整文件
-- **播放会话管理**：应用进入后台暂停；离开预览释放播放连接，文件标签保留各自播放位置，视频读取不占用目录浏览通道
-- **播放失败提示**：编码不受设备支持或连接异常时显示中英文提示，仍可通过更多菜单下载文件
+- **File manager online video playback**: Tapping a video opens the native Android / iOS player, reading on demand over a dedicated SFTP connection, with play, pause, and seek — no need to download the whole file first
+- **Playback session management**: Playback pauses when the app goes to the background; leaving the preview releases the playback connection, file tabs keep their own playback position, and video reads do not occupy the directory-browsing channel
+- **Playback failure notice**: A bilingual message appears when the encoding is unsupported on the device or the connection fails; the file can still be downloaded via the more menu
 
-### 验证说明
+### Verification notes
 
-- Android / iOS 模拟器均已实际播放含中文及空格文件名的 H.264 + AAC MP4；iOS 暂停、10 秒跳转、后台暂停、损坏文件提示通过；真实 SFTP >4 GB 范围读取及资源释放回归通过
-- 原生进度条拖动仍待真机验收，Android 后台与跨标签手动场景尚未完整执行；实际支持的容器、编码取决于设备的原生解码能力
+- Both Android / iOS emulators actually played H.264 + AAC MP4 files with Chinese and space-containing filenames; iOS pause, 10-second seek, background pause, and corrupted-file notice all passed; real SFTP >4 GB range reads and resource-release regressions passed
+- Native progress-bar dragging still awaits acceptance on real devices, and Android background and cross-tab manual scenarios have not been fully executed; supported containers and encodings depend on the device's native decoding capability
 
 ## [1.8.12] - 2026-10-15
 
-### 新增
+### Added
 
-- **macOS 原生采集与恢复**：优先使用 ScreenCaptureKit，必要时回退 CoreGraphics，使用 VideoToolbox 编码；显示配置变化后重建采集子进程，保留认证通道及帧序号
-- **会话电源管理**：认证后尝试唤醒显示器，画面连接期间保持系统与显示器活动，断开、心跳超时或退出后释放电源声明；不修改持久电源设置
+- **macOS native capture and restore**: Prefers ScreenCaptureKit, falling back to CoreGraphics when necessary, and encodes with VideoToolbox; the capture subprocess is rebuilt after display configuration changes, preserving the authentication channel and frame sequence numbers
+- **Session power management**: After authentication it attempts to wake the display, keeps the system and display active while the video connection is up, and releases the power claim on disconnect, heartbeat timeout, or exit; persistent power settings are not modified
 
-### 修复
+### Fixed
 
-- **画面通道断开**：消除 AVFoundation 固定屏幕编号对摄像头数量的依赖；原生采集缺少系统录屏许可时显示明确授权提示，停止无限重连
-- **Mac Helper 固定证书签名**：本版使用 Apple Development 证书签名 arm64/x86_64 Helper，CI 验证固定证书和源码指纹后原样打包；Android 继续使用原发布签名。私钥不上传 CI，本版尚非 Developer ID 公证分发
+- **Video channel disconnect**: Removed AVFoundation's dependency of fixed screen indices on camera count; when native capture lacks the system screen-recording permission, a clear authorization prompt is shown and endless reconnecting stops
+- **Mac Helper fixed-certificate signing**: This version signs the arm64/x86_64 Helper with an Apple Development certificate, and CI verifies the fixed certificate and source fingerprint before packaging as-is; Android continues using the original release signature. The private key is not uploaded to CI; this version is not yet a Developer ID notarized distribution
 
-### 验证说明
+### Verification notes
 
-- 原生 VideoToolbox 图案编码、认证 TCP 封包及 FFmpeg 解码、权限拒绝、电源清理、子进程恢复和安装回滚回归通过；真实合盖/锁屏桌面采集因测试机系统录屏访问被拒绝，尚未完成授权后的验收
-- 屏幕服务部署版本升至 63。手机升级后更新 Mac 服务，在系统设置中允许 Termish Helper 录屏后重新连接；现阶段不能据自动测试宣称已达到 ToDesk 的全部合盖效果
+- Native VideoToolbox pattern encoding, authenticated TCP packetization and FFmpeg decoding, permission denial, power cleanup, subprocess restore, and install rollback regressions passed; real lid-closed/lock-screen desktop capture could not be accepted because screen-recording access was denied on the test machine
+- Screen service deployment version bumped to 63. After upgrading the phone, update the Mac service, allow Termish Helper screen recording in System Settings, then reconnect; at this stage automated tests cannot claim parity with ToDesk's full lid-closed behavior
 
 ## [1.8.11] - 2026-10-15
 
-### 修复
+### Fixed
 
-- **macOS 远程画面恢复旧实现**：恢复系统 Python GUI LaunchAgent＋FFmpeg 直接抓屏的启动链路，移除新 Helper 应用包录屏预检对连接的阻断；更新脚本保留解释器身份，继续使用系统已有授权
-- **服务迁移与重连**：保留已认证 SSH 视频、控制、心跳和画质反馈；安装失败恢复旧脚本、启动配置及后台程序，断开与异常退出回收自己的编码器
+- **macOS remote video restore to the old implementation**: Restored the startup chain of the system Python GUI LaunchAgent + FFmpeg direct screen capture, and removed the new Helper app bundle's screen-recording precheck blocking the connection; the update script preserves interpreter identity and continues using the system's existing authorization
+- **Service migration and reconnection**: Keeps authenticated SSH video, control, heartbeat, and quality feedback; on install failure it restores the old script, startup configuration, and background process, and reclaims its own encoder on disconnect and abnormal exit
 
-### 验证说明
+### Verification notes
 
-- Python 服务回归、真实 SSH/SFTP 视频解析、macOS 安装迁移和失败回滚通过；当前测试机 GUI 系统 Python 的录屏预检为未授权，真实桌面采集未完成验收
-- 屏幕服务部署版本升至 62；手机升级后，在远程画面入口更新 Mac 服务一次即可切回旧启动链路。首次系统授权仍由 macOS 管理，Linux 抓屏实现保持不变
+- Python service regression, real SSH/SFTP video parsing, macOS install migration, and failure rollback passed; the GUI system Python's screen-recording precheck on the current test machine is unauthorized, so real desktop capture has not completed acceptance
+- Screen service deployment version bumped to 62; after upgrading the phone, updating the Mac service once from the remote video entry switches back to the old startup chain. First-time system authorization is still managed by macOS, and the Linux screen-capture implementation is unchanged
 
 ## [1.8.10] - 2026-10-14
 
-### 修复
+### Fixed
 
-- **方向键输入字母**：修正应用光标模式下方向键及 HOME/END 的转义序列，使用 `ESC O`（SS3），避免错误的 `ESC [ O` 序列留下 A/B/C/D 等字符
-- **光标模式更新滞后**：工具栏每次发送按键时读取当前会话模式，避免界面未重组时继续使用旧模式；会话切换及健康连接回前台时保留各自状态
+- **Arrow keys typing letters**: Fixed the escape sequences for arrow keys and HOME/END in application cursor mode to use `ESC O` (SS3), avoiding the wrong `ESC [ O` sequence that left A/B/C/D characters behind
+- **Stale cursor-mode updates**: The toolbar now reads the current session mode each time it sends a key, avoiding continued use of the old mode when the UI has not recomposed; session switches and healthy connections returning to the foreground keep their own state
 
-### 验证说明
+### Verification notes
 
-- 两种光标模式、HOME/END、其他功能键、分片模式更新、会话状态隔离及后台恢复的单元回归测试通过；Android 模拟器安装启动、lint、签名包校验及 iOS 共享代码构建通过
-- 模拟器真实 SSH 切 tab／前后台端到端检查尚未完成验收；间歇性问题仍需在原设备和远端环境复核
+- Unit regression tests passed for both cursor modes, HOME/END, other function keys, per-fragment mode updates, session state isolation, and background restore; Android emulator install and launch, lint, signed package verification, and iOS shared-code builds passed
+- Emulator real-SSH tab switching / foreground-background end-to-end checks have not completed acceptance; intermittent issues still need re-verification on the original device and remote environment
 
 ## [1.8.9] - 2026-10-13
 
-### 修复
+### Fixed
 
-- **macOS 远程画面连接失败**：安装时保留 FFmpeg 的稳定入口及符号链接，避免 Homebrew 升级依赖后仍调用旧版本目录，导致编码器启动即退出
-- **Wayland 断线后无法重连**：连接结束后关闭 Portal 授权会话，失效时清除缓存；新连接等待旧连接清理完成，避免旧连接关闭新会话
+- **macOS remote video connection failure**: The installation now preserves FFmpeg's stable entry point and symlinks, avoiding calls to the old version directory after a Homebrew dependency upgrade that made the encoder exit immediately on startup
+- **Wayland unable to reconnect after disconnect**: The Portal authorization session is closed when a connection ends, and stale caches are cleared; a new connection waits for the old one to finish cleaning up, preventing the old connection from closing the new session
 
-### 验证说明
+### Verification notes
 
-- macOS 原生服务连续推流 40 秒、2358 帧无断开；安装路径升级回归通过。Wayland 会话清理和失效重建有隔离回归测试，真实 GNOME/KDE 长时推流仍待实机验收
-- 屏幕服务更新至部署版本 61；使用新版 App 更新被控端服务后生效
+- The macOS native service streamed continuously for 40 seconds, 2358 frames without disconnects; the install-path upgrade regression passed. Wayland session cleanup and stale rebuild have isolated regression tests; long real GNOME/KDE streaming still awaits real-device acceptance
+- Screen service updated to deployment version 61; takes effect after updating the controlled-side service with the new app version
 
 ## [1.8.8] - 2026-10-06
 
-### 修复
+### Fixed
 
-- **屏幕服务安装误报失败**：显式使用 `/bin/sh` 执行安装脚本，修复 macOS 账号使用 zsh 时，旧缓存不存在导致安装在服务启动成功后中断、未返回成功标记的问题
-- **安装错误日志**：合并进度与错误输出并读取至结束，避免最后的错误日志在关闭 SSH 通道时丢失
+- **Screen service install falsely reported as failed**: The install script is now executed explicitly with `/bin/sh`, fixing the case where a macOS account using zsh had no old cache, so the install aborted after the service started successfully and never reported success
+- **Install error logs**: Progress and error output are merged and read to the end, so the final error log is no longer lost when the SSH channel closes
 
-### 验证说明
+### Verification notes
 
-- zsh 下无缓存、部分缓存、重复清理、特殊字符路径、stdin 与错误输出回归测试，以及真实 SSH 清理、Android/iOS debug 构建与 iOS 模拟器启动通过；真机完整升级界面尚未实测
-- 本次修改手机端安装流程，屏幕服务仍为部署版本 60；已安装成功的服务可关闭远程画面后重新连接
+- Regression tests passed for zsh with no cache, partial cache, repeated cleanup, special-character paths, stdin and error output, plus real SSH cleanup and Android/iOS debug builds and iOS emulator launch; the full upgrade flow on real devices has not been tested
+- This change modifies the phone-side install flow; the screen service remains deployment version 60. Successfully installed services can reconnect after turning off remote video
 
 ## [1.8.7] - 2026-10-05
 
-### 修复
+### Fixed
 
-- **Wayland 授权窗口**：按 Portal 接口约定解析字符串类型的会话句柄，修复连接在请求授权窗口之前报 `incorrect type` 并断开的错误；回归测试改用真实接口返回类型
+- **Wayland authorization window**: The session handle is now parsed as the string type required by the Portal interface, fixing the error where the connection reported `incorrect type` and disconnected before requesting the authorization window; the regression test now uses the real interface return type
 
-### 变更
+### Changed
 
-- **构建费用**：CI 仅由 `v*` 标签或手动触发，负责构建、打包和发布；测试与 lint 在本地完成，流程记录在 `AGENTS.md`，避免 `main` 与标签重复构建及云端重复检查
+- **Build cost**: CI is triggered only by `v*` tags or manual runs and handles building, packaging, and publishing; tests and lint run locally, with the process documented in `AGENTS.md`, avoiding duplicate builds of `main` and tags and duplicate cloud checks
 
-### 验证说明
+### Verification notes
 
-- Linux 单元测试、真实返回类型的 Portal 回归、四架构构建及 Android debug 检查通过；已在 66 的 KDE Wayland 会话确认真实授权窗口创建，批准后的画面与输入仍待实机验收
-- 屏幕服务更新至部署版本 60；需使用新版 App 更新被控端服务，以免旧 App 重新安装旧版服务
+- Linux unit tests, Portal regression with the real return type, four-architecture builds, and Android debug checks passed; the real authorization window creation was confirmed in the 66 KDE Wayland session, while video and input after approval still await real-device acceptance
+- Screen service updated to deployment version 60; the controlled-side service must be updated with the new app version so an old app does not reinstall an old service
 
 ## [1.8.6] - 2026-10-05
 
-### 新增
+### Added
 
-- **Linux 桌面管理**：增加带 Termish 图标的系统托盘和应用列表入口，支持查看连接状态、暂停／恢复访问、断开连接、重启／退出服务、查看日志与打开服务目录；中英文显示，无托盘宿主时可打开管理窗口
-- **Linux 硬件编码**：自动探测 NVENC、QSV、VAAPI 的实际可用性，不可用或运行中失败时回退软件编码；增加编码器诊断与选择配置
+- **Linux desktop management**: Added a system tray with the Termish icon and an app-list entry, supporting viewing connection status, pausing/resuming access, disconnecting, restarting/exiting the service, viewing logs, and opening the service directory; bilingual display, with a management window when no tray host is available
+- **Linux hardware encoding**: Automatically detects the actual availability of NVENC, QSV, and VAAPI, falling back to software encoding when unavailable or failing at runtime; adds encoder diagnostics and selection configuration
 
-### 修复
+### Fixed
 
-- **Linux 服务生命周期**：systemd 重启与正常退出采用不同退出状态；修复有用户 D-Bus 但无 systemd 用户管理器时安装中断的问题，回退登录自启动
-- **Linux 显示状态**：补齐本地图形会话锁定状态与 X11 显示器电源检测，手机端可读取被控端状态
+- **Linux service lifecycle**: systemd restart and normal exit now use different exit statuses; fixed the install aborting when a user D-Bus exists but no systemd user manager, falling back to login autostart
+- **Linux display status**: Completed local graphics-session lock status and X11 display power detection, so the phone side can read the controlled-side status
 
-### 验证说明
+### Verification notes
 
-- X11 画面与输入、真实 VAAPI 编码、systemd 重启／退出、完整安装与 LXQt 托盘操作，以及四架构构建、Android/iOS debug 和 SSH/SFTP 集成测试通过
-- 屏幕服务更新至部署版本 59，安装／更新服务后生效；Wayland 锁屏后的采集与控制仍受桌面环境限制，尚未完成真实 GNOME/KDE 锁屏、休眠与解锁验收
+- X11 video and input, real VAAPI encoding, systemd restart/exit, full install and LXQt tray operations, plus four-architecture builds, Android/iOS debug, and SSH/SFTP integration tests passed
+- Screen service updated to deployment version 59, effective after installing/updating the service; capture and control after Wayland lock screen are still limited by the desktop environment, and real GNOME/KDE lock-screen, sleep, and unlock acceptance has not completed
 
 ## [1.8.5] - 2026-10-05
 
-### 修复
+### Fixed
 
-- **旧屏幕服务残留**：原生服务安装并验证启动成功后，清理旧 Python 脚本及对应字节码缓存，保留配置、token、日志与其他文件
-- **旧 Agent 后台进程**：原生 Bridge 成功启动后，核对账号、完整命令和解释器，停止旧 Python companion 并清理旧安装文件；旧进程未退出时保留文件并报告失败，保留会话数据
+- **Old screen service leftovers**: After the native service installs and startup is verified, the old Python scripts and their bytecode caches are cleaned, while config, token, logs, and other files are kept
+- **Old Agent background processes**: After the native Bridge starts successfully, it verifies the account, full command line, and interpreter, stops the old Python companion, and cleans old install files; if the old process has not exited, files are kept and a failure is reported, preserving session data
 
-### 验证说明
+### Verification notes
 
-- 清理边界、进程核验、退出失败、路径含空格、重复清理和缓存符号链接测试，以及 Android debug 和 SSH/SFTP 集成测试通过；已在真实 Mac 备份并清理旧残留，当前 Rust 服务保持正常运行
-- 本次修改手机端安装流程，屏幕服务仍为版本 58、Agent Bridge 仍为 0.9.0；清理在安装／重新安装服务时执行
+- Tests passed for cleanup boundaries, process verification, exit failure, paths with spaces, repeated cleanup, and cache symlinks, plus Android debug and SSH/SFTP integration tests; real Mac backup and cleanup of old leftovers was performed, and the current Rust service keeps running normally
+- This change modifies the phone-side install flow; the screen service remains version 58 and the Agent Bridge remains 0.9.0; cleanup runs when installing/reinstalling the service
 
 ## [1.8.4] - 2026-10-05
 
-### 新增
+### Added
 
-- **macOS 菜单栏**：Termish Helper 显示菜单栏图标，提供连接状态、断开当前连接、暂停／恢复访问、录屏与控制权限设置、重启服务、查看日志和打开服务目录；按系统语言显示中文或英文
+- **macOS menu bar**: Termish Helper shows a menu bar icon providing connection status, disconnecting the current connection, pausing/resuming access, screen-recording and control permission settings, restarting the service, viewing logs, and opening the service directory; displays Chinese or English per the system language
 
-### 优化
+### Improved
 
-- **服务退出与重启**：菜单动作复用现有会话清理，释放输入并回收编码器；正常退出不再被 LaunchAgent 立即拉起，异常退出仍自动重启，下次登录仍自动启动
-- **菜单与连接并行**：菜单在 macOS 主线程运行，连接管理在后台线程运行，继续使用原有 FFmpeg 采集和编码方案
+- **Service exit and restart**: Menu actions reuse the existing session cleanup, releasing input and reclaiming the encoder; normal exit is no longer immediately relaunched by the LaunchAgent, abnormal exit still auto-restarts, and login autostart remains
+- **Menu and connection in parallel**: The menu runs on the macOS main thread while connection management runs on a background thread, continuing to use the existing FFmpeg capture and encoding scheme
 
-### 验证说明
+### Verification notes
 
-- macOS 原生菜单动作、真实合成视频连接的暂停／恢复／断开／重启／退出、隔离 LaunchAgent 生命周期、四种目标构建及 SSH/SFTP 集成测试通过；无窗口菜单的手动视觉点击验收未完成
-- 屏幕服务更新至部署版本 58；暂停只在当前进程有效，重启后恢复访问。macOS 服务仍采用临时签名，升级后若权限失效，需要重新授权 Termish Helper 并重启服务
+- macOS native menu actions, pause/resume/disconnect/restart/exit with real synthetic video connections, isolated LaunchAgent lifecycle, four target builds, and SSH/SFTP integration tests passed; manual visual click acceptance of the windowless menu is incomplete
+- Screen service updated to deployment version 58; pausing only applies to the current process and access resumes after restart. The macOS service still uses ad-hoc signing, so after upgrading, if permissions lapse, re-authorize Termish Helper and restart the service
 
 ## [1.8.3] - 2026-10-04
 
-### 修复
+### Fixed
 
-- **macOS 授权后重连**：收到录屏或辅助功能权限缺失提示后，用户点击「重新连接」会先重启屏幕服务，刷新授权前缓存的拒绝结果，再恢复画面与操作
-- **辅助功能提示**：增加「重新连接」按钮，中英文指引改为授权后重连；不再默认要求删除权限条目
-- **重连会话清理**：主动重连先关闭旧会话，避免屏幕服务重启触发旧会话的自动重连
+- **macOS reconnect after authorization**: After the screen-recording or accessibility permission missing notice, tapping "Reconnect" first restarts the screen service, refreshing the denial result cached before authorization, then restores video and control
+- **Accessibility notice**: Added a "Reconnect" button, and the bilingual guidance now says to reconnect after authorizing; no longer defaults to asking users to delete the permission entry
+- **Reconnect session cleanup**: A proactive reconnect first closes the old session, preventing the screen service restart from triggering that session's auto-reconnect
 
-### 验证说明
+### Verification notes
 
-- 已在真实 Mac 确认两种权限开启后旧进程仍报拒绝、重启后恢复录屏与控制；用户已确认手机操作恢复
-- 本次修改手机端重连流程，后台服务保持版本 57；Android/iOS 构建、单元测试和 SSH 集成测试通过。新手机端完整首次授权及撤销权限流程仍需实机验证
+- Confirmed on a real Mac that with both permissions granted the old process still reported denial, and after restart screen recording and control were restored; the user confirmed phone operation recovered
+- This change modifies the phone-side reconnect flow; the background service remains version 57; Android/iOS builds, unit tests, and SSH integration tests passed. Full first-time authorization and permission-revocation flows on a new phone still need real-device verification
 
 ## [1.8.2] - 2026-10-04
 
-### 修复
+### Fixed
 
-- **macOS 录屏权限**：独立预检录屏授权，缺权限时不启动或重启 FFmpeg；同一服务进程只请求一次录屏授权，手机收到明确拒绝后停止自动重连，避免连接循环触发弹窗
-- **权限提示**：录屏与辅助功能分别提示，授权失效时指引重新添加当前后台应用，不再将录屏问题混为控制权限问题
+- **macOS screen-recording permission**: Screen-recording authorization is pre-checked independently; without permission, FFmpeg is not started or restarted; the same service process requests screen-recording authorization only once, and the phone stops auto-reconnecting after receiving an explicit denial, avoiding a reconnect loop triggering popups
+- **Permission notices**: Screen recording and accessibility are prompted separately, and when authorization lapses the guidance is to re-add the current background app, no longer conflating screen-recording issues with control permission issues
 
-### 优化
+### Improved
 
-- **后台应用名称与图标**：macOS 服务打包为带 Termish Logo 的 `Termish Helper.app`，应用与进程名称统一，在后台运行；手机仍可经 SSH/SFTP 自动安装
-- **应用包安装**：校验上传 SHA-256、应用签名和部署版本后启用，配置与 token 保留在应用包外；启动失败恢复旧应用与服务注册
-- **发行签名构建**：增加固定证书签名入口，以稳定应用标识签名完整应用包，再生成安装校验摘要
+- **Background app name and icon**: The macOS service is packaged as `Termish Helper.app` with the Termish logo, unifying app and process names while running in the background; the phone can still auto-install via SSH/SFTP
+- **App bundle install**: Enabled after verifying the uploaded SHA-256, app signature, and deployment version; config and token are kept outside the bundle; on startup failure, the old app and service registration are restored
+- **Release-signed builds**: Added a fixed-certificate signing entry, signing the complete app bundle with a stable app identity, then generating the install verification digest
 
-### 验证说明
+### Verification notes
 
-- 录屏门禁、视频协议、SSH 上传、应用包签名、安装迁移与失败恢复测试，以及 Android/iOS 本地构建已通过；真实首次授权、撤销授权和权限弹窗显示仍需实机确认
-- 本次尚未接入 Developer ID 发行证书，macOS 服务仍使用临时签名，不能保证升级后保留授权。迁移后如权限失效，请在系统设置中重新授权 `Termish Helper.app`
+- Screen-recording gating, video protocol, SSH upload, bundle signing, install migration, and failure recovery tests, plus Android/iOS local builds, have passed; real first-time authorization, revocation, and permission popup display still need real-device confirmation
+- This release is not yet wired to a Developer ID release certificate; the macOS service still uses ad-hoc signing, which cannot guarantee authorization survives upgrades. If permissions lapse after migration, re-authorize `Termish Helper.app` in System Settings
 
 ## [1.8.1] - 2026-10-04
 
-### 修复
+### Fixed
 
-- **macOS 远程控制权限**：改用事件发送权限检测并处理主线程系统事件，避免常驻服务授权后仍使用旧的辅助功能判断；兼容旧版 macOS 的权限接口
-- **授权重复提示**：同一服务进程最多请求一次控制权限，连续操作或重新连接不会重复触发授权弹窗
-- **手机权限状态**：被控端每秒检查控制权限变化，并通过视频通道更新 App 提示，支持在同一连接中接收授权与撤销状态
+- **macOS remote control permission**: Switched to event-send permission detection and handles main-thread system events, avoiding a persistent service continuing to use the old accessibility check after authorization; compatible with permission interfaces of older macOS versions
+- **Duplicate authorization prompts**: The same service process requests control permission at most once; continuous operations or reconnects no longer repeatedly trigger the authorization popup
+- **Phone permission status**: The controlled side checks control permission changes every second and updates the app notice over the video channel, supporting receiving granted and revoked status within the same connection
 
-### 验证说明
+### Verification notes
 
-- 自动化测试、协议拆包测试及 Android/iOS 本地构建已通过；新版首次授权、撤销授权和手机实际鼠标键盘操作仍需实机验证
-- 升级会更新被控端程序；macOS 可能需要为新的程序身份重新授权一次。旧进程卡在已授权状态时，可重启屏幕服务后重新连接
+- Automated tests, protocol unpacking tests, and Android/iOS local builds have passed; new-version first authorization, revocation, and actual phone mouse/keyboard operation still need real-device verification
+- Upgrading updates the controlled-side program; macOS may require re-authorizing once for the new program identity. If an old process is stuck in the authorized state, restart the screen service and reconnect
 
 ## [1.8.0] - 2026-10-04
 
-### 变更
+### Changed
 
-- **Rust 远程服务**：远程画面服务与 Agent Bridge 改为原生可执行程序，内置 macOS / Linux 的 ARM64 与 x86_64 版本，继续支持从手机经 SSH 自动安装和更新，无需在电脑手动部署 Python
-- **Agent 会话存储**：新会话改用私有 JSON 文件；旧 Python Bridge 的会话记录不迁移，新版不会展示这些旧记录，Agent 工具自身的原生历史仍可导入
-- **构建与发布**：移除 Python 源码、`.pyz` 资源及 Python 构建依赖，远程服务由 Rust 工具打包，R2 发布改用 Node.js 与 curl
+- **Rust remote service**: The remote video service and Agent Bridge became native executables with built-in ARM64 and x86_64 binaries for macOS / Linux, continuing to support auto-install and update from the phone over SSH, with no manual Python deployment on the computer
+- **Agent session storage**: New sessions use private JSON files; old Python Bridge session records are not migrated and the new version does not show them, while the Agent tools' own native history can still be imported
+- **Build and release**: Removed Python sources, `.pyz` assets, and Python build dependencies; the remote service is packaged by a Rust tool, and R2 releases switched to Node.js and curl
 
-### 修复
+### Fixed
 
-- **远程画面生命周期**：补齐连接鉴权、会话占用、断开回收、按键释放与编码器重启处理；Wayland 授权取消时及时关闭请求和会话，桌面录屏与控制仍需系统授权
-- **Agent 连接与安装**：保留后台任务、断线事件重放和审批重连，限制安装日志与等待时间，完善进程清理、附件路径校验和敏感信息脱敏
+- **Remote video lifecycle**: Completed connection authentication, session occupancy, disconnect reclamation, key release, and encoder restart handling; on Wayland authorization cancellation, requests and sessions are closed promptly; desktop screen recording and control still require system authorization
+- **Agent connection and install**: Preserved background tasks, disconnect event replay, and approval reconnection; limited install logs and wait time, and improved process cleanup, attachment path validation, and sensitive-information redaction
 
 ## [1.7.3] - 2026-09-06
 
-### 优化
+### Improved
 
-- **项目介绍**：重写中英文 README，突出原生 Agent 聊天、SSH / Mosh 与 SFTP，前置下载入口和三步上手流程
-- **核心截图**：精选 Agent 对话、远程终端与文件管理三组演示截图，减少重复展示
-- **开发文档**：将完整构建与测试步骤集中到贡献指南，明确 Android / iOS 获取方式、后台连接限制及外部服务配置要求
+- **Project introduction**: Rewrote the English and Chinese READMEs, highlighting the native Agent chat, SSH / Mosh, and SFTP, with download entry points and a three-step quick start up front
+- **Core screenshots**: Curated three demo screenshot groups — Agent chat, remote terminal, and file manager — reducing repetitive display
+- **Developer docs**: Consolidated full build and test steps into the contributing guide, clarifying Android / iOS acquisition, background connection limits, and external service configuration requirements
 
 ## [1.7.2] - 2026-09-06
 
-### 修复
+### Fixed
 
-- **跨会话发送**：发送准备、附件进度、确认响应与错误绑定原会话，切换聊天后不会把消息或错误写入新页面
-- **停止任务**：停止操作取消对应会话的发送准备或远端任务；首次发送取消后清理空会话，发送前失败的附件按本轮路径尝试回收
-- **后台任务状态**：持续跟踪其他会话的运行与审批状态，补发并去重后台事件，避免离开聊天页后提前回收监听连接
-- **Agent 安装状态**：各工具独立跟踪安装进度，防止重复安装，支持失败重试与重连后的状态恢复；内置 Bridge 更新至 0.8.1
+- **Cross-session sending**: Send preparation, attachment progress, confirmation responses, and errors are bound to the originating session, so switching chats no longer writes messages or errors into the new page
+- **Stop task**: The stop operation cancels that session's send preparation or remote task; after a first-send cancellation, the empty session is cleaned up, and attachments that fail before sending are reclaimed per that round's paths
+- **Background task status**: Running and approval statuses of other sessions are tracked continuously, with background events re-sent and deduplicated, avoiding prematurely reclaiming listening connections after leaving the chat page
+- **Agent install status**: Each tool tracks install progress independently, preventing duplicate installs, with failure retry and state recovery after reconnects; the bundled Bridge was updated to 0.8.1
 
-### 变更
+### Changed
 
-- **开源文档**：完善 MIT 授权说明、贡献指南、行为准则与 Issue/PR 模板，中英文说明与官网提供源码及贡献入口
-- **发布配置**：Android 签名与 R2 发布使用仓库级 Actions 配置，支持从本地 `.env` 批量导入独立密钥
-- **仓库整理**：移除项目内 `.agents` 辅助目录、内部评估与一次性检查报告
+- **Open-source docs**: Improved the MIT license statement, contributing guide, code of conduct, and Issue/PR templates, with bilingual documentation and the website providing source and contribution entry points
+- **Release configuration**: Android signing and R2 releases use repository-level Actions configuration, supporting bulk import of independent secrets from a local `.env`
+- **Repository cleanup**: Removed the in-project `.agents` helper directory, internal evaluations, and one-off check reports
 
 ## [1.7.1] - 2026-09-05
 
-### 移除
+### Removed
 
-- **桌面客户端**：移除 macOS / Linux / Windows 应用与安装包，仅保留 Android 和 iOS；原 JVM 单元测试与 SSH/SFTP 集成测试迁入 Android 本地测试，远程画面功能继续保留
+- **Desktop clients**: Removed the macOS / Linux / Windows apps and installers, keeping only Android and iOS; the original JVM unit tests and SSH/SFTP integration tests moved into Android local tests, and the remote video feature is retained
 
-### 修复
+### Fixed
 
-- **终端顶部布局**：移除 header 下方重复的状态栏安全区留白，页头由 56dp 收紧至 48dp，保留 iOS 灵动岛必要的安全距离
-- **移动端构建兼容性**：SSH 命令输出使用兼容 Android 8+ 的字符集 API；修复 iOS 视频桥接配置、平台扩展导入与只读属性实现，以及通知权限回调的可空处理；Markdown 渲染库对齐 Compose 1.8，修复 iOS 最终应用链接缺失符号
+- **Terminal top layout**: Removed duplicate status-bar safe-area padding under the header, tightened the page header from 56dp to 48dp, and kept the necessary safe distance for the iOS Dynamic Island
+- **Mobile build compatibility**: SSH command output uses a character-set API compatible with Android 8+; fixed the iOS video bridge configuration, platform extension imports, and read-only property implementation, plus nullable handling in the notification permission callback; the Markdown rendering library was aligned with Compose 1.8, fixing missing symbols in the final iOS app link
 
 ## [1.7.0] - 2026-08-25
 
-### 新增
+### Added
 
-- **原生 Agent 对话**：在主机卡片直接进入 Codex、Claude Code、Gemini CLI、OpenCode 与 Pi 的手机原生工作区；内置纯标准库 Python Bridge 经 SFTP 自动部署，通过 SSH 内的私有 Unix socket 流式传输对话、思考与工具事件，并支持历史会话恢复、取消和 Agent CLI 引导安装
-- **Agent 产物卡片**：对话会将本轮生成的 Markdown、PPT、Excel、Word、PDF 和图片等文件展示为可打开所在目录的卡片
-- **Agent 原生历史导入**：可发现并导入远端 Codex、Claude Code、Gemini CLI、OpenCode 与 Pi 的本地会话，复用原生 session ID 继续上下文且不改写 Agent 自己的历史文件
-- **Agent 供应商配置**：设置页可添加 DeepSeek（API Key 仅存平台安全存储），每个 Agent 可独立选择内置登录或指定供应商；首批适配 Claude Code、OpenCode 与 Pi
-- **Agent 输入效率**：输入区支持手机附件、远端目录选择，以及输入 `/` 唤起当前 Agent 的内置命令补全；长附件名限制预览宽度并以省略号展示
-- **Linux 屏幕远控**：支持 X11/XTEST 与原生 Wayland Portal/PipeWire 两套链路，自动识别桌面环境并可切换；补齐动态桌面尺寸、状态上报和鼠标注入
-- **iOS 远程画面硬件解码**：接入 VideoToolbox 解码 H.264，降低移动端播放开销
+- **Native Agent chat**: Enter a phone-native workspace for Codex, Claude Code, Gemini CLI, OpenCode, and Pi directly from the host card; the bundled pure-stdlib Python Bridge is auto-deployed over SFTP and streams conversation, thinking, and tool events through a private Unix socket inside SSH, with history session restore, cancellation, and guided Agent CLI installation
+- **Agent artifact cards**: Chats display files generated in the turn — Markdown, PPT, Excel, Word, PDF, images, and more — as cards that open their containing directory
+- **Agent native history import**: Can discover and import local sessions from remote Codex, Claude Code, Gemini CLI, OpenCode, and Pi, reusing the native session ID to continue context without rewriting the Agents' own history files
+- **Agent provider configuration**: The settings page can add DeepSeek (API Key stored only in platform secure storage); each Agent can independently choose built-in login or a specified provider; the first batch supports Claude Code, OpenCode, and Pi
+- **Agent input efficiency**: The input area supports phone attachments and remote directory selection, plus typing `/` to invoke the current Agent's built-in command completion; long attachment names have a limited preview width with ellipsis
+- **Linux screen remote control**: Supports both X11/XTEST and native Wayland Portal/PipeWire paths, auto-detecting the desktop environment and allowing switching; completed dynamic desktop size, status reporting, and mouse injection
+- **iOS remote video hardware decoding**: Integrated VideoToolbox to decode H.264, lowering mobile playback overhead
 
-### 优化
+### Improved
 
-- **远程画面自适应传输**：根据 TCP 回压动态调整码率与帧率，静止画面发送保活帧，弱网和桌面静止场景下连接更稳定
-- **主机卡片快速进入**：可从主机卡片直接进入 Agent 和远程画面，并复用已有 SSH 会话减少重复连接
+- **Remote video adaptive transport**: Bitrate and frame rate adjust dynamically based on TCP backpressure, sending keepalive frames for static screens, making connections more stable on weak networks and idle desktops
+- **Quick entry from host card**: Can enter Agent and remote video directly from the host card, reusing existing SSH sessions to reduce duplicate connections
 
-### 修复
+### Fixed
 
-- **Agent 失败不再吞消息或永久 loading**：发送失败保留草稿与附件，登录/供应商错误直接显示；Bridge adapter 退出或异常时保证结束 turn，断连后不再幽灵重连
-- **保留 Agent 自身审批策略**：不再强制覆盖 Codex、Claude Code 与 Gemini CLI 的权限/审批参数；当前尚未桥接手机交互审批，无头协议无法上报时安全失败并显示错误
-- **虚拟鼠标左右推对称**：拖到左缘也可持续推动放大画面，鼠标热点钳制在可见视频区域内，不再滑出屏幕
-- **虚拟鼠标拖动与坐标换算**：修复按住左键无法持续拖动、分辨率或横竖屏变化后点击偏移，以及虚拟鼠标与手指模式映射不一致的问题
-- **远程画面断流恢复**：完善推流重连、会话切换和静态桌面超时处理，避免画面停住后误判断线
-- **Agent 过程卡片**：恢复最初的卡片样式，思考与工具过程无论运行中或完成后都默认收起，并压低折叠态高度
-- **Agent 消息顺序与并发保护**：发送请求交接期间暂存实时事件，避免助手增量早于用户消息或终态动画状态回写；Bridge 按会话串行化启动窗口，阻止多客户端同时覆盖同一 turn
+- **Agent failures no longer swallow messages or hang loading forever**: On send failure the draft and attachments are kept, and login/provider errors display directly; when the Bridge adapter exits or errors, the turn is guaranteed to end, and no more ghost reconnects after disconnect
+- **Preserve the Agents' own approval policy**: No longer forcibly overrides Codex, Claude Code, and Gemini CLI permission/approval parameters; phone interactive approval is not yet bridged, so when the headless protocol cannot report, it fails safely with an error
+- **Virtual mouse left/right edge push symmetry**: Dragging to the left edge also continuously pans and enlarges the video, the mouse hotspot is clamped within the visible video area, and it no longer slides off screen
+- **Virtual mouse dragging and coordinate conversion**: Fixed continuous dragging with the left button held, click offset after resolution or orientation changes, and inconsistent mapping between virtual mouse and finger modes
+- **Remote video stream-break recovery**: Improved stream reconnect, session switching, and static-desktop timeout handling, avoiding misjudging disconnect when the video freezes
+- **Agent process cards**: Restored the original card style; thinking and tool processes default to collapsed both while running and after completion, with reduced collapsed height
+- **Agent message ordering and concurrency protection**: Realtime events are buffered during send-request handoff, avoiding assistant deltas arriving before user messages or final-state animation state being written back; the Bridge serializes startup windows per session, blocking multiple clients from overwriting the same turn concurrently
 
 ## [1.6.4] - 2026-08-24
 
-### 修复
+### Fixed
 
-- **小窗↔全屏切换黑屏**：surface 变化一律释放解码器、用客户端缓存的 SPS/PPS 立即重建（不依赖远端在关键帧重复参数集），重建后只喂 IDR 起播；展开/收起动画期间不上真实视频面（黑底占位，动画结束才建面）——SurfaceView 表面不跟随 graphicsLayer 缩放，画面不再卡成小窗尺寸亮点或黑屏
-- **虚拟鼠标拖到右缘卡住/画面缩小**：拖过右缘的过冲量持久累积为视频整体左移（推量上限 = 把画面右缘推到面板左缘所需的平移量，放大后自动变大——鼠标贴近右缘时画面持续平移，永不滑出屏幕）；视频容器去祖先裁剪（部分设备上被祖先 clip 的 SurfaceView 表面会被缩放而非裁剪）
-- **虚拟鼠标箭头到不了画面边缘**：箭头尖端精确落在热点（点击位置），尾巴超出画布由裁剪收起——此前图形整体内收，点不到画面最右列
+- **PiP↔fullscreen black screen**: Surface changes always release the decoder and rebuild immediately from client-cached SPS/PPS (not relying on the remote repeating parameter sets in keyframes), and after rebuilding only IDR frames start playback; during expand/collapse animations no real video surface is attached (black placeholder, surface built only after the animation ends) — SurfaceView's surface does not follow graphicsLayer scaling, so the video no longer sticks at PiP size as a bright dot or goes black
+- **Virtual mouse stuck at right edge / video shrinks**: Overshoot past the right edge accumulates persistently as an overall leftward video shift (push cap = the translation needed to push the video's right edge to the panel's left edge, growing automatically when zoomed — with the mouse near the right edge the video pans continuously and never slides off screen); the video container no longer has ancestor clipping (on some devices a SurfaceView clipped by an ancestor gets scaled instead of clipped)
+- **Virtual mouse arrow can't reach the video edge**: The arrow tip lands exactly on the hotspot (the click position), with the tail beyond the canvas hidden by clipping — previously the whole graphic was inset, so the rightmost column couldn't be clicked
 
 ## [1.6.3] - 2026-08-23
 
-### 修复
+### Fixed
 
-- **设置页诊断开关即时刷新**：开关点击后立即生效（此前 TermLog 属性非 Compose state，点击后视觉不变，退出重进才更新）
-- **git 面板 herdr workdir 打点**：herdr snapshot 空会话/解析失败路径补日志，便于定位
+- **Settings diagnostics toggle refreshes immediately**: The toggle takes effect on click (previously the TermLog property was not Compose state, so the visual didn't change until leaving and re-entering the page)
+- **Git panel herdr workdir logging**: Added logs for herdr snapshot empty-session/parse-failure paths for easier debugging
 
 ## [1.6.2] - 2026-08-23
 
-### 新增
+### Added
 
-- **全屏帧率/画质切换**：右上角档位菜单（30/60/120 fps × 流畅/标清/高清），relay 支持动态参数（每连接读取 ~/.termish-screen.conf），切换后自动重建会话生效
-- **relay 版本协商**（RELAY_VERSION）：客户端检测远端 relay 版本，旧版引导一键升级——客户端与远端脚本版本匹配（不再出现新客户端配旧 relay 跑不起新功能）
-- **断流自动重连**：非主动断流 3 秒后自动重建会话（保留档位设置），无需手动重连
+- **Fullscreen frame-rate/quality switching**: A tier menu in the top-right (30/60/120 fps × smooth/SD/HD); the relay supports dynamic parameters (each connection reads ~/.termish-screen.conf), and changes take effect automatically by rebuilding the session
+- **Relay version negotiation** (RELAY_VERSION): The client detects the remote relay version and guides a one-tap upgrade on old versions — client and remote script versions now match (no more new client with an old relay failing to run new features)
+- **Auto-reconnect on stream break**: Non-intentional stream breaks automatically rebuild the session after 3 seconds (keeping tier settings), with no manual reconnect needed
 
-### 修复
+### Fixed
 
-- 档位切换回调漏传（全屏覆盖层未接 onStreamConfigChange）——帧率菜单点后右上角不更新、远端不生效；画质因本地 state 更新而看似可用
-- 切档位与断流自动重连竞态：旧 uiState 档位未同步，自动重连把新档位覆盖回 30
-- 小窗双指缩放改质心锚定（朝手指方向展开）+ 边界感知钳制（一边到头另一边继续撑开，不超出屏幕）
-- coerceIn(min>max) 边界崩溃（小窗放大到接近画布大小时滑动可能崩溃）
-- 工具栏键恢复正方形（宽屏 48dp 封顶居中，不再撑成扁块）
-- 文档：ktlint 工作流规范 + 仓库公开状态表述更新
+- Missed tier-switch callback (fullscreen overlay wasn't wired to onStreamConfigChange) — the fps menu didn't update in the top-right after tapping and the remote didn't take effect; quality only appeared to work due to local state updates
+- Race between tier switching and auto-reconnect on stream break: the old uiState tier wasn't synced, and auto-reconnect overwrote the new tier back to 30
+- PiP two-finger zoom switched to centroid anchoring (expanding toward the fingers) + boundary-aware clamping (when one side hits its limit the other keeps expanding, without leaving the screen)
+- coerceIn(min>max) boundary crash (sliding could crash when the PiP was enlarged near the canvas size)
+- Toolbar keys restored to square (48dp cap, centered on wide screens, no more stretched flat blocks)
+- Docs: ktlint workflow conventions + updated repository public-status wording
 
 ## [1.6.1] - 2026-08-23
 
-### 修复
+### Fixed
 
-- **Linux 桌面推流（x11grab）全链路**：安装脚本 pkill 自杀（命令行含自身文本被全匹配误杀）改 PID 文件清理；DISPLAY 从 Xwayland 进程参数探测（Wayland 会话 display 号非 0）；X 检测兼容任意 X socket（Xwayland）；relay 错误日志路径平台化（Linux 无 ~/Library/Logs，open() 异常导致 ffmpeg 不被拉起——端口监听但 0 字节）；ffmpeg 缺失时免密 sudo 自动 apt 安装
-- 语音输入：音量由录音线程直写消除主线程调度延迟（停顿 <2s 被误判静音自动发送）；静音自动发送阈值 2s→3s；正常发送不再弹 toast（仅错误/超时/误触提示）；连接失败提示清洗（不再透出 URL/端口）、超时 10s→5s
-- 全屏 header 返回按钮与终端页 tab 栏对齐（状态栏高度留白，不再贴顶）
-- mosh 引导失败一律进安装卡片（显示具体原因），不再静默降级无安装入口
-- herdr 探测跳过 snap 版（沙箱受限与工作台不兼容）
-- SFTP 选主机列表显示主机名（IP 并入详情行）
+- **Linux desktop streaming (x11grab) full chain**: Install script pkill suicide (a command line containing its own text matched everything and killed itself) replaced with PID-file cleanup; DISPLAY is probed from the Xwayland process arguments (Wayland sessions have non-0 display numbers); X detection compatible with any X socket (Xwayland); relay error-log path made platform-aware (Linux has no ~/Library/Logs, and the open() exception stopped ffmpeg from launching — port listening but 0 bytes); passwordless sudo auto-apt-installs ffmpeg when missing
+- Voice input: volume is written directly by the recording thread, removing main-thread scheduling delay (pauses <2s were misjudged as silence and auto-sent); silence auto-send threshold 2s→3s; normal sends no longer toast (only error/timeout/mistouch notices); connection-failure notice sanitized (no more URL/port exposure), timeout 10s→5s
+- Fullscreen header back button aligned with the terminal page tab bar (status-bar height padding, no longer flush to the top)
+- Mosh bootstrap failures always enter the install card (showing the specific reason), no longer silently degrading with no install entry
+- herdr detection skips snap versions (sandbox restrictions are incompatible with the workbench)
+- SFTP host picker shows hostnames (IP merged into the detail row)
 
 ## [1.6.0] - 2026-08-22
 
-### 新增
+### Added
 
-- 远程画面小窗支持**双指捏合/张开缩放**（单指拖动移动、右下角把手缩放、点击全屏统一由手势层处理）
-- 全屏改为**真全屏**：覆盖 tab 栏与状态栏区域，Android 沉浸式隐藏状态栏；顶部元素避让状态栏（双保险）
-- 全屏返回按钮改为标准播放器风格（纯箭头，与全应用 `KeyboardArrowLeft` 统一），去掉「收起」文字
-- **息屏/锁屏处理**：relay 看门狗感知屏幕电源状态（`CGDisplayIsAsleep`），息屏时不 kill ffmpeg、不断连，唤醒后画面自动恢复；客户端显示明确提示（「Mac 屏幕已关闭，唤醒后自动恢复」/「锁屏状态，画面为锁屏界面」）而非笼统的「连接不上」
+- Remote video PiP supports **two-finger pinch/spread zoom** (single-finger drag to move, bottom-right handle to resize, tap to fullscreen — all handled uniformly by the gesture layer)
+- Fullscreen is now **true fullscreen**: overlays the tab bar and status bar areas, with Android immersive status bar hiding; top elements avoid the status bar (double insurance)
+- Fullscreen back button changed to standard player style (plain arrow, consistent with the app-wide `KeyboardArrowLeft`), removing the "Collapse" text
+- **Screen-off/lock-screen handling**: The relay watchdog senses screen power state (`CGDisplayIsAsleep`) and doesn't kill ffmpeg or drop the connection while the screen is off, with video auto-resuming on wake; the client shows a clear notice ("Mac screen is off, resumes automatically on wake" / "Locked, showing the lock screen") instead of a vague "can't connect"
 
-### 修复
+### Fixed
 
-- 横屏下终端键盘工具栏错位：`weight + aspectRatio` 在宽屏下产生超高键、文字截断（aspectRatio 无视高度约束），改为固定键高 48dp
-- Tab 返回历史：终端 tab 之间切换不再压栈（返回直接回主页）；补上 SFTP 从终端页进入的返回链
-- SFTP 选主机面板关闭叉号在 Dialog 中不跟随主题（LocalContentColor 平台默认黑色），显式指定 `onSurface`
+- Landscape terminal keyboard toolbar misalignment: `weight + aspectRatio` produced over-tall keys and truncated text on wide screens (aspectRatio ignores height constraints); changed to a fixed 48dp key height
+- Tab back history: switching between terminal tabs no longer pushes onto the stack (back goes straight to the home page); added the back chain for SFTP entered from the terminal page
+- The SFTP host picker close button didn't follow the theme in a Dialog (LocalContentColor defaulted to platform black); `onSurface` is now set explicitly
 
-### 工程
+### Engineering
 
-- 接入 **ktlint**（mavenCentral CLI + JavaExec 任务，不依赖插件门户）：`make lint-kt` / `./gradlew ktlintCheck`；CI checks 阶段加入；存量 175 文件格式化（import 排序/换行风格等），Compose 函数名与协议层常量按规则豁免，3 个文件重命名对齐类名
+- Adopted **ktlint** (mavenCentral CLI + JavaExec tasks, no plugin portal dependency): `make lint-kt` / `./gradlew ktlintCheck`; added to the CI checks stage; formatted 175 existing files (import ordering/wrapping style etc.), with Compose function names and protocol-layer constants exempted by rule, and 3 files renamed to match class names
 
 ## [1.5.1] - 2026-08-22
 
-### 修复
+### Fixed
 
-- 推流服务装过仍提示安装：SSH 非交互会话 PATH 受限，`command -v ffmpeg` 漏掉 brew
-  安装的 ffmpeg → 误报缺失；查找路径扩展为显式探测 `/opt/homebrew/bin`、
-  `/usr/local/bin`、`~/bin`（读流检测与安装脚本一致）
-- 安装脚本 brew 分支装完重新定位 ffmpeg 真实路径（relay 不再拉起不存在的二进制）
-- 缺 ffmpeg（FFMPEG_MISSING）与服务未运行统一进安装引导卡片
-- 安装引导卡片不再叠加通用错误态：红色错误文案 + 「重新连接」按钮与「安装」
-  操作重复；卡片按具体原因显示文案，安装失败保留日志可重试
+- Installed streaming service still prompted to install: SSH non-interactive sessions have restricted PATH, so `command -v ffmpeg` missed brew-installed ffmpeg → false missing report; search paths extended to explicitly probe `/opt/homebrew/bin`,
+  `/usr/local/bin`, `~/bin` (stream-read detection consistent with the install script)
+- The brew branch of the install script re-locates the real ffmpeg path after install (the relay no longer launches a nonexistent binary)
+- Missing ffmpeg (FFMPEG_MISSING) and service-not-running are unified into the install guide card
+- The install guide card no longer stacks a generic error state: the red error text + "Reconnect" button duplicated the "Install"
+  action; the card shows text per the specific reason, and failed installs keep logs for retry
 
 ## [1.5.0] - 2026-08-22
 
-### 新增
+### Added
 
-- **小窗双指缩放**：远程画面小窗支持双指捏合/张开调整窗口大小（单指拖动移动、右下角把手缩放、点击全屏统一由手势层处理）
+- **PiP two-finger zoom**: The remote video PiP supports pinch/spread to resize the window (single-finger drag to move, bottom-right handle to resize, tap to fullscreen — all handled by the gesture layer)
 
-### 修复
+### Fixed
 
-- 小窗全屏后按返回直接跳主页：BackHandler 后注册者优先，全屏收起处理器须晚于 onBack 注册
-- 全屏返回按钮被视频面/错误态覆盖看不到点不到：按钮移到最顶层，改为毛玻璃「← 收起/返回」，文案入 AppStrings 双语
-- 小窗位置/尺寸在全屏往返后重置：状态提升到会话 key 块（组件内 remember 随全屏切换销毁）
-- 小窗可拖出屏幕：钳制范围按初始右上角位置修正（旧对称范围向右/上越界）
-- 小窗缩放把手拖不动：事件沿 hit path 父→子分发，把手独立手势被父节点抢走，改为统一手势按起点判定
-- 小窗贴屏幕右边缘时水平缩放被系统返回手势抢走：把手区域排除系统返回手势（跨平台 expect/actual）
-- 双指捏合时误触全屏：视频面 clickable 先于手势收到事件、位移小于 touch slop 判为点击，改由统一手势判定点击
+- Pressing back after PiP fullscreen jumped straight to the home page: later-registered BackHandlers win, so the fullscreen collapse handler must be registered after onBack
+- Fullscreen back button was covered by the video surface/error state, invisible and untappable: the button moved to the topmost layer, now frosted-glass "← Collapse/Back" with text in AppStrings bilingual
+- PiP position/size reset after fullscreen round-trips: state hoisted to the session key block (in-component remember is destroyed on fullscreen switches)
+- PiP could be dragged off screen: clamp range corrected per the initial top-right position (the old symmetric range overran right/up)
+- PiP resize handle undraggable: events dispatch parent→child along the hit path, and the handle's independent gesture was stolen by the parent; unified gesture now judges by start point
+- When the PiP hugged the screen's right edge, horizontal scaling was stolen by the system back gesture: the handle area excludes the system back gesture (cross-platform expect/actual)
+- Two-finger pinch accidentally triggered fullscreen: the video surface's clickable received events before the gesture layer and sub-touch-slop movement counted as a tap; tap detection now done by the unified gesture
 
 ## [1.4.0] - 2026-08-22
 
-### 新增
+### Added
 
-- **远程画面（macOS 屏幕推流）**：终端 + 菜单「远程画面」——SSH 通道实时观看 Mac 屏幕
-  - Mac 端一键安装常驻推流服务（LaunchAgent 跑在 GUI 域：avfoundation 抓屏受 TCC 限制，SSH 后台会话无法录屏，服务化绕行），服务缺失自动引导安装（流式日志）
-  - 手机端 ExoPlayer + 本地 HTTP 流（MPEG-TS）播放：硬件解码、Fit 缩放、帧率/分辨率角标；替换手写 MediaCodec 管线（OPPO/MTK 真机实测吞输入不出帧）
-  - 终端页小窗（画中画：拖动/缩放/关闭）+ 就地全屏，断线重连、同主机多会话互踢
-- **终端 tab 返回历史**：返回键优先回到上一个 tab（SFTP/屏幕 → 终端），栈空才回首页
+- **Remote video (macOS screen streaming)**: Terminal + menu "Remote video" — watch the Mac screen live over the SSH channel
+  - One-tap install of a persistent streaming service on the Mac (a LaunchAgent running in the GUI domain: avfoundation screen capture is TCC-restricted and SSH background sessions can't record, so service-ization works around it), with guided install when the service is missing (streaming logs)
+  - Phone-side ExoPlayer + local HTTP stream (MPEG-TS) playback: hardware decoding, Fit scaling, frame-rate/resolution badges; replaced the hand-written MediaCodec pipeline (real OPPO/MTK devices ate input and produced no frames)
+  - Terminal page PiP (drag/resize/close) + in-place fullscreen, disconnect reconnect, and same-host multi-session mutual kick
+- **Terminal tab back history**: Back goes to the previous tab first (SFTP/screen → terminal), home only when the stack is empty
 
-### 修复
+### Fixed
 
-- 推流服务 relay 断线/重连处理：BSD nc 的 FIN 半关闭不再误判为断连（预热期 ffmpeg 被误杀）；新连接直接 SIGKILL 旧 ffmpeg + 首帧 45s/中途 20s 无数据自愈，修僵尸进程堆积占死抓屏设备；安装结果按 TERMISH_SCREEN_OK 判定
-- H264Stream Annex-B 解析器 start code 长度判定边界（3 字节 SC + NAL 头 0x01 不再误判）
+- Streaming relay disconnect/reconnect handling: BSD nc's FIN half-close is no longer misjudged as a disconnect (during warmup ffmpeg was killed by mistake); a new connection SIGKILLs the old ffmpeg directly, with 45s first-frame / 20s mid-stream no-data self-healing, fixing zombie processes piling up and hogging the capture device; install results judged by TERMISH_SCREEN_OK
+- H264Stream Annex-B parser start-code length boundary judgment (3-byte SC + NAL header 0x01 no longer misjudged)
 
 ## [1.3.0] - 2026-08-22
 
-### 新增
+### Added
 
-- **语音输入（可插拔 ASR）**：屏幕水平居中常驻麦克风按钮，点一下即说——实时转写上屏 + 声波 + 计时，静音约 2s 自动发送；按钮可拖动、长按或角标重置回中央
-  - 识别服务 Provider 化：设置页可添加/编辑/删除多个服务（火山引擎流式识别为首个），Key 存平台安全存储，旧配置自动迁移
-  - 未配置时点击提示 + 空态引导
-- **Markdown 预览**：SFTP 文件管理内 md 文件渲染展示（标题/代码块/行内样式/列表/引用，零依赖纯 Kotlin 渲染器），预览 ⇄ 源码一键切换
-- **终端工具菜单**：右下角 + 展开——上传文件（当前目录//tmp，传完自动把远端路径输入终端）、文件管理（定位到终端工作目录）、收藏夹、Git
-- **SFTP 文件管理器增强**：多选批量（下载/删除/复制路径）、删除（目录递归）与重命名（平台层 delete/rename，sshj+libssh2）、下拉刷新、目录收藏（按主机持久化）、日期分组、空态、20 类彩色文件图标
-- **快捷命令空态可新增**：终端 {} 面板无命令时可直接新建（名称+内容弹窗）
-- **全局品牌提示**：深色圆角 Snackbar + 翠绿操作，终端/文件管理/全局统一；进度控件统一（TransferProgressCard）
+- **Voice input (pluggable ASR)**: A horizontally centered persistent microphone button; tap and speak — realtime transcription on screen + waveform + timer, auto-send after ~2s of silence; the button is draggable, and long-press or the badge resets it to center
+  - Recognition services made pluggable: the settings page can add/edit/delete multiple providers (Volcano Engine streaming recognition first), keys stored in platform secure storage, old configs auto-migrated
+  - Unconfigured tap shows a prompt + empty-state guidance
+- **Markdown preview**: md files in the SFTP file manager render in place (headings/code blocks/inline styles/lists/quotes, zero-dependency pure-Kotlin renderer), with one-tap preview ⇄ source toggle
+- **Terminal tools menu**: The bottom-right + expands — upload file (current directory//tmp, remote path typed into the terminal after upload), file manager (located at the terminal working directory), favorites, Git
+- **SFTP file manager enhancements**: Multi-select batch (download/delete/copy path), delete (recursive on directories) and rename (platform-level delete/rename, sshj+libssh2), pull-to-refresh, directory favorites (persisted per host), date grouping, empty state, 20 categories of colored file icons
+- **Quick commands empty state can add**: The terminal {} panel can create new commands directly when empty (name+content dialog)
+- **Global branded notices**: Dark rounded Snackbar + emerald action, unified across terminal/file manager/global; progress widgets unified (TransferProgressCard)
 
-### 修复
+### Fixed
 
-- 语音静音自动结束过于敏感（阈值 0.05→0.02、窗口 1.6s→2.0s，轻声不误切）
-- SFTP 预览层遮挡下载进度与完成提示（zIndex + 去重 SnackbarHost）
-- 语音/片段对话框配色未跟随终端主题
-- 语音识别协议按实测修正（顶层 result、帧 flags 最终包、首包无 sequence）
+- Voice silence auto-end too sensitive (threshold 0.05→0.02, window 1.6s→2.0s, so quiet speech no longer cuts off)
+- SFTP preview layer obscured download progress and completion notices (zIndex + deduplicated SnackbarHost)
+- Voice/fragment dialog colors didn't follow the terminal theme
+- Voice recognition protocol corrected per real testing (top-level result, frame flags marking the final packet, first packet has no sequence)
 
 
 ## [1.2.4] - 2026-08-22
 
-### 修复
+### Fixed
 
-- **SFTP 预览面板打开时下载提示被遮挡**：二进制文件（apk 等）进预览后，全屏
-  覆盖层盖住了下载进度卡与完成提示。删除被盖的重复 SnackbarHost、进度卡
-  zIndex 提升至预览层之上
+- **Download notice obscured when the SFTP preview panel is open**: Binary files (apk etc.) enter preview, and the fullscreen
+  overlay covered the download progress card and completion notice. Removed the covered duplicate SnackbarHost and raised the progress card's
+  zIndex above the preview layer
 
 ## [1.2.3] - 2026-08-22
 
-### 修复
+### Fixed
 
-- **语音按钮位置**：水平居中 + 垂直在底部（工具栏上方），不再遮挡终端中部输出
-  （1.2.2 误放垂直正中）
+- **Voice button position**: Horizontally centered + vertically at the bottom (above the toolbar), no longer obscuring mid-terminal output
+  (1.2.2 mistakenly placed it vertically centered)
 
 ## [1.2.2] - 2026-08-22
 
-### 新增
+### Added
 
-- **语音按钮移至屏幕正中**：待机常驻 64dp 品牌绿麦克风按钮，点一下即开始录音
-  （免去右下角菜单两步）；录音/识别中原位切换红按钮 + 转写浮层，整组可拖动
+- **Voice button moved to screen center**: A persistent 64dp brand-green microphone button when idle, tap once to start recording
+  (saving the two-step bottom-right menu); during recording/recognition it switches in place to a red button + transcription overlay, the whole group draggable
 
 ## [1.2.1] - 2026-08-22
 
-### 修复
+### Fixed
 
-- **语音输入静音自动结束过于敏感**：轻声说话（RMS ~1000）被旧阈值 0.05 误判为静音，
-  停顿 1.6s 即切断。阈值降至 0.02、静音窗口延至 2.4s，容忍句中 1-2s 停顿
+- **Voice input silence auto-end too sensitive**: Quiet speech (RMS ~1000) was misjudged as silence by the old 0.05 threshold,
+  cutting off after a 1.6s pause. Threshold lowered to 0.02 and the silence window extended to 2.4s, tolerating 1-2s pauses mid-sentence
 
 ## [1.2.0] - 2026-08-22
 
-### 新增
+### Added
 
-- **语音输入**：终端右下角功能菜单（+ 展开：语音 / 上传文件 / 文件管理 / Git）
-  - 点击语音开始录音：屏幕中央 72dp 大按钮（可拖动）+ 实时转写文字上屏 + 流动声波 + 录音计时
-  - 静音 ~1.6s 自动结束发送；60s 上限；误触（<300ms）丢弃
-  - 火山引擎「大模型流式语音识别」接入（bigmodel_async WebSocket，按实测协议修正响应解析）
-- **语音识别服务 Provider 化**：设置页可添加/编辑/删除多个识别服务（名称/API Key/资源 ID，密钥存平台安全存储），旧配置自动迁移；新增服务类型只需实现 AsrEngine 接口
-- **终端文件上传**：菜单选择目标目录（当前目录 / 临时目录，卡片式选项）→ 系统文件选择器多选 → SFTP 流式上传 + 右下角进度卡片；上传完成自动把远端路径输入终端
-- **文件管理**：终端菜单一键打开当前主机的 SFTP 文件管理，并定位到终端当前工作目录
-- **SFTP 文件管理器全面优化**：
-  - 多选模式（长按进入：批量下载 / 删除 / 复制路径）
-  - 删除（目录递归）与重命名（平台层新增 SftpSession.delete/rename，sshj + libssh2 双实现）
-  - 单击文件直接预览；预览面板操作菜单（下载 / 重命名 / 删除 / 复制路径）
-  - 下拉刷新、空态、目录收藏、日期排序按「今天 / 本周 / 更早」分组
-  - 文件类型图标扩展至 20 类（彩色线性图标，含 APK / 证书密钥 / Markdown / 种子 / 配置）
-- **全局统一提示样式**：品牌 Snackbar（深色圆角卡片 + 翠绿 action），覆盖终端页 / 文件管理 / 全局提示
+- **Voice input**: Terminal bottom-right tools menu (+ expands: Voice / Upload file / File manager / Git)
+  - Tap Voice to start recording: a large 72dp centered button (draggable) + realtime transcription on screen + flowing waveform + recording timer
+  - Auto-end and send after ~1.6s of silence; 60s cap; mistouches (<300ms) discarded
+  - Volcano Engine "large-model streaming speech recognition" integrated (bigmodel_async WebSocket, response parsing corrected per real protocol testing)
+- **Recognition services made pluggable**: The settings page can add/edit/delete multiple recognition services (name/API Key/resource ID, keys in platform secure storage), old configs auto-migrated; adding a service type only requires implementing the AsrEngine interface
+- **Terminal file upload**: Pick the target directory from the menu (current / temporary directory, as card options) → system file picker multi-select → SFTP streaming upload + bottom-right progress card; the remote path is typed into the terminal after upload
+- **File manager**: One tap in the terminal menu opens the SFTP file manager for the current host, located at the terminal's current working directory
+- **SFTP file manager fully reworked**:
+  - Multi-select mode (long-press to enter: batch download / delete / copy path)
+  - Delete (recursive on directories) and rename (platform layer adds SftpSession.delete/rename, dual sshj + libssh2 implementations)
+  - Single tap a file to preview directly; preview panel action menu (download / rename / delete / copy path)
+  - Pull-to-refresh, empty state, directory favorites, date sorting grouped by "Today / This week / Earlier"
+  - File type icons expanded to 20 categories (colored linear icons, including APK / certificate-key / Markdown / torrent / config)
+- **Global unified notice style**: Branded Snackbar (dark rounded card + emerald action), covering terminal page / file manager / global notices
 
-### 优化
+### Improved
 
-- 录音态浮层与 Git/语音按钮统一为品牌翠绿；功能菜单 FAB 与 Git 面板入口合并
-- 上传/下载进度控件统一（TransferProgressCard：右下角悬浮卡片）
-- 文件夹图标回归主题色；文件图标加大到 24dp 并着色区分
+- Recording-state overlay unified with Git/voice buttons into brand emerald; the tools menu FAB merged with the Git panel entry
+- Upload/download progress widgets unified (TransferProgressCard: floating card in the bottom-right)
+- Folder icons returned to theme color; file icons enlarged to 24dp and tinted for distinction
 
-### 修复
+### Fixed
 
-- 语音识别协议按实测修正：响应 result 为顶层对象、最终包由帧 flags 标记、首包无 sequence 段
-- 设置页文案 AppStrings 拆分嵌套子类（避免 JVM 255 参数上限）
+- Voice recognition protocol corrected per real testing: response result is a top-level object, the final packet is marked by frame flags, and the first packet has no sequence field
+- Settings page strings split into nested AppStrings subclasses (avoiding the JVM 255-parameter limit)
 
 ## [1.1.14] - 2026-08-21
 
-### 修复
+### Fixed
 
-- **mosh 接管后 SSH 引导通道迟到输出污染画面**：云主机 PAM MOTD 脚本
-  （landscape/ESM 检测）可耗时 1-3s，其输出在 mosh UDP 确认后才到达，
-  迟到字节写进与 mosh 共用的 UI buffer，盖在 herdr TUI 下方且无后续
-  mosh 帧覆盖（herdr 空闲不重绘），表现为「herdr 下方残留 Ubuntu 升级
-  文案」。mosh UDP 首包确认时置 moshDisplayTakeover 门控，入队与消费
-  两侧同时丢弃；重连时复位保证降级路径 SSH 输出正常进显示
+- **Late SSH bootstrap output polluting the screen after mosh takeover**: Cloud-host PAM MOTD scripts
+  (landscape/ESM detection) can take 1-3s, and their output arrives after the mosh UDP confirmation;
+  the late bytes are written into the UI buffer shared with mosh, landing under the herdr TUI with no later
+  mosh frames to cover them (herdr is idle and doesn't redraw), appearing as "Ubuntu upgrade
+  text left under herdr". On the mosh UDP first-packet confirmation the moshDisplayTakeover gate is set, discarding on both the enqueue and consume
+  sides; the gate resets on reconnect so the degraded SSH path still displays output normally
 
 ## [1.1.13] - 2026-08-21
 
-### 修复
+### Fixed
 
-- **iOS 中文全部渲染成 "kotlin.Unit"**：`codePointToString` 写作
-  `StringBuilder().appendCodePoint(cp).toString()`，而 Kotlin/Native 的
-  StringBuilder 无公开 `appendCodePoint` 成员，解析到本文件返回 `Unit` 的
-  私有扩展 → 每个宽字符渲染成字面串 `kotlin.Unit`；JVM 恰被
-  `java.lang.StringBuilder` 成员遮蔽而正确，掩盖了问题。改为手动码点
-  转代理对的纯表达式实现，平台语义统一
-- **CJK 长行输出冻屏**：宽字符头落 cols-2、尾落 cols-1 恰好填满行时
-  `cursorCol` 推到 cols（越界），下一个字符访问 `cells[cursorCol]` 抛
-  越界——输出消费协程死亡，终端静默冻屏且无任何诊断。钳到最后一格
-  并挂起延迟换行（与窄字符行末语义对齐）
-- **输出解析异常不再杀死会话**：消费循环的 `emulator.write` 包
-  try/catch，单批字节解析异常只丢当前批次（经 `TermLog` 落诊断日志），
-  会话保持响应——跳过一段输出最坏花屏，远好于永久失去响应
+- **iOS Chinese all rendered as "kotlin.Unit"**: `codePointToString` was written as
+  `StringBuilder().appendCodePoint(cp).toString()`, but Kotlin/Native's
+  StringBuilder has no public `appendCodePoint` member, so resolution within this file found the private extension returning `Unit`
+  → every wide character rendered as the literal `kotlin.Unit`; on JVM it happened to be
+  shadowed by `java.lang.StringBuilder` members and worked, masking the issue. Replaced with a pure-expression implementation manually converting code points
+  to surrogate pairs, unifying platform semantics
+- **CJK long-line output froze the screen**: When a wide character's head landed on cols-2 and its tail on cols-1, exactly filling the line,
+  `cursorCol` was pushed to cols (out of bounds), and the next character accessed `cells[cursorCol]`, throwing
+  out of bounds — the output-consumption coroutine died, and the terminal froze silently with no diagnostics. Now clamped to the last cell
+  with deferred wrapping (aligned with narrow-character end-of-line semantics)
+- **Output parse exceptions no longer kill the session**: The consume loop's `emulator.write` is wrapped
+  in try/catch; a parse exception in one batch only drops that batch (diagnostic logging via `TermLog`),
+  and the session stays responsive — skipping a stretch of output worst-case garbles the screen, far better than losing response forever
 
 ## [1.1.12] - 2026-08-21
 
-### 修复
+### Fixed
 
-- **herdr/TUI 模式滚动无惯性**：`awaitEachGesture` 在手势块返回后立即重入
-  （先调 block 再等 all-up），惯性取消语句放在 `awaitFirstDown` 之前，
-  松手启动的惯性滚轮在同一帧被掐死，表现为「拖多少是多少」；
-  移到等指之后，fling 恢复正常衰减滑行
+- **herdr/TUI mode scrolling had no fling**: `awaitEachGesture` re-enters immediately after the gesture block returns
+  (block runs before waiting for all-up), and the fling-cancel statement sat before `awaitFirstDown`,
+  so inertia started on release was killed in the same frame, feeling like "it moves only while you drag";
+  moved after waiting for the pointer, and fling decays normally again
 
 ## [1.1.11] - 2026-08-21
 
-### 新增
+### Added
 
-- **SFTP 文本预览**（文件菜单 → 预览）：md/txt/log 等直接全屏等宽查看，
-  只流式读取前 512 KB（大文件自动截断提示），前 4 KB 含 NUL 自动识别二进制，
-  UTF-8 解码；行内可选文本 + 一键复制全部
-- **SFTP 图片预览**：png/jpg/jpeg/gif/webp/bmp 点击直接黑底显示（Fit 适配），
-  标题栏切换原始像素大小（可滚动看细节）；读取上限 8MB，超限明确提示；
-  平台解码（Android BitmapFactory / iOS skia / 桌面 ImageIO）
-- **SFTP 上传多选**：三平台选择器支持一次选多个文件并发上传
-  （Android OpenMultipleDocuments / iOS allowsMultipleSelection /
-  JFileChooser multiSelectionEnabled，各自独立流式读）
-- **SFTP 文件类型 icon**：图片/视频/音频/压缩包/代码/文本/PDF 按扩展名
-  区分图标（列表与搜索结果一致）
+- **SFTP text preview** (file menu → Preview): md/txt/log etc. open directly in a fullscreen monospace view,
+  streaming only the first 512 KB (large files truncated with a notice), auto-detected as binary if the first 4 KB contain NUL,
+  decoded as UTF-8; selectable in-line text + one-tap copy all
+- **SFTP image preview**: png/jpg/jpeg/gif/webp/bmp open directly on a black background (Fit scaling),
+  with the title bar toggling original pixel size (scrollable for detail); read cap 8MB, with a clear over-limit notice;
+  platform decoding (Android BitmapFactory / iOS skia / desktop ImageIO)
+- **SFTP upload multi-select**: The three platforms' pickers support selecting multiple files and uploading concurrently
+  (Android OpenMultipleDocuments / iOS allowsMultipleSelection /
+  JFileChooser multiSelectionEnabled, each streaming independently)
+- **SFTP file type icons**: Image/video/audio/archive/code/text/PDF icons differ by extension
+  (consistent in list and search results)
 
-### 变更
+### Changed
 
-- **终端 tab 标题优先显示主机自定义名称**；未起名时回退 `user@host`
-- **同主机多会话 tab 编号**：按当前 tab 列表位置 1、2、3…（删除自动重排）
-- **README 截图全部更新**（新 UI）+ mosh/herdr 引导安装截图（中英配对），
-  文档同步引导安装说明（sudo 密码仅本次发送、可跳过降级 SSH）
+- **Terminal tab titles prefer the host's custom name**; falling back to `user@host` when unnamed
+- **Same-host multi-session tab numbering**: Numbered 1, 2, 3… by position in the current tab list (auto-renumbered on delete)
+- **README screenshots all updated** (new UI) + mosh/herdr guided-install screenshots (EN/CN pairs),
+  docs synced with install guidance (sudo password sent only this once, skippable with SSH fallback)
 
 ## [1.1.10] - 2026-08-21
 
 ## [1.1.9] - 2026-08-20
 
-### 变更
+### Changed
 
-- **移除设置页「支持作者」打赏入口**：收款码为个人资产，不随 App/仓库
-  公开（支付宝/微信收款码、docs/donate/ 一并移除）
+- **Removed the "Support the author" donation entry from settings**: The payment QR codes are personal property and not published with the app/repo
+  (Alipay/WeChat payment codes and docs/donate/ removed together)
 
 ## [1.1.8] - 2026-08-20
 
 ## [1.1.7] - 2026-08-20
 
-### 变更
+### Changed
 
-- **键盘工具栏展开不再闪烁**：▾ 展开 F 键/F 功能键行时改为覆盖画布底部
-  而非压缩画布——不触发 PTY resize，herdr 等 TUI 不再整体重排闪屏；
-  键位改正方形（随屏宽自适应，上限 48dp 触控目标）；展开箭头改用
-  Material 图标，符号键（↑↓←→ ⌨ / ⎇）与图标字号对齐 14sp 档
-- **「连接中」指示跨页统一**：SFTP 首连与重连共用终端页同款居中胶囊
-  （此前首连是裸文本）；终端页指示器在「画布−工具栏」可见区域内居中，
-  配色跟随终端主题（应用浅色主题下不再在深色画布上浮出亮色胶囊）
+- **Keyboard toolbar expansion no longer flickers**: When ▾ expands the F-key/F-function row it now covers the bottom of the canvas
+  instead of compressing it — no PTY resize, so TUIs like herdr no longer reflow and flash;
+  keys changed to squares (adaptive to screen width, 48dp touch-target cap); the expand arrow now uses a
+  Material icon, with symbol keys (↑↓←→ ⌨ / ⎇) aligned with icon font size at 14sp
+- **"Connecting" indicator unified across pages**: SFTP first connection and reconnect share the terminal page's centered capsule
+  (previously first connection was plain text); the terminal page indicator centers within the visible "canvas−toolbar" area,
+  with colors following the terminal theme (no longer a bright capsule floating over the dark canvas under the app's light theme)
 
-### 修复
+### Fixed
 
-- **SFTP 断开 banner 永不消失**：重连/换新会话时关闭旧连接会同步触发
-  旧连接的 onClosed 回调，竞态把刚重连成功的会话误标回「已断开」。
-  引入连接代次标识，旧代次回调直接忽略；主动断开/移除同样不再误标
+- **SFTP disconnected banner never disappeared**: On reconnect/switching to a new session, closing the old connection synchronously triggered
+  the old connection's onClosed callback, and the race mislabeled the just-reconnected session back to "Disconnected".
+  Introduced a connection generation ID; callbacks from older generations are ignored; intentional disconnect/removal is likewise no longer mislabeled
 
 ## [1.1.6] - 2026-08-20
 
-### 变更
+### Changed
 
-- **herdr 从连接模式降为连接选项**：herdr 是远端应用而非传输协议，与
-  SSH/Mosh 同层单选属分层错位。改为「连接后启动 herdr 工作台」勾选项
- （与传输层正交）：Mosh 下引导 `mosh-server new -- herdr` 直接跑 TUI；
-  SSH / 降级路径改为连接后注入 herdr 命令（退出回 shell，不再断开整个
-  会话）；删除专用 exec+pty 通道整套机制，连接编排净减 259 行
+- **herdr downgraded from a connection mode to a connection option**: herdr is a remote app, not a transport protocol, and being a same-level single choice with
+  SSH/Mosh was a layering mistake. Now a "Launch the herdr workbench after connecting" checkbox
+  (orthogonal to the transport layer): under Mosh it bootstraps `mosh-server new -- herdr` to run the TUI directly;
+  the SSH / fallback path injects the herdr command after connecting (exiting back to the shell instead of dropping the whole
+  session); removed the entire dedicated exec+pty channel mechanism, cutting connection orchestration by 259 lines
 
-### 修复
+### Fixed
 
-- **新主机多次弹「确认服务器身份」**：连接成功后的系统探测用主机快照
-  整条覆盖，把刚记录的 TOFU 指纹抹回空——此后每次重连/新开会话/SFTP
-  都重复弹窗。改为基于仓库最新值的部分字段更新
+- **New hosts repeatedly popping "Confirm server identity"**: Post-connection system probing overwrote the host snapshot wholesale, wiping the just-recorded TOFU fingerprint back to empty — every subsequent reconnect/new session/SFTP
+  popped the dialog again. Now updated with partial fields based on the repository's latest values
 
 ## [1.1.5] - 2026-08-20
 
-### 新增
+### Added
 
-- **终端工具栏重排 + 新键位**：ESC 左上、CTRL/ALT 左下（同实体键盘底行）；
-  新增 ⇧⇥（Shift+Tab，TUI 菜单反选 / Claude Code 模式切换）与 ⌃\
-  （长按 ⌃C/⌃D 触发，杀连 ⌃C 都不响应的顽固进程）；方向键按住连发
-  （400ms 后 60ms/次）；ESC 长按双发；⌃E 换成 /，两行 8+8 等宽、↑↓ 对齐
+- **Terminal toolbar rearranged + new keys**: ESC top-left, CTRL/ALT bottom-left (matching a physical keyboard's bottom row);
+  added ⇧⇥ (Shift+Tab, TUI menu reverse-select / Claude Code mode toggle) and ⌃\
+  (long-press ⌃C/⌃D to trigger, killing stubborn processes that ignore even ⌃C); arrow keys auto-repeat when held
+  (after 400ms, 60ms each); ESC long-press double-sends; ⌃E swapped for /, two 8+8 equal-width rows with ↑↓ aligned
 
-### 修复
+### Fixed
 
-- **工具栏重排引入的两处回归**：方向键丢失 ESC 字节（发出 "[A" 而非
-  "ESC[A"，打字面字符、光标不动）；尾随 lambda 误绑长按回调（普通键单击
-  失灵、方向键无响应）
-- **覆盖层系统返回穿透**：主机编辑片段页 / 片段管理二级页 / 终端片段面板
-  打开时手势返回直接退首页，连带丢弃正在编辑的表单；现在先关最上层覆盖层
-- **表单页软键盘遮挡**：主机编辑 / 片段编辑 / 标签管理页 imePadding 顶起
-  被盖住的底部字段；标签输入支持 IME Done 提交（原来只有硬件回车生效）
+- **Two regressions from the toolbar rearrangement**: Arrow keys lost the ESC byte (sending "[A" instead of
+  "ESC[A", typing literal characters with no cursor movement); a trailing lambda mis-bound the long-press callback (normal keys failed on single tap,
+  arrow keys unresponsive)
+- **Overlay system-back passthrough**: On the host-edit fragment page / fragment management subpage / terminal fragment panel,
+  a swipe back went straight to the home page, discarding the form being edited; now the topmost overlay closes first
+- **Form pages obscured by the soft keyboard**: On host edit / fragment edit / tag management pages, imePadding lifted
+  the covered bottom fields into view; tag input supports IME Done submission (previously only a hardware Enter worked)
+
 ## [1.1.4] - 2026-08-19
 
-### 修复
+### Fixed
 
-- **Xcode Cloud 归档双重故障**：① Xcode 26 下 ad-hoc 归档（Xcode Cloud
-  固定注入 `CODE_SIGN_IDENTITY=-`）与 Automatic 签名风格互斥，改为
-  无签名归档 + 导出阶段重签；② 设备构建链接到模拟器切片的
-  libssh2（`LIBRARY_SEARCH_PATHS` 中 sim 先于 device），改按 SDK
-  条件分流；③ 删除无引用 entitlements（keychain 默认即隐式组，
-  行为不变）；个人 Team ID 不进仓库（本地真机首次需重选团队）
+- **Xcode Cloud archiving double failure**: ① ad-hoc archiving under Xcode 26 (Xcode Cloud always injects `CODE_SIGN_IDENTITY=-`) is mutually exclusive with the Automatic signing style, changed to
+  unsigned archive + re-sign at export; ② device builds linked to the simulator slice of
+  libssh2 (sim before device in `LIBRARY_SEARCH_PATHS`), now split by SDK condition; ③ removed unreferenced entitlements (keychain default already implies the group,
+  behavior unchanged); the personal Team ID stays out of the repo (local real-device first run needs re-selecting the team)
 
 ## [1.1.3] - 2026-08-19
 
-### 变更
+### Changed
 
-- **仓库信息清理**：去源码注释与 AI 测试用例中的个人基础设施
-  信息（部署机公网 IP、个人域名、内网 IP 占位化）；NOTICE 补全运行时
-  依赖声明（Kotlin/Compose、kotlinx-*、multiplatform-settings、
-  AndroidX、slf4j、MIT），新增 LICENSES/MIT.txt；回退误提交的个人
-  Xcode 签名配置，保持 pbxproj 干净（Team ID 由 Xcode Cloud 注入）
+- **Repository info cleanup**: Removed personal infrastructure
+  info from source comments and AI test cases (deploy machine public IP, personal domain, placeholdered internal IPs); NOTICE completed with runtime
+  dependency declarations (Kotlin/Compose, kotlinx-*, multiplatform-settings,
+  AndroidX, slf4j, MIT), added LICENSES/MIT.txt; reverted mistakenly committed personal
+  Xcode signing configuration, keeping pbxproj clean (Team ID injected by Xcode Cloud)
 
 ## [1.1.2] - 2026-08-19
 
-### 修复
+### Fixed
 
-- **Xcode Cloud Archive 签名配置**：仓库保留 `CODE_SIGNING_ALLOWED=YES`
-  与空 `DEVELOPMENT_TEAM`，Team ID 改由 Xcode Cloud 环境变量注入，
-  既满足云端归档签名，又避免把个人 Team ID 写进仓库
+- **Xcode Cloud Archive signing configuration**: The repo keeps `CODE_SIGNING_ALLOWED=YES`
+  and an empty `DEVELOPMENT_TEAM`, with the Team ID injected via Xcode Cloud environment variables,
+  satisfying cloud archive signing while keeping the personal Team ID out of the repo
 
 ## [1.1.1] - 2026-08-19
 
-### 修复
+### Fixed
 
-- **Xcode Cloud 构建失败**（PhaseScriptExecution failed）：云构建镜像不带
-  Java 且 iosApp/native/ 为 git-ignored（OpenSSL/libssh2 缺失）——新增
-  ci_post_clone.sh 自动装 Temurin 17 + 交叉编译原生依赖，script phase
-  增加 JAVA_HOME 兑底解析；本地构建不受影响
+- **Xcode Cloud build failure** (PhaseScriptExecution failed): The cloud build image lacks
+  Java and iosApp/native/ is git-ignored (missing OpenSSL/libssh2) — added
+  ci_post_clone.sh to auto-install Temurin 17 + cross-compile native dependencies, and the script phase
+  gained a JAVA_HOME fallback resolution; local builds unaffected
 
 ## [1.1.0] - 2026-08-19
 
-### 新增
+### Added
 
-- **iOS App Store 上架准备**：隐私清单（PrivacyInfo.xcprivacy）、
-  中英双语 InfoPlist.strings、加密合规声明（标准协议豁免）、
-  iPhone-only 目标机型；提审材料草稿见 docs/appstore/submission.md
+- **iOS App Store listing preparation**: Privacy manifest (PrivacyInfo.xcprivacy),
+  bilingual InfoPlist.strings, encryption compliance declaration (standard-protocol exemption),
+  iPhone-only target devices; submission draft in docs/appstore/submission.md
 
-### 修复
+### Fixed
 
-- **iOS 项目文件损坏**：双语 InfoPlist.strings 的构建条目 isa 误写为
-  PBXVariantGroup，Xcode 解析项目即崩（unrecognized selector），
-  CI/Xcode Cloud 干净检出无法打开工程
-- **iOS 编译修复一批**：FilePicker 编译错误（NSObject import 错位 +
-  协调读取回调误用）；libssh2 长度参数从字符数改为字节数（UTF-8 多字节
-  路径下 SFTP 下载失败）；SFTP 上传补齐与断线防挂死；kbiHandler 泄漏；
-  herdr 引导重复探测去重
-- **CI 构建溯源**：main 分支测试包文件名带版本 + run 号 + 短 SHA，
-  下载后可溯源是哪次构建
+- **Corrupted iOS project file**: The bilingual InfoPlist.strings build entry's isa was mistakenly written as
+  PBXVariantGroup, crashing Xcode when parsing the project (unrecognized selector),
+  so CI/Xcode Cloud clean checkouts couldn't open the project
+- **A batch of iOS compile fixes**: FilePicker compile errors (misplaced NSObject import +
+  coordinated-read callback misuse); libssh2 length parameters changed from character count to byte count (SFTP downloads failed on UTF-8 multi-byte
+  paths); SFTP upload completion added and hang-on-disconnect prevented; kbiHandler leak;
+  herdr bootstrap duplicate probing deduplicated
+- **CI build traceability**: main branch test build filenames include version + run number + short SHA,
+  so downloads can be traced to the build that produced them
 
 ## [1.0.1] - 2026-08-19
 
-### 修复
+### Fixed
 
-- **HERDR 模式进不了工作台**：sshd 非交互 exec 的 PATH 不含
-  `~/.local/bin` 时，探测命中 `$HOME` 前缀候选，但下游 mosh 引导
-  `-- '$HOME/...'` 的单引号不展开、mosh-server 直接 execvp 不过 shell，
-  报 `execvp: $HOME/.local/bin/herdr: No such file or directory`。
-  探测命中后先解析成绝对路径（`echo $HOME`）再贯穿引导/降级/重连全链路
-- 终端顶部状态飘条（连接中/重连中/失联/错误）改直角，贴合全宽终端视觉
+- **HERDR mode couldn't enter the workbench**: When sshd non-interactive exec's PATH lacks
+  `~/.local/bin`, probing hit the `$HOME`-prefixed candidate, but the downstream mosh bootstrap
+  `-- '$HOME/...'` single quotes don't expand and mosh-server execvp's directly without a shell,
+  reporting `execvp: $HOME/.local/bin/herdr: No such file or directory`.
+  After a probe hit, the path is resolved to absolute (`echo $HOME`) and carried through bootstrap/fallback/reconnect end to end
+- Terminal top status strip (connecting/reconnecting/lost/error) changed to square corners, fitting the full-width terminal look
 
 ## [1.0.0] - 2026-08-17
 
-首个正式版（versionCode 3）。此前所有构建均为内部测试，未公开分发；
-发布前完成签名密钥重建（别名 `mssh` → `termish`），无历史升级兼容负担。
+First official release (versionCode 3). All prior builds were internal testing, not publicly distributed;
+the signing key was rebuilt before release (alias `mssh` → `termish`), with no historical upgrade-compatibility burden.
 
-### 新增
+### Added
 
-- **纯 Kotlin mosh 客户端**（`dev.termish.mosh`）：自研 AES-128-OCB（L 表约定对齐协议规格，含独立标准测试向量）、SSP 状态同步（分片/重组/
-  乱序恢复/ACK/throwaway/prospective resend）、zlib 分片压缩、RTT 估计
-  （Jacobson/Karels）、UDP 直连与 15s 连通性超时。影子终端复用自研纯 Kotlin
-  终端模拟器，渲染帧率上限 50fps，无需依赖原生 mosh-client 二进制。
-- 本地回显预测（prediction overlay）：高 RTT 下按 mosh 触发阈值在确认态分叉上
-  预测渲染，echo_ack 收编，打字即时性对齐原生 mosh-client
-- Mosh 全端支持：SSH 引导启动 `mosh-server`、固定 UDP 端口（NAS/端口转发场景）、
-  终端主题注入（`moshThemeSync`）让 herdr 等 TUI 拿到手机配色
-- 会话管理：Connections tab 离开不断连、离开策略（保留/10 分钟/断开）、指数退避
-  自动重连、Android 前台服务 + wakelock 后台保活、断网/网络切换恢复
-- 多会话支持：同主机多会话 tab、终端页 tab 栏、会话状态统计卡片
-- SFTP：连接覆盖层 + 文件浏览 tab、上传、流式下载、**递归目录下载**、面包屑
-  导航（两级折叠 + 返回=历史回退）、通配符/多关键词搜索、切 tab 保持路径/列表
-  状态；iOS 二进制字节流上传（cinterop 绕过 String 映射）、无 longentry 服务器
-  stat 兜底目录识别
-- 加密私钥支持（PKCS#8 / legacy PEM / OpenSSH，连接时询问口令，不落盘）
-- 自动识别远端系统（Termius 式）：连接后 exec 探测 os-release/uname，无需手填
-- macOS 风格终端页头（交通灯圆点，红点=返回）、状态栏图标主题感知
-- 认证/主机密钥确认弹窗全局化（首页连接等待时直接弹出）
-- 设置页、主机编辑页整行可点单选（无障碍 Role.RadioButton）
-- 工程化：根目录 Gradle 工作流任务（testIntegration/runDebug/reinstallDebug）、
-  Makefile 薄壳、签名机密 `.env` 化（CI 零文件注入）、集成测试自我探测
+- **Pure-Kotlin mosh client** (`dev.termish.mosh`): In-house AES-128-OCB (L-table convention aligned with the protocol spec, including independent standard test vectors), SSP state synchronization (fragmentation/reassembly/
+  out-of-order recovery/ACK/throwaway/prospective resend), zlib fragment compression, RTT estimation
+  (Jacobson/Karels), direct UDP connection and a 15s connectivity timeout. The shadow terminal reuses the in-house pure-Kotlin
+  terminal emulator, with render capped at 50fps, no dependency on the native mosh-client binary.
+- Local echo prediction (prediction overlay): at high RTT, prediction renders on the unconfirmed fork per mosh's trigger threshold,
+  absorbed by echo_ack, aligning typing immediacy with native mosh-client
+- Mosh support on all platforms: SSH bootstraps `mosh-server`, fixed UDP port (NAS/port-forwarding scenarios),
+  terminal theme injection (`moshThemeSync`) so TUIs like herdr get the phone's color scheme
+- Session management: leaving the Connections tab doesn't disconnect, leaving policy (keep/10 minutes/disconnect), exponential-backoff
+  auto-reconnect, Android foreground service + wakelock background keepalive, and recovery from network loss/switches
+- Multi-session support: same-host multi-session tabs, terminal page tab bar, session status stat cards
+- SFTP: connection overlay + file browsing tab, upload, streaming download, **recursive directory download**, breadcrumb
+  navigation (two-level collapse + back = history back), wildcard/multi-keyword search, path/list state kept across tab switches;
+  iOS binary byte-stream upload (cinterop bypassing String mapping), directory detection fallback for servers without longentry stat
+- Encrypted private key support (PKCS#8 / legacy PEM / OpenSSH, passphrase asked at connection, never written to disk)
+- Auto-detection of the remote system (Termius-style): exec probe of os-release/uname after connecting, no manual entry
+- macOS-style terminal page header (traffic-light dots, red dot = back), theme-aware status bar icons
+- Authentication/host key confirmation dialogs globalized (pops directly while the home page waits to connect)
+- Settings and host edit pages with full-row tappable radio buttons (accessibility Role.RadioButton)
+- Engineering: root Gradle workflow tasks (testIntegration/runDebug/reinstallDebug),
+  thin Makefile shell, signing secrets in `.env` (CI zero-file injection), integration tests self-detecting
 
-### 终端模拟器
+### Terminal emulator
 
-- VT100/xterm 序列、UTF-8、CJK 宽字符全链路 2 格、alt screen、scrollback
-- 行级 COW 与 `(identity, version)` 增量同步、`shallowFork` 分叉（渲染性能关键）
-- 真彩/256/ANSI-16、OSC 8/10/11/12/52、bracketed paste、DECSCUSR、鼠标报告
-  （X10/SGR/urxvt）、焦点事件、alternate scroll
-- 行级文本布局缓存（LRU 256 行，滚动整屏平移全命中）
-- CJK IME 一等公民：组合态不上线、提交才 diff 发送、候选栏正常
+- VT100/xterm sequences, UTF-8, CJK wide-character full chain at 2 cells, alt screen, scrollback
+- Row-level COW with `(identity, version)` incremental sync, `shallowFork` forking (render performance critical)
+- True color/256/ANSI-16, OSC 8/10/11/12/52, bracketed paste, DECSCUSR, mouse reporting
+  (X10/SGR/urxvt), focus events, alternate scroll
+- Row-level text layout cache (LRU 256 rows, full-screen scrolling shifts with all hits)
+- CJK IME as a first-class citizen: composing text never reaches the wire, only committed text is diffed and sent, candidate bar works normally
 
-### 修复
+### Fixed
 
-- SSH 输出消费串行到主线程：reader 只向有界队列（256 chunk，满则 TCP 背压）
-  投递，主线程单点喂 emulator 并按 8ms 帧预算批量合并重绘——终端缓冲全部读写
-  限定在主线程，消除与 Canvas 绘制、resize 重建行数组之间的竞争
-- TerminalController 协程治理：移除会话时销毁控制器回收延迟任务；不吞
-  CancellationException；mosh 异常退出重连纳入 reconnectJob 统一管理
-- 认证/主机密钥弹窗 120s 超时：页面销毁/无人应答按拒绝处理，连接线程不永久阻塞
-- mosh 语义对齐：已连接后永不主动超时退出（漫游）、重绘失效（打字延迟/滚动跳变
-  根因）、shallowFork 幻影行累积、COW 卡顿、状态点与失联横幅同源
-- 保活与重连：续期计时改绝对时刻防空洞、网络监听区分断开/传输切换、免疫期/防抖
-  拆分并用单调钟、mosh「连上即退」稳定期重置、重连失败停保活防空转
-- 终端 resize 崩溃（TerminalLine 行列不同步越界）、点击坐标漂移、OSC 8 点击、
-  折行复制
-- iOS：SSH 线程安全与资源泄漏、连接竞态、Keychain 日志元数据
-- iOS/桌面连接超时：tcpConnect 改非阻塞 connect + poll，应用 15s
-  connectTimeoutMillis（此前 iOS 对黑洞地址要等内核 TCP 重试 60s+，UI 一直
-  转圈）；错误提示从模糊的 errno 60 变为「连接超时（15s 无响应）」
-- 首页卡片状态三态显示：连接中（CONNECTING/AUTH）不再计入「已连接」——
-  统计与条目标签区分 已连接绿 / 连接中橙 / 已断开灰
-- 主机配置变更后卡片点击不复用旧会话：凭据签名（credentialKey）比对，
-  不匹配则用当前配置新建（旧会话保留在连接页可手动关闭）
-- CI workflow 修复：job 级 if 不可用 matrix context 导致 workflow 解析失败、
-  Ubuntu sshd 需 /run/sshd 目录、Windows WiX 改官方二进制下载（choco 不稳）
-- 发版链路：GitHub Release 自动汇总三平台产物并附 SHA-256 校验和
+- SSH output consumption serialized to the main thread: the reader only posts to a bounded queue (256 chunks, TCP backpressure when full),
+  and the main thread feeds the emulator from a single point, batching redraws within an 8ms frame budget — all terminal buffer reads/writes
+  are confined to the main thread, eliminating races with Canvas drawing and resize row-array rebuilds
+- TerminalController coroutine governance: removing a session destroys the controller and reclaims delayed tasks; CancellationException is not swallowed;
+  mosh abnormal-exit reconnect is managed under reconnectJob uniformly
+- Authentication/host key dialogs 120s timeout: page destruction or no answer is treated as denial, so the connection thread never blocks forever
+- Mosh semantic alignment: after connecting it never actively times out (roaming), redraw invalidation (root cause of typing lag/scroll jumps),
+  shallowFork phantom-row accumulation, COW stutter, and status dot and lost banner from one source
+- Keepalive and reconnect: renewal timing switched to absolute instants to avoid dead windows, network listening distinguishes disconnect/transport switch,
+  immunity period/debounce split using a monotonic clock, mosh "connect-then-exit" resets after a stable period, and reconnect failure stops keepalive to prevent spinning
+- Terminal resize crash (TerminalLine row/col out-of-sync overrun), click coordinate drift, OSC 8 clicks,
+  wrapped-line copy
+- iOS: SSH thread safety and resource leaks, connection races, Keychain log metadata
+- iOS/desktop connection timeout: tcpConnect changed to non-blocking connect + poll, applying the 15s
+  connectTimeoutMillis (previously iOS waited for the kernel's 60s+ TCP retries on black-hole addresses while the UI spun); the error notice changed from a vague errno 60 to "Connection timed out (no response in 15s)"
+- Home card three-state display: connecting (CONNECTING/AUTH) no longer counted as "Connected" —
+  stats and entry labels distinguish connected green / connecting orange / disconnected gray
+- Card taps no longer reuse the old session after host config changes: credential signature (credentialKey) compared,
+  and on mismatch a new session is created with the current config (the old session remains on the connections page to close manually)
+- CI workflow fixes: job-level if can't use matrix context, which broke workflow parsing;
+  Ubuntu sshd needs the /run/sshd directory; Windows WiX switched to official binary download (choco unstable)
+- Release pipeline: GitHub Release auto-aggregates artifacts from three platforms with SHA-256 checksums
 
-### 安全
+### Security
 
-- Android Keystore (AES-GCM) / iOS Keychain 密钥存储；密码/私钥不落盘明文
-- TOFU 主机密钥校验：首次确认、指纹变更弹窗核对新旧指纹（有重置入口）；
-  点信任即记录指纹，认证失败不再重复弹授信窗
-- 签名密钥重建：keystore 别名从历史遗留 `mssh` 清理为 `termish`（CN=Termish，
-  4096-bit RSA，有效期 10000 天）；旧 keystore 归档于
+- Android Keystore (AES-GCM) / iOS Keychain secret storage; passwords/private keys never stored in plaintext on disk
+- TOFU host key verification: confirm on first use, and a fingerprint-change popup compares old and new (with a reset entry);
+  tapping trust records the fingerprint, and authentication failure no longer re-pops the trust dialog
+- Signing key rebuild: the keystore alias cleaned up from the legacy `mssh` to `termish` (CN=Termish,
+  4096-bit RSA, valid 10000 days); the old keystore is archived at
   `~/Documents/秘钥/termish-mssh-legacy-20260817.jks`
-- 无遥测、无分析、除 SSH 连接外无网络请求
+- No telemetry, no analytics, and no network requests beyond SSH connections
 
-### 移除
+### Removed
 
-- 原生 mosh-client 路径（so 模式）：`USE_KMP_MOSH` 回退开关、Android JNI PTY 桥、
-  iOS `mosh-client` 二进制、desktop pty4j、相关构建脚本与 CI 步骤、GPL 许可声明。
-  原生实现完整快照保留在 `native-mosh` tag
+- The native mosh-client path (so mode): the `USE_KMP_MOSH` fallback switch, Android JNI PTY bridge,
+  iOS `mosh-client` binary, desktop pty4j, related build scripts and CI steps, and the GPL license notice.
+  A complete snapshot of the native implementation is preserved at the `native-mosh` tag
 
-### 文档
+### Documentation
 
-- README 双语化（英文权威 + 中文全文镜像）；docs/ 深水文档下沉：
+- README made bilingual (English authoritative + full Chinese mirror); docs/ deep-water documents added:
   architecture / terminal-emulator / mosh / input-pipeline
-- crypto/README：明确记录 mosh AES-128-OCB 自研实现的生产链路例外及威胁模型
-- README 首页下载入口（Android/桌面/iOS 三渠道按钮）+ 双语截图体系：
-  每语言 6 张 3×2（Android 深色 5 页面 + iOS），全黑色主题实拍；
-  官网 Screens 同步（英文 6 张 / 中文 9 张 3×3）
+- crypto/README: explicitly records the production-pipeline exception and threat model of the in-house mosh AES-128-OCB implementation
+- README home download entries (Android/desktop/iOS three-channel buttons) + bilingual screenshot system:
+  6 shots per language in 3×2 (5 Android dark pages + iOS), all real captures on an all-black theme;
+  website Screens synced (6 English / 9 Chinese in 3×3)
 
 ## [0.2.0] - 2026-08-15
 
-内部测试构建，未公开分发。
+Internal test build, not publicly distributed.
 
-### 新增
+### Added
 
-- 纯 Kotlin 终端模拟器 + Compose Multiplatform UI（Android/iOS/Desktop）
-- 传输层：JVM sshj + BouncyCastle，iOS libssh2 + 静态 OpenSSL
-- 主机管理：搜索、标签、快捷命令、密码/私钥/keyboard-interactive 认证
-- 双行功能键工具栏（F1-F12、方向键、sticky CTRL/ALT）
-- 设计系统：zinc 中性色 + emerald 强调色，内置 JetBrains Mono
+- Pure-Kotlin terminal emulator + Compose Multiplatform UI (Android/iOS/Desktop)
+- Transport layer: JVM sshj + BouncyCastle, iOS libssh2 + static OpenSSL
+- Host management: search, tags, quick commands, password/private-key/keyboard-interactive authentication
+- Two-row function-key toolbar (F1-F12, arrow keys, sticky CTRL/ALT)
+- Design system: zinc neutrals + emerald accents, bundled JetBrains Mono
 
 [Unreleased]: https://github.com/farlume/termish/compare/v1.8.14...HEAD
 [1.8.14]: https://github.com/farlume/termish/compare/v1.8.13...v1.8.14

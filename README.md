@@ -12,7 +12,6 @@
   <a href="CONTRIBUTING.md#ios">Build for iOS</a> ·
   <a href="https://termish.dev">Website</a> ·
   <a href="#quick-start">Quick start</a> ·
-  <a href="README.zh-CN.md">简体中文</a>
 </p>
 <p align="center">
   <a href="https://github.com/ttermish/termish/releases/latest"><img src="https://img.shields.io/github/v/release/ttermish/termish?color=10b981" alt="Latest release" /></a>

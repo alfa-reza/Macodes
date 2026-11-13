@@ -55,13 +55,15 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
-  # Android：检查在本地完成，CI 仅构建打包；tag 只构建 release，手动构建另留 debug。
+  # Android: checks happen locally; CI only builds and packages. Tag builds build
+  # release only; manual runs also leave a debug build available.
   #
-  # 正式 tag 必须签名；未配置时仅允许手动构建 unsigned 自测产物。
-  #   ANDROID_KEYSTORE_BASE64       – 签名密钥库的 base64 内容
-  #   ANDROID_KEYSTORE_PASSWORD     – 密钥库密码
-  #   ANDROID_KEY_ALIAS             – 别名
-  #   ANDROID_KEY_PASSWORD          – 别名密码
+  # Official tags must be signed; without secrets configured only manual builds of
+  # unsigned self-test artifacts are allowed.
+  #   ANDROID_KEYSTORE_BASE64       – base64 content of the signing keystore
+  #   ANDROID_KEYSTORE_PASSWORD     – keystore password
+  #   ANDROID_KEY_ALIAS             – alias
+  #   ANDROID_KEY_PASSWORD          – alias password
   # ---------------------------------------------------------------------------
   android:
     name: Android (APK + AAB)
@@ -86,7 +88,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      # 发版 tag 必须与仓库里的版本号一致，防止「tag 0.3.0、包还是 0.2.0」
+      # The release tag must match the version in the repo, preventing "tag 0.3.0 but the package is still 0.2.0"
       - name: Verify version matches tag
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -94,14 +96,14 @@ jobs:
           VN=$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' composeApp/build.gradle.kts | head -1)
           IOS_VERSIONS=$(sed -n 's/^[[:space:]]*MARKETING_VERSION = \([^;]*\);.*/\1/p' iosApp/iosApp.xcodeproj/project.pbxproj | sort -u)
           if [ "$TAG" != "$VN" ] || [ "$TAG" != "$IOS_VERSIONS" ]; then
-            echo "::error::tag=$TAG 与构建配置不一致 (Android versionName=$VN, iOS MARKETING_VERSION=$IOS_VERSIONS)"
-            echo "::error::请先运行 ./scripts/bump-version.sh $TAG 并提交，再重新打 tag"
+            echo "::error::tag=$TAG does not match build config (Android versionName=$VN, iOS MARKETING_VERSION=$IOS_VERSIONS)"
+            echo "::error::Run ./scripts/bump-version.sh $TAG and commit first, then re-tag"
             exit 1
           fi
-          echo "版本一致：Android / iOS $TAG"
+          echo "Versions consistent: Android / iOS $TAG"
 
-      # 正式 tag 绝不允许降级为 unsigned 产物；手动构建仍可生成未签名
-      # release artifact 供内部检查，但不会进入 GitHub Release。
+      # Official tags must never degrade to unsigned artifacts; manual builds may still produce
+      # unsigned release artifacts for internal inspection, but they never enter the GitHub Release.
       - name: Verify release signing configuration
         if: startsWith(github.ref, 'refs/tags/v')
         env:
@@ -115,8 +117,9 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: ./gradlew :composeApp:assembleDebug
 
-      # release 签名：仓库 secrets 以进程环境变量注入，构建脚本读取并解码 base64。
-      # 本地读取项目根 .env；密钥库解码到 build/signing/。
+      # Release signing: repo secrets are injected as process environment variables; the build
+      # script reads them and decodes the base64. Locally it reads the project root .env;
+      # the keystore is decoded into build/signing/.
       - name: Build release APK and AAB
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -139,18 +142,19 @@ jobs:
           APKSIGNER=$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -1)
           test -n "$APK" && test -n "$AAB" && test -x "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
-          # AAB 验签：jarsigner -strict 在新 JDK 上把自签名证书链的 PKIX 警告
-          # 当失败（exit 4，v1.6.4 首跑即被拦）——release keystore 本就是自签名，
-          # 这是预期；而「未签名」的 jar 无论 strict 与否都返回 0。改为：
-          # ① 断言签名条目存在（META-INF/*.{RSA,DSA,EC} + *.SF 只会由签名产生）
-          # ② jarsigner 输出含 verified（未签名/被篡改时输出 unsigned/error）
+          # AAB verification: on newer JDKs jarsigner -strict treats the PKIX warning of a self-signed
+          # certificate chain as a failure (exit 4, hit on the very first v1.6.4 run) — the release
+          # keystore is self-signed by design, so this is expected; while an "unsigned" jar returns 0
+          # regardless of strict. So instead:
+          # ① assert signature entries exist (META-INF/*.{RSA,DSA,EC} + *.SF are only produced by signing)
+          # ② jarsigner output contains verified (unsigned/tampered jars output unsigned/error)
           # Both signature entries are required; either failure must reject the AAB.
           # shellcheck disable=SC2015
           unzip -l "$AAB" | grep -Eq 'META-INF/[^/]+\.(RSA|DSA|EC)$' \
             && unzip -l "$AAB" | grep -Eq 'META-INF/[^/]+\.SF$' \
-            || { echo "::error::AAB 缺少签名条目（未签名产物不得发版）"; exit 1; }
+            || { echo "::error::AAB is missing signature entries (unsigned artifacts must not be released)"; exit 1; }
           jarsigner -verify "$AAB" | grep -q "jar verified" \
-            || { echo "::error::AAB jarsigner 校验未通过（被篡改/损坏？）"; exit 1; }
+            || { echo "::error::AAB jarsigner verification failed (tampered/corrupted?)"; exit 1; }
 
       - name: Upload debug APK
         if: github.event_name == 'workflow_dispatch'
@@ -162,9 +166,11 @@ jobs:
 
       - name: Rename release assets with build stamp
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        # 测试包不改 versionName/versionCode（同号覆盖安装允许，正式发版不受
-        # run_number 膨胀影响）；文件名带 run 号 + 短 SHA，下载后可溯源是
-        # 哪次构建。tag 发版不改名：release job 的重命名步骤依赖原始文件名
+        # Test packages do not bump versionName/versionCode (same-number overwrite installs are
+        # allowed, and official releases are unaffected by run_number inflation); the filename
+        # carries the run number + short SHA so a download can be traced back to the build that
+        # produced it. Tag releases are not renamed: the release job's rename step depends on
+        # the original filenames.
         run: |
           VN=$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' composeApp/build.gradle.kts | head -1)
           cd composeApp/build/outputs
@@ -186,7 +192,8 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
-  # 发布：仅 tag（vX.Y.Z）触发，汇总 Android 产物创建 GitHub Release（iOS 由 Xcode Cloud 分发）
+  # Release: only triggered by tags (vX.Y.Z); aggregates Android artifacts to create the
+  # GitHub Release (iOS is distributed by Xcode Cloud)
   # ---------------------------------------------------------------------------
   release:
     name: Publish GitHub Release
@@ -197,10 +204,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      # gh release create --generate-notes 需要 git 上下文，必须 checkout
+      # gh release create --generate-notes needs git context, so checkout is required
       - uses: actions/checkout@v4
 
-      # 只取 Android release 产物（debug APK 仅留档，不进 Release）。
+      # Only fetch the Android release artifacts (the debug APK is archived only, not in the Release).
       - uses: actions/download-artifact@v4
         with:
           name: android-release
@@ -211,8 +218,8 @@ jobs:
         run: |
           VER="${GITHUB_REF_NAME#v}"
           cd dist
-          # upload-artifact v4 多 path 会保留 apk/、bundle/ 目录结构。
-          # 收集 APK/AAB 并按版本统一重命名到顶层。
+          # upload-artifact v4 with multiple paths preserves the apk/, bundle/ directory structure.
+          # Collect APK/AAB files and rename them uniformly to the top level with the version.
           while IFS= read -r -d '' f; do
             name=$(basename "$f" | sed "s/^composeApp-//")
             mv "$f" "Termish-$VER-$name"
@@ -241,16 +248,17 @@ jobs:
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --title "$TAG" --draft --generate-notes
           fi
-          # 先建空 release，资产逐个 --clobber 上传：gh release create 带资产
-          # 不支持覆盖同名资产（delete 后立即重建同名资产会遇 uploads 服务
-          # 去重延迟 → 422 ReleaseAsset.name already exists），逐资产上传
-          # 幂等且单资产失败可单独补传
+          # Create an empty release first, then upload assets one by one with --clobber: gh release
+          # create with assets does not support overwriting assets with the same name (delete +
+          # immediately recreate the same-named asset hits uploads service dedup delay → 422
+          # ReleaseAsset.name already exists). Uploading per asset is idempotent, and a single
+          # asset failure can be re-uploaded on its own.
           for f in dist/*; do
             gh release upload "$TAG" "$f" --clobber
-            echo "✅ 已上传 $(basename "$f")"
+            echo "✅ Uploaded $(basename "$f")"
           done
           gh release edit "$TAG" --draft=false --latest
-          echo "✅ Release $TAG 完成"
+          echo "✅ Release $TAG done"
 
   publish-r2:
     name: Sync published release to R2

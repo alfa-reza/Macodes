@@ -4,14 +4,14 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
-	<!-- App 内建中英双语（AppStrings），声明后商店页展示对应语言列表 -->
+	<!-- The app ships an English interface -->
 	<key>CFBundleLocalizations</key>
 	<array>
 		<string>en</string>
-		<string>zh-Hans</string>
 	</array>
-	<!-- SSH/Mosh 为标准协议加密（非自研加密算法提供数据保护），按豁免申报；
-	     不声明则每次提审都弹出口合规问询 -->
+	<!-- SSH/Mosh use standard protocol encryption (not self-developed crypto for data protection);
+	     declared under the exemption rules; without a declaration, App Store review raises an
+	     export-compliance questionnaire on every submission -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>CFBundleExecutable</key>
@@ -33,9 +33,9 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Termish 需要通过局域网连接你配置的 SSH/Mosh 服务器（NAS、Mac 等），用于远程终端与文件传输。</string>
+	<string>Termish needs to connect through your local network to the SSH/Mosh servers you configure (NAS, Mac, etc.) for remote terminal access and file transfer.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>用于语音输入：按住终端工具栏的麦克风键说话，将语音转换为文字发送到终端。</string>
+	<string>Used for voice input: hold the microphone key on the terminal toolbar and speak to convert your speech into text sent to the terminal.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

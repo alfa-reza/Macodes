@@ -45,8 +45,9 @@ Demo data is isolated from real host information; the interface was not redrawn,
 The videos were edited from actual screen recordings and converted to the dimensions Apple requires,
 keeping a reading pause at the end of static pages.
 
-The Markdown preview page still uses the two Chinese button labels "预览" / "源码", so the English
-set does not include this page. The app code was not modified during the production of these assets.
+The Markdown preview page still uses the two Chinese button labels 预览 / 源码 (Preview /
+Source), so the English set does not include this page. The app code was not
+modified during the production of these assets.
 
 The Herdr screenshots come from a real running demo workspace and include two tabs, Editor and
 Health Check. Herdr's own interface is in English, so the Herdr menus in both asset sets are

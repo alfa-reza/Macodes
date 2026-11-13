@@ -37,14 +37,14 @@ fi
 if [ -z "$FF" ]; then
   if [ "$OS" = "Darwin" ]; then
   if command -v brew >/dev/null 2>&1; then
-    echo "==> 正在通过 Homebrew 安装 ffmpeg（约几分钟）"
+    echo "==> Installing ffmpeg via Homebrew (takes a few minutes)"
     brew install ffmpeg
     # After installing via brew, re-set the path (command -v may still cause failure in sessions with restricted PATH; use the "brew" prefix as a fallback).
     FF="$(command -v ffmpeg 2>/dev/null)"
     [ -z "$FF" ] && FF="/opt/homebrew/bin/ffmpeg"
     [ -x "$FF" ] || FF="/usr/local/bin/ffmpeg"
   else
-    echo "==> 正在下载 ffmpeg 静态版到 ~/bin"
+    echo "==> Downloading static ffmpeg to ~/bin"
     mkdir -p "$HOME/bin"
     curl -fsSL -o /tmp/termish-ffmpeg.zip https://evermeet.cx/ffmpeg/getrelease/zip
     rm -rf /tmp/termish-ffmpeg && mkdir -p /tmp/termish-ffmpeg
@@ -58,29 +58,29 @@ if [ -z "$FF" ]; then
     # If no valid authorization method is available, output the manual command that matches the distribution.
     if [ "$ADMIN_AVAILABLE" != "1" ]; then
       if command -v apt-get >/dev/null 2>&1; then
-        echo "==> Linux 需要管理员权限：请先在终端执行 sudo apt-get update && sudo apt-get install -y ffmpeg，然后重试" >&2
+        echo "==> Linux requires administrator privileges: run sudo apt-get update && sudo apt-get install -y ffmpeg in a terminal first, then retry" >&2
       elif command -v dnf >/dev/null 2>&1; then
-        echo "==> Linux 需要管理员权限：请先在终端执行 sudo dnf install -y ffmpeg，然后重试" >&2
+        echo "==> Linux requires administrator privileges: run sudo dnf install -y ffmpeg in a terminal first, then retry" >&2
       elif command -v pacman >/dev/null 2>&1; then
-        echo "==> Linux 需要管理员权限：请先在终端执行 sudo pacman -S --needed ffmpeg，然后重试" >&2
+        echo "==> Linux requires administrator privileges: run sudo pacman -S --needed ffmpeg in a terminal first, then retry" >&2
       else
-        echo "==> Linux 需要 ffmpeg：请用系统包管理器安装后重试" >&2
+        echo "==> Linux needs ffmpeg: install it with your system package manager, then retry" >&2
       fi
       exit 1
     fi
     if command -v apt-get >/dev/null 2>&1; then
-      echo "==> 正在通过 apt 安装 ffmpeg"
+      echo "==> Installing ffmpeg via apt"
       # Combine `update` and `install` into a single `sudo` command: even if the remote server has disabled the `sudo` time cache,
       # It also reads the password only once and will not wait for additional input on the second command.
       run_admin sh -c 'apt-get update -qq && apt-get install -y -qq ffmpeg'
     elif command -v dnf >/dev/null 2>&1; then
-      echo "==> 正在通过 dnf 安装 ffmpeg"
+      echo "==> Installing ffmpeg via dnf"
       run_admin dnf install -y -q ffmpeg
     elif command -v pacman >/dev/null 2>&1; then
-      echo "==> 正在通过 pacman 安装 ffmpeg"
+      echo "==> Installing ffmpeg via pacman"
       run_admin pacman -S --needed --noconfirm ffmpeg
     else
-      echo "==> 无法识别 Linux 包管理器，请手动安装 ffmpeg 后重试" >&2
+      echo "==> Unrecognized Linux package manager; install ffmpeg manually, then retry" >&2
       exit 1
     fi
     FF="$(command -v ffmpeg 2>/dev/null)"
@@ -263,7 +263,7 @@ if launchctl print gui/$(id -u)/dev.termish.screen 2>/dev/null | grep -q "state 
   echo "==> TERMISH_SCREEN_OK"
 else
   restore_macos_service
-  echo "==> 服务未启动（检查 ~/Library/Logs/termish-screen.err）" >&2
+  echo "==> Service did not start (check ~/Library/Logs/termish-screen.err)" >&2
   exit 1
 fi
 else
@@ -424,7 +424,7 @@ TERMISH_EOF
     && systemctl --user restart dev.termish.screen.service; then
     SERVICE_STARTED=1
     rm -f "$HOME/.config/autostart/dev.termish.screen.desktop"
-    echo "==> systemd 用户服务：已启用（重启后自动恢复）"
+    echo "==> systemd user service: enabled (restored automatically after reboot)"
   fi
 fi
 if [ "$SERVICE_STARTED" != "1" ]; then
@@ -441,7 +441,7 @@ NoDisplay=true
 TERMISH_EOF
   nohup "$RUNNER" >/dev/null 2>&1 &
   echo $! > "$RELAY_PID"
-  echo "==> 桌面自启动服务：已启用（重启后自动恢复）"
+  echo "==> Desktop autostart service: enabled (restored automatically after reboot)"
 fi
 sleep 1.5
 # Verify that both the control plane and the loopback video port are listeners; do not establish a probe connection (which would trigger ffmpeg).
@@ -452,7 +452,7 @@ if (lsof -nP -iTCP:$PORT -sTCP:LISTEN >/dev/null 2>&1 || ss -ltn 2>/dev/null | g
   cleanup_legacy_screen_files
   echo "==> TERMISH_SCREEN_OK"
 else
-  echo "==> 服务未启动（检查 $LOG）" >&2
+  echo "==> Service did not start (check $LOG)" >&2
   exit 1
 fi
 fi
