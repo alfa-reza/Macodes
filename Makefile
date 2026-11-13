@@ -61,19 +61,8 @@ release: ## Build signed release APK + AAB (validates signing secrets first)
 	@echo "Artifacts: composeApp/build/outputs/{apk,bundle}/release/"
 
 .PHONY: bump
-bump: ## Bump Android / iOS versions together, usage: make bump V=1.0.1 (preview: DRY=1)
+bump: ## Bump the Android version, usage: make bump V=1.0.1 (preview: DRY=1)
 	./scripts/bump-version.sh $(if $(DRY),--dry-run,) $(V)
-
-## ---------- iOS (one-time native deps) ----------
-
-.PHONY: ios-native
-ios-native: ## Cross-compile OpenSSL + libssh2 → iosApp/native/
-	./scripts/build-ios-native.sh
-
-.PHONY: ios-framework
-ios-framework: ## Build the Kotlin framework (simulator + device debug)
-	$(GRADLEW) :composeApp:linkDebugFrameworkIosSimulatorArm64 \
-	           :composeApp:linkDebugFrameworkIosArm64
 
 ## ---------- Maintenance ----------
 

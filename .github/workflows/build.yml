@@ -94,13 +94,12 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME#v}"
           VN=$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' composeApp/build.gradle.kts | head -1)
-          IOS_VERSIONS=$(sed -n 's/^[[:space:]]*MARKETING_VERSION = \([^;]*\);.*/\1/p' iosApp/iosApp.xcodeproj/project.pbxproj | sort -u)
-          if [ "$TAG" != "$VN" ] || [ "$TAG" != "$IOS_VERSIONS" ]; then
-            echo "::error::tag=$TAG does not match build config (Android versionName=$VN, iOS MARKETING_VERSION=$IOS_VERSIONS)"
+          if [ "$TAG" != "$VN" ]; then
+            echo "::error::tag=$TAG does not match build config (Android versionName=$VN)"
             echo "::error::Run ./scripts/bump-version.sh $TAG and commit first, then re-tag"
             exit 1
           fi
-          echo "Versions consistent: Android / iOS $TAG"
+          echo "Versions consistent: Android $TAG"
 
       # Official tags must never degrade to unsigned artifacts; manual builds may still produce
       # unsigned release artifacts for internal inspection, but they never enter the GitHub Release.
@@ -193,7 +192,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Release: only triggered by tags (vX.Y.Z); aggregates Android artifacts to create the
-  # GitHub Release (iOS is distributed by Xcode Cloud)
+  # GitHub Release
   # ---------------------------------------------------------------------------
   release:
     name: Publish GitHub Release
