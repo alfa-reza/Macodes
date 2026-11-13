@@ -175,7 +175,6 @@ First Google Play test release with SSH, Mosh, SFTP, multiple sessions, remote s
 
 - Play icon: `google-play/play-icon.png` (512×512)
 - Feature graphic: `google-play/feature-graphic.png` (1024×500)
-- Chinese phone screenshots: `google-play/zh/`
 - English phone screenshots: `google-play/en/`
 
 Upload order and accessibility notes:
