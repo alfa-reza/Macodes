@@ -1,128 +1,128 @@
-# 架构与线程模型
+# Architecture and Threading Model
 
-> **English summary:** module layout of the KMP codebase, the expect/actual seams,
+> **Summary:** module layout of the KMP codebase, the expect/actual seams,
 > the per-platform transport table, and the threading model that keeps the
 > terminal buffer safe: SSH output is queued and consumed serially on the main
 > thread (bounded queue + backpressure); the Mosh shadow terminal is owned by a
 > session coroutine and synced to the UI buffer via a conflated channel.
 
-## 模块布局
+## Module layout
 
 ```
 composeApp/
-├── commonMain/                # 全平台共享（核心资产）
-│   ├── term/                  # 纯 Kotlin 终端模拟器（零平台依赖，见 terminal-emulator.md）
-│   ├── mosh/                  # 纯 Kotlin mosh 客户端（SSP 协议，见 mosh.md）
-│   ├── ssh/                   # 平台无关会话抽象：SshSession / SftpSession / MoshSession
-│   │                          #   + expect 工厂 createSshSession / createSftpSession
-│   ├── crypto/                # 纯 Kotlin 密码原语（未审计——见其 README；生产只用 Sha256）
-│   ├── data/                  # Host / AppSettings @Serializable 模型、HostRepository
-│   │                          #   （multiplatform-settings + JSON）、SecretStore expect
-│   ├── herdr/                 # herdr 控制面域：HerdrProbe（探测）/ HerdrApi（命令构造）/
-│   │                          #   HerdrMonitor（轮询）/ HerdrModels（快照模型）
-│   ├── ui/                    # AppRoot 导航、SessionManager、TerminalScreen/View、
-│   │                          #   KeyToolbar、SFTP、Host/Connections/Settings 页、theme/
-│   │                          #   TerminalController（会话状态/UI 观察点）+ SessionConnector
-│   │                          #   （连接编排：三模式建连/重连/herdr 引导降级——状态所有权在
-│   │                          #   controller，connector 经同包 internal 读写）
+├── commonMain/                # shared across all platforms (core assets)
+│   ├── term/                  # pure-Kotlin terminal emulator (zero platform deps, see terminal-emulator.md)
+│   ├── mosh/                  # pure-Kotlin mosh client (SSP protocol, see mosh.md)
+│   ├── ssh/                   # platform-agnostic session abstractions: SshSession / SftpSession / MoshSession
+│   │                          #   + expect factories createSshSession / createSftpSession
+│   ├── crypto/                # pure-Kotlin crypto primitives (unaudited — see its README; production uses only Sha256)
+│   ├── data/                  # Host / AppSettings @Serializable models, HostRepository
+│   │                          #   (multiplatform-settings + JSON), SecretStore expect
+│   ├── herdr/                 # herdr control-plane domain: HerdrProbe (probing) / HerdrApi (command construction) /
+│   │                          #   HerdrMonitor (polling) / HerdrModels (snapshot models)
+│   ├── ui/                    # AppRoot navigation, SessionManager, TerminalScreen/View,
+│   │                          #   KeyToolbar, SFTP, Host/Connections/Settings pages, theme/
+│   │                          #   TerminalController (session state / UI observation point) + SessionConnector
+│   │                          #   (connection orchestration: three-mode connect/reconnect/herdr bootstrap fallback —
+│   │                          #   state ownership lives in the controller, the connector reads/writes via same-package internal)
 │   └── util/                  # SessionKeepAlive / NetworkChange / Dispatchers /
-│                              #   MonoFont / AppLifecycle 等 expect 接缝
-├── androidMain/               # MainActivity + SessionService（前台服务保活）+ Keystore
-│   ├── ssh/SshSessionSshj     # sshj + BouncyCastle（ed25519 / chacha20 / RSA / kb-int）
-│   └── mosh/MoshPlatform.android # UDP 套接字 + java.util.zip 实现
-├── iosMain/                   # MainViewController + libssh2 引擎 + Keychain + POSIX UDP
-├── commonTest/                # crypto RFC 向量 + 终端模拟器 + mosh 单元测试
-└── androidUnitTest/           # JVM 本地测试：会话/仓库/sshj/SFTP（真实 sshd，127.0.0.1:22222）
+│                              #   MonoFont / AppLifecycle and other expect seams
+├── androidMain/               # MainActivity + SessionService (foreground service keepalive) + Keystore
+│   ├── ssh/SshSessionSshj     # sshj + BouncyCastle (ed25519 / chacha20 / RSA / kb-int)
+│   └── mosh/MoshPlatform.android # UDP socket + java.util.zip implementation
+├── iosMain/                   # MainViewController + libssh2 engine + Keychain + POSIX UDP
+├── commonTest/                # crypto RFC vectors + terminal emulator + mosh unit tests
+└── androidUnitTest/           # local JVM tests: session/repository/sshj/SFTP (real sshd, 127.0.0.1:22222)
 ```
 
-Android 本地测试通过 `:composeApp:testDebugUnitTest` 运行，也包含 `commonTest`。
-会话与控制器测试使用 Robolectric 提供 Android 环境；仓库测试使用内存 `MapSettings`。
+Android local tests run through `:composeApp:testDebugUnitTest`, and also include `commonTest`.
+Session and controller tests use Robolectric to provide the Android environment; repository tests use an in-memory `MapSettings`.
 
-仓库根目录的 `screenService/` 保存 macOS Python 会话服务、ScreenCaptureKit/CoreGraphics 原生采集、Linux Rust X11/Wayland 服务、配置与安装脚本。
-Gradle 在 Kotlin 编译前生成 `ScreenServiceAssets`，手机端保留现有 SSH 安装/探测入口；
-服务运行在远端图形会话中，视频与控制经 SSH direct-tcpip 访问回环端口。
-源码分工、配置和日志见 [远程画面服务](screen-service.md)。
+The repository root's `screenService/` holds the macOS Python session service, ScreenCaptureKit/CoreGraphics native capture, the Linux Rust X11/Wayland service, configuration and install scripts.
+Gradle generates `ScreenServiceAssets` before Kotlin compilation; the phone side keeps the existing SSH install/probe entry points;
+the service runs inside the remote graphical session, with video and control reaching loopback ports over SSH direct-tcpip.
+See [remote screen service](screen-service.md) for source layout, configuration and logs.
 
-`agentBridge/rust/` 保存原生 Agent 伴随服务，手机同样按系统与架构上传内置二进制。
-控制流走 SSH exec/NDJSON 与私有 Unix socket；新会话以 JSON 原子持久化，不迁移旧 SQLite。
-构建工具位于 `tools/service-build/`，两类服务均在编译前生成 Kotlin 清单与文件资源。
+`agentBridge/rust/` holds the native Agent companion service; the phone likewise uploads the bundled binary per OS and architecture.
+Control flow goes over SSH exec/NDJSON and a private Unix socket; new sessions persist atomically as JSON, with no migration from the old SQLite.
+Build tooling lives in `tools/service-build/`; both service kinds generate the Kotlin manifest and file resources before compilation.
 
-## 平台分工
+## Platform split
 
-| 平台 | SSH 引擎 | 认证 | Mosh 客户端 | 密钥存储 |
+| Platform | SSH engine | Authentication | Mosh client | Key storage |
 |------|----------|------|-------------|----------|
-| Android | sshj + BouncyCastle | password / publickey / keyboard-interactive | 纯 Kotlin `dev.termish.mosh`（UDP 直连） | Android Keystore（AES-GCM） |
-| iOS | libssh2 + OpenSSL（静态链接） | 同上 | 纯 Kotlin `dev.termish.mosh` | Keychain |
+| Android | sshj + BouncyCastle | password / publickey / keyboard-interactive | pure Kotlin `dev.termish.mosh` (direct UDP) | Android Keystore (AES-GCM) |
+| iOS | libssh2 + OpenSSL (static link) | same as above | pure Kotlin `dev.termish.mosh` | Keychain |
 
-## expect/actual 接缝
+## expect/actual seams
 
-平台代码只允许出现在这些接缝之后：
+Platform code is only allowed behind these seams:
 
-| 接缝 | commonMain | androidMain | iosMain |
+| Seam | commonMain | androidMain | iosMain |
 |------|-----------|-------------|---------|
-| `ssh.createSshSession` | expect | sshj 引擎 | libssh2 引擎 |
+| `ssh.createSshSession` | expect | sshj engine | libssh2 engine |
 | `ssh.createSftpSession` | expect | SftpSessionSshj | SftpSessionLibssh2 |
 | `data.SecretStore` | expect | Keystore AES-GCM | Keychain |
-| `util.SessionKeepAlive` | expect | 前台服务 + wakelock | no-op |
+| `util.SessionKeepAlive` | expect | foreground service + wakelock | no-op |
 | `util.NetworkChange` | expect | ConnectivityManager | no-op |
-| `util.Dispatchers` | expect | IO/Default | 自定义 IO 队列 |
-| `util.MonoFont` | expect | 捆绑 JetBrains Mono | PingFang SC |
-| `mosh.MoshUdpSocket` / zlib | expect | JVM socket + java.util.zip | POSIX socket + 系统 zlib |
+| `util.Dispatchers` | expect | IO/Default | custom IO queue |
+| `util.MonoFont` | expect | bundled JetBrains Mono | PingFang SC |
+| `mosh.MoshUdpSocket` / zlib | expect | JVM socket + java.util.zip | POSIX socket + system zlib |
 | `ui.FilePicker/FileSaver/DirectorySaver` | expect | SAF/DocumentFile | UIDocumentPicker |
 
-## 线程模型（2026-08 重构后的约定）
+## Threading model (conventions after the 2026-08 refactor)
 
-约束一句话：**`TerminalBuffer` 的全部读写（渲染 / resize / 选择 / 模拟器写入）串行在主线程**。
+The constraint in one sentence: **all reads and writes of `TerminalBuffer` (render / resize / selection / emulator writes) are serialized on the main thread**.
 
-### SSH 输出路径
+### SSH output path
 
 ```
-sshj/libssh2 reader 协程（IO 线程）
-    └─ onOutput/onStderr（挂起回调）
+sshj/libssh2 reader coroutine (IO thread)
+    └─ onOutput/onStderr (suspending callbacks)
          └─ TerminalController.enqueueOutput
-              └─ Channel<ByteArray>(256)   ← 有界队列
-                   └─ 主线程消费协程
-                        ├─ emulator.write(chunk)     ← buffer 唯一写入口
-                        ├─ 8ms 帧预算内批量抽干，合并重绘
-                        └─ frame++（Compose 重绘信号）
+              └─ Channel<ByteArray>(256)   ← bounded queue
+                   └─ main-thread consumer coroutine
+                        ├─ emulator.write(chunk)     ← the only write entry into the buffer
+                        ├─ drained in batches within an 8ms frame budget, redraw coalesced
+                        └─ frame++ (Compose redraw signal)
 ```
 
-- **背压**：队列满时 `send` 挂起 → reader 停止读 socket → TCP 窗口收敛。不丢字节也不撑爆内存（`cat` 大文件场景）。
-- **串行化**：sshj 的 stdout/stderr 两个 reader 用 `limitedParallelism(1)` 共享调度器，转义序列不会被并发打断。
-- 消费循环 `receiveCatching` + `tryReceive` + 预算到点 `yield()`，小包洪泛时每包一次重绘的抖动被消除。
+- **Backpressure**: when the queue is full `send` suspends → the reader stops reading the socket → the TCP window closes. No bytes lost and no memory blow-up (the `cat` big-file case).
+- **Serialization**: sshj's two readers, stdout/stderr, share a scheduler with `limitedParallelism(1)`, so escape sequences are never interleaved.
+- The consume loop uses `receiveCatching` + `tryReceive` + `yield()` when the budget is spent; the jitter of one redraw per packet under a flood of small packets is eliminated.
 
-### Mosh 输出路径
+### Mosh output path
 
 ```
-KmpMoshSession 事件循环协程（Default 线程）
-    ├─ 影子终端（ShadowTerminal.buffer，Mutex 保护）
+KmpMoshSession event-loop coroutine (Default thread)
+    ├─ shadow terminal (ShadowTerminal.buffer, guarded by Mutex)
     └─ onStateUpdate → Channel<ShadowTerminalView>(CONFLATED)
-                        └─ 主线程消费：uiBuffer.copyContentFrom(view.buffer)
-                             └─ 行级 (identity, version) 增量比对，无视觉变化不重绘
+                        └─ main-thread consume: uiBuffer.copyContentFrom(view.buffer)
+                             └─ per-line (identity, version) incremental comparison, no redraw without visual change
 ```
 
-- CONFLATED 只保留最新影子状态，突发更新最多一个主线程拷贝在途。
-- 拷贝持影子锁：会话协程 applyDiff/resize 中途不能读，否则 resize 半程行状态不一致会越界。
+- CONFLATED keeps only the latest shadow state; at most one main-thread copy is in flight for bursty updates.
+- The copy holds the shadow lock: the session coroutine cannot read mid applyDiff/resize, otherwise a half-done resize would leave inconsistent row state and go out of bounds.
 
-### 写路径
+### Write path
 
-- sshj：`sendData` 经 `limitedParallelism(1)` 写调度器（避开主线程 socket 写 + 保证输入顺序）。
-- mosh：`sendData` 投递到事件 Channel，由会话协程统一 push 进 `UserStream`。
-- 认证/主机密钥弹窗：`onPrompt` 挂起 120s 超时按取消处理；`verifyHostKey` 同步阻塞 120s 超时按拒绝——防止连接线程永久悬挂。
+- sshj: `sendData` goes through a `limitedParallelism(1)` writer dispatcher (avoids socket writes on the main thread + guarantees input ordering).
+- mosh: `sendData` posts to the event Channel, and the session coroutine pushes it into `UserStream` uniformly.
+- Auth/host-key dialogs: `onPrompt` suspends with a 120s timeout treated as cancel; `verifyHostKey` blocks synchronously with a 120s timeout treated as reject — prevents a connection thread from hanging forever.
 
-### 控制器生命周期
+### Controller lifecycle
 
-- `TerminalController` 持 `ioDispatcher + SupervisorJob` 作用域；`close()` 保留重入能力（可 reconnect），`destroy()` 关闭队列并取消作用域（回收重连退避/主题注入/稳定期重置等延迟任务）。
-- 自动重连任务统一挂在 `reconnectJob`，close 时取消，防关闭后仍被延迟协程拉起。
+- `TerminalController` owns an `ioDispatcher + SupervisorJob` scope; `close()` preserves reentry capability (can reconnect), `destroy()` closes the queue and cancels the scope (reclaiming delayed tasks such as reconnect backoff / theme injection / stability-period reset).
+- Automatic reconnect tasks all hang off `reconnectJob` and are cancelled on close, so a delayed coroutine cannot revive a session after it is closed.
 
-## 会话保活与网络事件
+## Session keepalive and network events
 
-- Android：`SessionService` 使用 `connectedDevice` 前台服务 + PARTIAL_WAKE_LOCK；按 `sessionId` 幂等登记活跃会话，最后一个会话关闭后停止。回前台先做 SSH 健康检查，失效时才重连。
-- iOS：后台挂起即断线，回前台 `SessionManager.reconnectDroppedSessions()` 自动重连（缓冲保留）。
-- 网络切换：SSH 在「新网络就绪」事件下先做健康检查，仅失效时快速重连（30s 免疫期 + 15s 防抖 + 单调钟）；mosh 不重建，靠 UDP 漫游自愈。
+- Android: `SessionService` uses a `connectedDevice` foreground service + PARTIAL_WAKE_LOCK; active sessions are registered idempotently by `sessionId`, and it stops after the last session closes. On returning to the foreground it runs an SSH health check first and reconnects only when the check fails.
+- iOS: background suspension means disconnection; on returning to the foreground `SessionManager.reconnectDroppedSessions()` reconnects automatically (buffers preserved).
+- Network switch: on a "new network ready" event SSH runs a health check first and reconnects quickly only when the check fails (30s immunity window + 15s debounce + monotonic clock); mosh does not rebuild, relying on UDP roaming to self-heal.
 
-## 持久化
+## Persistence
 
-- 非秘密数据（主机列表/设置/最近会话）→ `multiplatform-settings`（JSON，`ignoreUnknownKeys`）。
-- 秘密数据（密码/私钥）→ `SecretStore`（Keystore/Keychain）。
-- 解析失败不丢数据：原始串备份到 `*.corrupt.<ts>` key（最多 3 份）。
+- Non-secret data (host list / settings / recent sessions) → `multiplatform-settings` (JSON, `ignoreUnknownKeys`).
+- Secret data (passwords / private keys) → `SecretStore` (Keystore/Keychain).
+- Parse failures never lose data: the raw string is backed up to a `*.corrupt.<ts>` key (at most 3 copies).

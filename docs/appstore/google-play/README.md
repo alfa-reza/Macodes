@@ -1,16 +1,19 @@
-# Google Play 图形素材
+# Google Play graphic assets
 
-本目录素材对应 `../google-play.md`：
+The assets in this directory correspond to `../google-play.md`:
 
-- `play-icon.png`：512×512、无透明通道
-- `feature-graphic.png`：1024×500、无透明通道
-- `zh/*.png`、`en/*.png`：1080×1920、无透明通道
-- `feature-background.png`：由 OpenAI 内置 ImageGen 生成的宣传图背景，最终图在其上
-  叠加项目现有终端标识和确定性文字
-- `play-icon.svg`：从 Android 自适应图标矢量路径等比例重建的商店图标源文件
+- `play-icon.png`: 512×512, no alpha channel
+- `feature-graphic.png`: 1024×500, no alpha channel
+- `zh/*.png`, `en/*.png`: 1080×1920, no alpha channel
+- `feature-background.png`: promotional image background generated with OpenAI's built-in
+  ImageGen, with the final image overlaying the project's existing terminal mark and
+  deterministic text on top of it
+- `play-icon.svg`: store icon source file rebuilt proportionally from the Android adaptive
+  icon vector paths
 
-`en/`、`zh/` 中的商店截图是发布用成品。`docs/screenshots/` 仅保留 README
-使用的当前 iOS 设备展示图，避免把未被文档使用的中间截图留在仓库中。
+The store screenshots in `en/` and `zh/` are the final assets for publishing. `docs/screenshots/`
+keeps only the current iOS device showcase images used by the README, so that intermediate
+screenshots not used by the documentation are not left in the repository.
 
-Feature graphic 背景生成提示词摘要：深色、极简、安全远程连接与数据流、
-翠绿/青色线条；禁止文字、Logo、手机模型、水印和黑客人物。
+Feature graphic background generation prompt summary: dark, minimalist, secure remote connection
+and data flow, emerald/teal lines; no text, logos, phone mockups, watermarks, or hacker figures.

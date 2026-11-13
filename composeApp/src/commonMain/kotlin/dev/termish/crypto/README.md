@@ -1,49 +1,54 @@
-# crypto/ — 自研密码学实现（未审计）
+# crypto/ — in-house cryptography (unaudited)
 
-> **English summary:** threat model of the pure-Kotlin crypto primitives.
+> **Summary:** threat model of the pure-Kotlin crypto primitives.
 > Only `Sha256` is used in production (host fingerprints, credential
 > signatures). The AES-128-OCB used by the mosh wire protocol is an explicit,
 > documented exception. Everything else is research/test-only — do not wire
 > it into SSH/KEX, data encryption or key derivation until audited.
 
-本目录下的算法实现仅供研究与测试参考，**未经第三方密码学审计**。
+The algorithm implementations in this directory are for research and test reference only and have
+**not been through third-party cryptographic audit**.
 
-## 原语清单与生产使用状态
+## Primitive inventory and production status
 
-| 文件 | 实现 | 生产使用 | 说明 |
-|------|------|----------|------|
-| `Sha256.kt` | SHA-256 | ✅ **是** | 主机指纹（libssh2 blob SHA-256）、会话凭据摘要（`credentialSignature`） |
-| `Aes.kt` + `Ocb.kt` | AES-128-OCB | ✅ **显式例外** | mosh 传输加密，见下文 |
-| `Sha512.kt` | SHA-512 | ❌ 仅测试 | RFC 向量验证 |
-| `Hmac.kt` | HMAC-SHA256/512 | ❌ 仅测试 | |
-| `Ed25519.kt` | Ed25519 签名 | ❌ 仅测试 | 曾用于 SSH 公钥方案探索 |
-| `Field.kt` | X25519 曲线域运算 | ❌ 仅测试 | |
-| `ChaCha20.kt` / `Poly1305.kt` | ChaCha20-Poly1305 AEAD | ❌ 仅测试 | 曾用于 mosh 加密方案评估 |
+| File | Implementation | Used in production | Notes |
+|------|----------------|--------------------|-------|
+| `Sha256.kt` | SHA-256 | ✅ **yes** | host fingerprints (libssh2 blob SHA-256), session credential digest (`credentialSignature`) |
+| `Aes.kt` + `Ocb.kt` | AES-128-OCB | ✅ **explicit exception** | mosh transport encryption, see below |
+| `Sha512.kt` | SHA-512 | ❌ tests only | RFC vector verification |
+| `Hmac.kt` | HMAC-SHA256/512 | ❌ tests only | |
+| `Ed25519.kt` | Ed25519 signatures | ❌ tests only | once used while exploring SSH public-key schemes |
+| `Field.kt` | X25519 curve field arithmetic | ❌ tests only | |
+| `ChaCha20.kt` / `Poly1305.kt` | ChaCha20-Poly1305 AEAD | ❌ tests only | once used while evaluating mosh encryption schemes |
 
-**政策**：在完成审计前，禁止把上述实现接入 SSH/KEX、数据加密或密钥派生路径。
-需要曲线 / ChaCha 能力时，优先使用平台提供方：
+**Policy**: until the audit is complete, these implementations must not be wired into SSH/KEX, data
+encryption or key-derivation paths.
+When curve or ChaCha capability is needed, prefer the platform provider:
 
-- Android：随 App 打包的完整 BouncyCastle（`TermishApplication.kt` 的
-  `installFullBouncyCastle`——Android 自带阉割版 BC 缺 X25519 / Ed25519）
-- iOS：系统安全框架
+- Android: the full BouncyCastle bundled with the app (`installFullBouncyCastle` in
+  `TermishApplication.kt` — the cut-down BouncyCastle that ships with Android lacks X25519 /
+  Ed25519)
+- iOS: the system security frameworks
 
-## 例外：mosh 传输加密（`dev.termish.mosh`）
+## Exception: mosh transport encryption (`dev.termish.mosh`)
 
-mosh 的 SSP 协议强制使用 AES-128-OCB 作为 AEAD，且 mosh 密钥经 SSH 引导通道
-下发（`MOSH CONNECT <port> <key>`），UDP 层加密防的是「链路监听者篡改/重放
-终端流量」，密钥本身的安全性由 SSH 保证。为保持「纯 Kotlin、零原生依赖」
-（替代 GPLv3 原生客户端的自研实现），`mosh/Aes.kt` + `mosh/Ocb.kt` 是自研实现
-并运行在生产链路，属于本目录政策的**显式例外**：
+The mosh SSP protocol mandates AES-128-OCB as its AEAD, and the mosh key is delivered over the SSH
+bootstrap channel (`MOSH CONNECT <port> <key>`); UDP-layer encryption guards against a link observer
+tampering with or replaying terminal traffic, while the key's own security is provided by SSH. To keep
+"pure Kotlin, zero native dependencies" (an in-house implementation replacing the GPLv3 native
+client), `mosh/Aes.kt` + `mosh/Ocb.kt` are in-house implementations running on the production path,
+which is an **explicit exception** to this directory's policy:
 
-- 正确性：`commonTest/mosh/OcbTest` 含独立标准解密向量
-  （非自洽 round-trip），算法错误会在单测暴露
-- 局限：表驱动软件 AES **无常数时间保证**，存在理论时序侧信道；威胁模型下
-  （攻击者需已能贴近观测设备 CPU 缓存）风险可接受，但就此记录在案
-- 演进方向：若未来引入平台 AEAD（JVM BouncyCastle / iOS CommonCrypto）且能接受
-  按平台分源的工程成本，应替换掉自研 OCB
+- Correctness: `commonTest/mosh/OcbTest` includes independent standard decryption
+  vectors (not a self-consistent round-trip), so an algorithm error surfaces in the unit tests
+- Limitation: table-driven software AES has **no constant-time guarantee** and implies a theoretical
+  timing side channel; under the threat model (the attacker must already be able to observe the
+  device's CPU caches at close range) the risk is acceptable, but it is recorded here
+- Direction: if a platform AEAD (JVM BouncyCastle / iOS CommonCrypto) is adopted later and the cost of
+  per-platform source variants is acceptable, the in-house OCB should be replaced
 
-## 测试
+## Testing
 
-`commonTest/crypto/CryptoTest` 覆盖 RFC 标准测试向量（RFC 4231 HMAC、
-FIPS 180-4 SHA、RFC 8032 Ed25519 等）——这些实现即使不生产使用也保持
-向量级正确，随时可审计。
+`commonTest/crypto/CryptoTest` covers the RFC standard test vectors (RFC 4231 HMAC,
+FIPS 180-4 SHA, RFC 8032 Ed25519 and others) — these implementations stay vector-correct even when
+unused in production, so they remain auditable at any time.

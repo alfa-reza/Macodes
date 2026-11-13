@@ -1,122 +1,132 @@
-# Mosh 实现笔记（dev.termish.mosh）
+# Mosh Implementation Notes (dev.termish.mosh)
 
-> **English summary:** implementation notes for the pure-Kotlin Mosh client —
+> **Summary:** implementation notes for the pure-Kotlin Mosh client —
 > AES-128-OCB wire crypto, the SSP transport state machine (fragmentation,
 > RTT estimation, ACK/throwaway), the shadow terminal that reuses our own
 > emulator, the local-echo prediction engine, and roaming via UDP port rotation.
 
-## 为什么自研
+## Why We Built Our Own
 
-为共享 Android/iOS 的协议实现，`dev.termish.mosh` 使用纯 Kotlin
-实现 SSP 协议、AES-128-OCB、zlib 分片与 UDP 直连，不依赖官方客户端原生二进制。
-实现基于公开的协议行为规格与线上报文格式，与官方客户端保持线上兼容。
+To share one protocol implementation between Android and iOS, `dev.termish.mosh`
+implements the SSP protocol, AES-128-OCB, zlib fragmentation and direct UDP in
+pure Kotlin, without depending on the official client's native binary.
+The implementation is based on the publicly documented protocol behavior and
+wire format, and stays wire-compatible with the official client.
 
-## 实现依据
+## Implementation Basis
 
-独立 Kotlin 重写：SSP 线上协议（wire format 与 proto 字段号是互操作所必需）、
-AES-128-OCB（RFC 7253，配套 RFC 向量测试）、zlib（RFC 1950/1951）。
-代码中标注的 mosh 引用均为行为对照（线上兼容约束），非代码复制。
+An independent Kotlin rewrite: the SSP wire protocol (the wire format and proto
+field numbers are required for interoperability), AES-128-OCB (RFC 7253, with
+matching RFC vector tests), zlib (RFC 1950/1951).
+The mosh references noted in the code are behavioral comparisons
+(wire-compatibility constraints), not code copies.
 
-## 分层与独立性
+## Layering and Independence
 
-mosh 分两层，边界刻意保持干净：
+mosh has two layers, with a deliberately clean boundary:
 
-- **协议层（零依赖，可独立提取为库）**：`MoshTransport` / `UserStream` /
-  `Fragmentation` / `Messages` / `Ocb` / `Aes` / `MoshCrypto` / `KmpMoshSession`
-  ——不 import `dev.termish.term`，只依赖 Kotlin 标准库与 kotlinx。
-  需要供其他项目复用时，可将此层拆为独立模块。
-- **影子层（必然依赖终端模拟器）**：`ShadowTerminal` / `PredictionLayer` 复用
-  `term/` 模拟器维护服务端帧缓冲镜像——mosh 协议要求客户端持有终端状态；
-  复用自研模拟器而非另写一套是刻意决策（行为同源 + 行级增量同步红利），
-  不是耦合缺陷。
+- **Protocol layer (zero dependencies, extractable as a standalone library)**:
+  `MoshTransport` / `UserStream` / `Fragmentation` / `Messages` / `Ocb` / `Aes` /
+  `MoshCrypto` / `KmpMoshSession` — does not import `dev.termish.term`, and depends
+  only on the Kotlin standard library and kotlinx. To reuse it in other projects,
+  this layer can be split into its own module.
+- **Shadow layer (necessarily depends on the terminal emulator)**:
+  `ShadowTerminal` / `PredictionLayer` reuse the `term/` emulator to maintain a
+  mirror of the server-side frame buffer — the mosh protocol requires the client
+  to hold terminal state; reusing our own emulator instead of writing another one
+  is a deliberate decision (same behavioral origin + the benefit of line-level
+  incremental sync), not a coupling defect.
 
-纪律：协议层禁止 `import dev.termish.term`（见 AGENTS.md）。
+Discipline: the protocol layer must not `import dev.termish.term` (see AGENTS.md).
 
-## 组件清单
+## Component Inventory
 
-| 文件 | 职责 |
+| File | Responsibility |
 |------|------|
-| `MoshCrypto.kt` / `Ocb.kt` / `Aes.kt` | AES-128-OCB 数据报加解密 |
-| `MoshTransport.kt` | SSP 传输层：发端 sender + 收端状态机 |
-| `UserStream.kt` | 本地输入状态流（diff = 队列后缀，subtract = 丢已知前缀） |
-| `Fragmentation.kt` | 指令分片 + zlib 压缩 / 重组 |
-| `Messages.kt` | transportinstruction / userinput / hostinput proto 手工编解码 |
-| `ShadowTerminal.kt` | 服务端终端状态的影子（复用 term/ 模拟器） |
-| `PredictionLayer.kt` | 本地预测回显 |
-| `KmpMoshSession.kt` | 会话事件循环、端口轮换、生命周期 |
-| `MoshPlatform.kt` | expect：UDP 套接字 + zlib |
+| `MoshCrypto.kt` / `Ocb.kt` / `Aes.kt` | AES-128-OCB datagram encryption/decryption |
+| `MoshTransport.kt` | SSP transport layer: sender + receiver state machine |
+| `UserStream.kt` | local input state stream (diff = queue suffix, subtract = drop known prefix) |
+| `Fragmentation.kt` | instruction fragmentation + zlib compression / reassembly |
+| `Messages.kt` | hand-written transportinstruction / userinput / hostinput proto codec |
+| `ShadowTerminal.kt` | shadow of the server-side terminal state (reuses the term/ emulator) |
+| `PredictionLayer.kt` | local predicted echo |
+| `KmpMoshSession.kt` | session event loop, port rotation, lifecycle |
+| `MoshPlatform.kt` | expect: UDP socket + zlib |
 
-## 加密
+## Encryption
 
-- 会话密钥：SSH 引导时 `mosh-server` 打印的 22 字符 base64 key（16 字节，去掉 `==` 填充）。校验长度 + 规范编码（拒绝尾部非零 bit 的伪 key）。
-- AES-128-OCB：表驱动 AES（**无常数时间保证**——威胁模型见 `crypto/README.md`：密钥经 SSH 通道下发，生产链路的例外）。L 表按协议约定，正确性由独立标准测试向量覆盖（`OcbTest`）。
-- 线上格式：`8B nonce 低位 || OCB 密文 || 16B tag`；nonce = `4B 0 || 8B 大端序号`；明文 = `2B timestamp || 2B timestamp_reply || 载荷`。
-- **方向位**：序号最高位区分方向（TO_CLIENT=1）。收包校验方向位，防止把客户端自己发过的包重放回来当合法数据。
-- 加密块计数达 2^47 终止会话（OCB 生日界）。
+- Session key: the 22-character base64 key printed by `mosh-server` during SSH bootstrap (16 bytes, `==` padding removed). Length + canonical encoding are validated (pseudo keys with non-zero trailing bits are rejected).
+- AES-128-OCB: table-driven AES (**no constant-time guarantee** — see the threat model in `crypto/README.md`; the key is delivered over the SSH channel, which is the one exception to that caveat on the production path). The L table follows the protocol convention; correctness is covered by independent standard test vectors (`OcbTest`).
+- Wire format: `8B nonce low bits || OCB ciphertext || 16B tag`; nonce = `4B 0 || 8B big-endian sequence number`; plaintext = `2B timestamp || 2B timestamp_reply || payload`.
+- **Direction bit**: the highest bit of the sequence number distinguishes direction (TO_CLIENT=1). Received packets have their direction bit checked, preventing a packet the client already sent from being replayed back as legitimate data.
+- The session terminates when the encrypted block count reaches 2^47 (OCB birthday bound).
 
-## SSP 传输层
+## SSP Transport Layer
 
-- **时间**：全部单调毫秒（注入 `nowMs()`），免疫墙钟漂移。
-- **RTT**：Jacobson/Karels 估计；发送间隔 = SRTT/2 clamp 20–250ms；RTO 50–1000ms；timestamp 16 位环绕差值。
-- **指令**：`(protocol_version=2, old_num, new_num, ack_num, throwaway_num, diff, chaff)`。分片按 MTU（IPv4 1252 / IPv6 1216，扣 Connection 头 12 + OCB 16）切，zlib 压缩；EMSGSIZE 时回退保底 MTU 472。
-- **收端**：旧包只进时间戳/RTT 不进程序；按 new_num 乱序插入；ack 收编已确认的 sent states；throwaway 清理；接收态 >1024 时 15s 限流（state quench）。
-- **发端**：sent states 上限 32（从中间裁）；`rationalizeStates` 减掉对端已知前缀；prospective resend（回退到最早未确认状态若 diff 更小）；chaff 0–16 随机字节混淆指令长度；CE 拥塞标记给时间戳减 500ms 让对端降帧率。
-- **空 diff（纯 ack/心跳）不触发重绘**，避免每 3s 一次全量 UI 拷贝。
-- **shutdown 握手**：num = ULONG_MAX 标记，16 次尝试 / 10s 超时；双方都 ack 过即干净退出。
+- **Time**: all monotonic milliseconds (injected `nowMs()`), immune to wall-clock drift.
+- **RTT**: Jacobson/Karels estimation; send interval = SRTT/2 clamped to 20–250ms; RTO 50–1000ms; timestamp 16-bit wraparound difference.
+- **Instruction**: `(protocol_version=2, old_num, new_num, ack_num, throwaway_num, diff, chaff)`. Fragmented by MTU (IPv4 1252 / IPv6 1216, minus the 12-byte Connection header + 16-byte OCB), zlib compressed; on EMSGSIZE it falls back to the conservative MTU 472.
+- **Receiver**: old packets only update timestamps/RTT and never enter the program; out-of-order insertion by new_num; ack absorbs the already-confirmed sent states; throwaway cleanup; rate-limited for 15s once the receive state exceeds 1024 (state quench).
+- **Sender**: sent states capped at 32 (trimmed from the middle); `rationalizeStates` subtracts the prefix the peer already knows; prospective resend (falls back to the earliest unconfirmed state if the diff is smaller); chaff adds 0–16 random bytes to obfuscate instruction length; the CE congestion mark subtracts 500ms from the timestamp so the peer lowers its frame rate.
+- **Empty diff (pure ack/heartbeat) does not trigger a redraw**, avoiding a full UI copy every 3s.
+- **shutdown handshake**: num = ULONG_MAX marker, 16 attempts / 10s timeout; a clean exit once both sides have acked.
 
-## 影子终端（ShadowTerminal）
+## Shadow Terminal (ShadowTerminal)
 
-复用项目自研模拟器，按 `HostMessage` diff 演化（`HostBytes` / `Resize` / `EchoAck`）：
+Reuses the project's own emulator, evolving per `HostMessage` diff (`HostBytes` / `Resize` / `EchoAck`):
 
-- `fork()` = `buffer.shallowFork()`（COW 浅分叉，O(行数)）+ 新模拟器实例——分叉同样只深拷贝 buffer。
-- `buffer` 有 Mutex：会话协程 applyDiff/resize 与 UI 拷贝线程互斥（resize 半程读行会越界）。
-- 影子缓冲回看无上限（`Int.MAX_VALUE`）：UI 缓冲自行裁剪，影子截断会让 diff 错位。
+- `fork()` = `buffer.shallowFork()` (COW shallow fork, O(rows)) + a new emulator instance — forking likewise only deep-copies the buffer.
+- `buffer` has a Mutex: the session coroutine's applyDiff/resize and the UI copy thread are mutually exclusive (reading rows mid-resize would go out of bounds).
+- The shadow buffer's scrollback is unbounded (`Int.MAX_VALUE`): the UI buffer trims itself, and truncating the shadow would misalign diffs.
 
-**有意的影子语义**（`ShadowTerminal.applyDiff` 注释明示，不要为"对齐服务端"改）：
+**Intentional shadow semantics** (explicitly documented in the `ShadowTerminal.applyDiff` comment; do not change them to "align with the server"):
 
-| 行为 | 服务端默认语义 | 本项目影子 |
+| Behavior | Server default semantics | This project's shadow |
 |------|------------------------|-----------|
-| 备用屏（1049） | 忽略（退出 vim 留残影是其著名缺陷） | 完整支持 |
-| resize | 顶锚定，丢底部行 | xterm 式底锚定，优先丢光标下空白行 |
-| 滚动回看 | 无 | 保留 |
+| Alternate screen (1049) | ignored (the leftover image after leaving vim is its famous flaw) | fully supported |
+| resize | top-anchored, drops bottom rows | xterm-style bottom-anchored, prefers dropping blank rows below the cursor |
+| scrollback | none | retained |
 
-diff 只按行号作用可见区，语义差异不会破坏协议——但体验上影子更好。
+diffs only affect the visible area by row number, so the semantic differences do not break the protocol — but the shadow feels better.
 
-## 本地预测回显（PredictionLayer）
+## Local Predicted Echo (PredictionLayer)
 
-高 RTT 下打字"即时"的关键，预测引擎的简化版：
+The key to "instant" typing under high RTT, a simplified version of the prediction engine:
 
-- **触发迟滞**：send_interval >30ms 开、≤20ms 关（仅无活跃预测时允许关）；下划线标记（flagging）>80ms 开、≤50ms 关。
-- **预测载体**：确认态的 COW 分叉上重放 pending 输入；白名单——可打印字符（含 UTF-8）、0x7f 退格（"\b \b" 语义）、CR（shell 规范模式回显 \r\n）、CSI/SS3 C/D 方向键；**其余控制字节 → 放弃本段**（保守策略）。
-- **备用屏只预测可打印字符段**：控制字节在全屏程序里语义各异（vim 普通模式 x 是删字符不是退格）。
-- **收编**：echo_ack >= 承载帧号即视为回显已到（或"无回显"的事实，如密码输入），丢弃预测；未收编的预测在每个新确认态上重放，避免"出现→消失→再出现"闪烁。
-- **放弃**：大粘贴（>128 字节）不预测；glitch 悬挂 3s 回确认态；resize 几何失效重置。
+- **Trigger hysteresis**: on when send_interval >30ms, off at ≤20ms (may only turn off when there is no active prediction); underlining (flagging) on at >80ms, off at ≤50ms.
+- **Prediction carrier**: replays pending input on a COW fork of the confirmed state; whitelist — printable characters (including UTF-8), 0x7f backspace ("\b \b" semantics), CR (shell canonical mode echoes \r\n), CSI/SS3 C/D arrow keys; **any other control byte → abandon this segment** (conservative policy).
+- **The alternate screen only predicts printable-character segments**: control bytes have varying semantics in full-screen programs (in vim normal mode x deletes a character, not a backspace).
+- **Absorption**: echo_ack >= the carrying frame number means the echo has arrived (or the fact of "no echo", e.g. password input), and the prediction is discarded; unabsorbed predictions are replayed on every new confirmed state, avoiding "appear → disappear → reappear" flicker.
+- **Abandonment**: large pastes (>128 bytes) are not predicted; a glitch hanging for 3s returns to the confirmed state; a resize invalidating the geometry resets.
 
-## 会话与漫游（KmpMoshSession）
+## Session and Roaming (KmpMoshSession)
 
-- 事件循环协程（Default）+ 每 socket 一个阻塞读协程（IO）；UI 的输入/resize/close 经 Channel 汇入。
-- **端口轮换**（mosh 客户端语义）：10s 无对端 ack 且 10s 没换过源端口 → 换新 socket；旧 socket 保留收包，新端口稳定 60s 后剪除；最多同时 10 个。
-- **已连接后永不主动超时退出**（漫游核心）：断网靠重发（ACTIVE_RETRY 窗口）+ 端口轮换维持，网络恢复（WiFi↔蜂窝、隧道、休眠唤醒）无缝续传；服务端同样永不超时。`still_connecting` 阶段 15s 无对端包才判失败。
-- 链路健康度：距上次收包秒数，值变化才回调（空闲心跳约 3s，正常 0~3）；UI 达 5s 显示"失去联系"横幅。
+- Event loop coroutine (Default) + one blocking read coroutine per socket (IO); UI input/resize/close are merged in via a Channel.
+- **Port rotation** (mosh client semantics): 10s without a peer ack and 10s without changing the source port → switch to a new socket; the old socket stays to receive packets, and is pruned once the new port has been stable for 60s; at most 10 at a time.
+- **Never actively times out after connecting** (the core of roaming): network loss is sustained by retransmission (ACTIVE_RETRY window) + port rotation, and resumes seamlessly when the network returns (WiFi↔cellular, tunnels, sleep/wake); the server likewise never times out. Only in the `still_connecting` phase does 15s without a peer packet count as failure.
+- Link health: seconds since the last received packet, callback only when the value changes (idle heartbeat ~3s, normally 0~3); the UI shows a "lost contact" banner at 5s.
 
-## 主题注入（Mosh 特有）
+## Theme Injection (Mosh-specific)
 
-mosh-server 会**吞掉**远端 TUI 发出的 OSC 10/11 颜色查询——查询永远到不了手机，herdr 等
-应用只能拿宿主机终端主题，手机浅色主题下远端却按深色渲染。
+mosh-server **swallows** the OSC 10/11 color queries sent by the remote TUI — the
+queries never reach the phone, so applications like herdr can only get the host
+terminal's theme, and under a light phone theme the remote still renders as dark.
 
-解法：把手机终端配色（OSC 10/11 + OSC 4 基础 16 色应答）以"用户输入"形式写进 mosh 输入流
-（`buildThemeSyncPayload`），herdr 会像收到终端应答一样解析采纳。约束：
+Solution: write the phone's terminal colors (OSC 10/11 + OSC 4 responses for the
+basic 16 colors) into the mosh input stream as "user input"
+(`buildThemeSyncPayload`), and herdr parses and adopts them as if it had received
+a terminal response. Constraints:
 
-- 仅当主机配置了启动命令（TUI 会话）且开启 `moshThemeSync` 才注入——普通 shell 的 readline 不解析 OSC，会把字节当输入回显成乱码。
-- 连接后延迟 1.2s 注入：太早被 readline 当输入，太晚 herdr 显示灰色蒙层。
+- Injected only when the host has a startup command configured (TUI session) and `moshThemeSync` is enabled — a plain shell's readline does not parse OSC and would echo the bytes as input, producing garbage.
+- Injected 1.2s after connecting: any earlier and readline treats it as input, any later and herdr shows a gray overlay.
 
-## 测试
+## Testing
 
-- 单元测试（`commonTest/mosh/`）：`OcbTest`（独立标准解密向量，非自洽 round-trip）、`SspTest`、`TransportTest`、`PredictionTest`。
-- **无 mosh-server 集成测试**：CI 未安装 mosh-server，androidUnitTest 只覆盖 sshj/SFTP 集成。改动 MoshTransport/KmpMoshSession 的收发逻辑时，建议本地起真实 mosh-server 手动验证（或先跑单测 + Android/iOS 端连真实主机）。
+- Unit tests (`commonTest/mosh/`): `OcbTest` (independent standard decryption vectors, not a self-consistent round-trip), `SspTest`, `TransportTest`, `PredictionTest`.
+- **No mosh-server integration tests**: CI does not install mosh-server, and androidUnitTest only covers sshj/SFTP integration. When changing the send/receive logic in MoshTransport/KmpMoshSession, it is recommended to start a real mosh-server locally for manual verification (or first run the unit tests + connect to a real host from Android/iOS).
 
-## 已知取舍
+## Known Trade-offs
 
-- 表驱动 AES 无常数时间保证（见 crypto/README.md 威胁模型）。
-- 预测引擎是简化版：普通屏含不支持控制字节的段落不预测；无 per-cell 收编。
-- ECN CE 位平台暂不提供，`congestionExperienced` 恒 false（字段与处理路径已就位）。
+- Table-driven AES has no constant-time guarantee (see the threat model in crypto/README.md).
+- The prediction engine is a simplified version: segments containing unsupported control bytes on the normal screen are not predicted; no per-cell absorption.
+- The ECN CE bit is not exposed by the platform yet, so `congestionExperienced` is always false (the field and handling path are already in place).

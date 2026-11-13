@@ -2,7 +2,8 @@
 
 Termish is an MIT-licensed mobile SSH/Mosh client and native Agent workspace.
 Bug reports, documentation improvements and pull requests are welcome.
-You can contribute in English or Chinese. 中文使用与构建说明见 [README.zh-CN.md](README.zh-CN.md)。
+You can contribute in English or Chinese. For Chinese usage and build instructions,
+see [README.zh-CN.md](README.zh-CN.md).
 
 ## Get started
 
@@ -116,7 +117,8 @@ vulnerability reporting.
 ## Documentation
 
 Keep [README.md](README.md) and [README.zh-CN.md](README.zh-CN.md) aligned.
-Detailed development documents in `docs/` use Chinese with an English summary.
+Detailed development documents in `docs/` are in English. Store listing copy and the
+privacy policy under `docs/appstore/` keep the language they are published in.
 Update the relevant architecture, terminal, Mosh or input-pipeline document when
 behavior changes. Changes to Agent Bridge belong in its protocol documentation.
 

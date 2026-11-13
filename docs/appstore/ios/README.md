@@ -1,47 +1,63 @@
-# iOS App Store 6.5 英寸素材
+# iOS App Store 6.5-inch assets
 
 Native iOS screenshots and app previews captured from Termish 1.7.1 (35).
 
-这套素材对应 App Store Connect 的 **iPhone 6.5 英寸**栏位，修复原截图尺寸不符合该栏位要求的问题。
+This asset set corresponds to the **iPhone 6.5-inch** slot in App Store Connect, fixing the
+issue where the previous screenshots did not meet that slot's size requirements.
 
-| 素材 | 中文 `zh/` | 英文 `en/` | 规格 |
+| Asset | Chinese `zh/` | English `en/` | Spec |
 | --- | --- | --- | --- |
-| 截图 | 8 张 | 7 张 | 1242 × 2688，JPEG，无透明通道 |
-| App 预览 | `app-preview.mp4` | `app-preview.mp4` | 886 × 1920，H.264 High / Level 4.0，30 fps |
+| Screenshots | 8 images | 7 images | 1242 × 2688, JPEG, no alpha channel |
+| App preview | `app-preview.mp4` | `app-preview.mp4` | 886 × 1920, H.264 High / Level 4.0, 30 fps |
 
-中文视频 27 秒，英文视频 29 秒，均包含 Herdr 代码编辑与工作区切换片段；视频目标码率 10 Mbps，包含 48 kHz、256 kbps 双声道 AAC 静音轨。没有配音或背景音乐。
+The Chinese video is 27 seconds and the English video is 29 seconds; both include clips of
+Herdr code editing and workspace switching. The videos target a 10 Mbps bitrate and include
+a 48 kHz, 256 kbps stereo AAC silent track. There is no voiceover or background music.
 
-## 上传方式
+## How to upload
 
-1. 在 App Store Connect 选择对应版本和语言，展开 **iPhone 6.5 英寸**的预览与截屏栏位；必要时进入“查看媒体管理器”。
-2. 移除这个栏位中尺寸错误的旧图片，按文件编号上传对应语言目录中的 `.jpg` 文件。
-3. 把该目录的 `app-preview.mp4` 上传到 App 预览区域。截图和预览视频使用不同的像素尺寸。
-4. 等待 Apple 完成视频处理，检查预览封面和截图顺序。建议把终端截图放在第一张，也可以保留当前“主机 → 终端 → 文件”的顺序。
+1. In App Store Connect, select the corresponding version and language, then expand the preview
+   and screenshot slots for **iPhone 6.5-inch**; open "View Media Manager" if necessary.
+2. Remove the old images with incorrect dimensions from this slot, then upload the `.jpg` files
+   from the corresponding language directory by file number.
+3. Upload this directory's `app-preview.mp4` to the App Preview area. Screenshots and the preview
+   video use different pixel dimensions.
+4. Wait for Apple to finish video processing, then check the preview poster frame and screenshot
+   order. Putting the terminal screenshot first is recommended, but you may also keep the current
+   "Hosts → Terminal → Files" order.
 
-请上传导出的原文件；浏览器或聊天窗口中的显示缩略图不用于上传。
+Upload the exported original files; thumbnails displayed in a browser or chat window are not used
+for upload.
 
-## 内容与来源
+## Content and sources
 
-- `01-hosts.jpg`：主机列表。
-- `02-terminal.jpg`：连接本地演示 SSH 服务器后运行的真实 htop 终端。
-- `03-sftp.jpg`：远程项目目录。
-- `04-preview.jpg`：Markdown 文件预览，仅中文套装提供。
-- `05-settings.jpg`：设置。
-- `06-theme.jpg`：终端配色与字体。
-- `07-herdr-editor.jpg`：Herdr 工作区内的 Vim 代码编辑器。
-- `08-herdr-workspace.jpg`：Herdr 工作区和标签切换。
+- `01-hosts.jpg`: host list.
+- `02-terminal.jpg`: a real htop terminal running after connecting to the local demo SSH server.
+- `03-sftp.jpg`: remote project directory.
+- `04-preview.jpg`: Markdown file preview, provided only in the Chinese set.
+- `05-settings.jpg`: settings.
+- `06-theme.jpg`: terminal color scheme and font.
+- `07-herdr-editor.jpg`: Vim code editor inside a Herdr workspace.
+- `08-herdr-workspace.jpg`: Herdr workspace and tab switching.
 
-截图直接来自 iPhone 11 Pro Max 模拟器，iOS 26.5，应用版本 1.7.1（35）。演示数据与真实主机信息隔离；未对界面进行重绘、裁切或拉伸。视频从实际录屏剪辑并转换到 Apple 要求的尺寸，静态页面末尾保留阅读停顿。
+The screenshots come directly from the iPhone 11 Pro Max simulator, iOS 26.5, app version 1.7.1 (35).
+Demo data is isolated from real host information; the interface was not redrawn, cropped, or stretched.
+The videos were edited from actual screen recordings and converted to the dimensions Apple requires,
+keeping a reading pause at the end of static pages.
 
-英文 Markdown 预览目前仍有“预览 / 源码”两个中文按钮，所以英文套装未收录此页。应用代码未在本次素材制作中修改。
+The Markdown preview page still uses the two Chinese button labels "预览" / "源码", so the English
+set does not include this page. The app code was not modified during the production of these assets.
 
-Herdr 截图来自真实运行的演示工作区，包含 Editor 和 Health Check 两个标签。Herdr 自身的界面为英文，因此两套素材中的 Herdr 菜单均显示英文。
+The Herdr screenshots come from a real running demo workspace and include two tabs, Editor and
+Health Check. Herdr's own interface is in English, so the Herdr menus in both asset sets are
+displayed in English.
 
-上传前核对各文件的尺寸、格式、时长和编码，上传后确认 App Store Connect 的处理结果。
+Check each file's dimensions, format, duration, and encoding before uploading, then confirm the
+processing result in App Store Connect after uploading.
 
-## Apple 规格
+## Apple specifications
 
-- [截图规格](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications)：6.5 英寸支持 1242 × 2688 或 1284 × 2778 竖屏截图。
-- [App 预览规格](https://developer.apple.com/help/app-store-connect/reference/app-information/app-preview-specifications/)：6.5 英寸竖屏视频为 886 × 1920，15–30 秒，最高 30 fps。
+- [Screenshot specifications](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications): 6.5-inch supports 1242 × 2688 or 1284 × 2778 portrait screenshots.
+- [App preview specifications](https://developer.apple.com/help/app-store-connect/reference/app-information/app-preview-specifications/): 6.5-inch portrait video is 886 × 1920, 15–30 seconds, up to 30 fps.
 
-规格核对日期：2026-09-05。
+Specifications checked on: 2026-09-05.

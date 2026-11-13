@@ -1,22 +1,22 @@
 ---
 name: Feature request
-about: Suggest an improvement / 提出功能建议
+about: Suggest an improvement
 title: "[Feature] "
 labels: enhancement
 ---
 
-## 场景
+## Scenario
 
-<!-- 你想解决什么问题？描述使用场景而不是方案 -->
+<!-- What problem are you trying to solve? Describe the use case, not the solution -->
 
-## 期望的行为
+## Expected behavior
 
-<!-- 理想情况下 App 应该怎么工作 -->
+<!-- How the app should ideally work -->
 
-## 已考虑的替代方案
+## Alternatives considered
 
-<!-- 现在你是怎么绕过的（如 tmux、快捷命令、其他 App） -->
+<!-- How do you work around it today (e.g. tmux, quick commands, another app) -->
 
-## 补充
+## Additional context
 
-<!-- 参考依据、截图、链接等 -->
+<!-- References, screenshots, links, etc. -->

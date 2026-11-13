@@ -1,22 +1,22 @@
-<!-- 感谢贡献！提交前请阅读 CONTRIBUTING.md -->
+<!-- Thanks for contributing! Please read CONTRIBUTING.md before submitting -->
 
-## 改动内容
+## What changed
 
-<!-- 简述做了什么、为什么 -->
+<!-- Briefly: what did you do, and why -->
 
-## 测试
+## Testing
 
-- [ ] 已说明验证结果（纯文档改动可只检查链接与内容；代码改动运行 `make test`）
-- [ ] 代码改动通过 `make lint`；Kotlin 改动通过 `make lint-kt`
-- [ ] 涉及传输层（sshj/libssh2/Mosh）：`make test-integration` 通过
-- [ ] 涉及 Agent Bridge：已检查 Rust 与 Kotlin 的协议兼容
-- [ ] 涉及 UI：已核对中英文与深色/浅色主题
-- [ ] 未引入任何真实机密（密码/密钥/私网地址）
+- [ ] Verification results are described (documentation-only changes may just check links and content; code changes run `make test`)
+- [ ] Code changes pass `make lint`; Kotlin changes pass `make lint-kt`
+- [ ] Transport layer changes (sshj/libssh2/Mosh): `make test-integration` passes
+- [ ] Agent Bridge changes: protocol compatibility between Rust and Kotlin has been checked
+- [ ] UI changes: checked in both languages and in both dark/light themes
+- [ ] No real secrets introduced (passwords/keys/private network addresses)
 
-## 截图
+## Screenshots
 
-<!-- UI 改动请附前后对比截图 -->
+<!-- For UI changes, attach before/after screenshots -->
 
-## 关联
+## Related
 
 <!-- Fixes #123 -->
