@@ -215,7 +215,7 @@ async fn main() -> Result<()> {
         Some("--licenses") => {
             print!(
                 "{}",
-                include_str!("../../../LICENSES/TermishScreen-Rust.txt")
+                include_str!("../../../LICENSES/MacodesScreen-Rust.txt")
             );
             Ok(())
         }

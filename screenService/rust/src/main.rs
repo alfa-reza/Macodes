@@ -95,7 +95,7 @@ fn execute() -> Result<(), Box<dyn std::error::Error>> {
             "--licenses" => {
                 print!(
                     "{}",
-                    include_str!("../../../LICENSES/TermishScreen-Rust.txt")
+                    include_str!("../../../LICENSES/MacodesScreen-Rust.txt")
                 );
                 return Ok(());
             }

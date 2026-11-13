@@ -103,7 +103,7 @@ val agentBridgeRustBuild = tasks.register<ExecTask>("agentBridgeRustBuild") {
     group = "build"
     inputs.files(fileTree("agentBridge/rust") { exclude("target/**", ".gitignore") })
     inputs.files(fileTree("tools/service-build") { exclude("target/**", ".gitignore") })
-    inputs.files("scripts/service-build.sh", "LICENSES/TermishScreen-Rust.txt")
+    inputs.files("scripts/service-build.sh", "LICENSES/MacodesScreen-Rust.txt")
     outputs.dir(layout.projectDirectory.dir("agentBridge/build/binaries"))
     doLast { run("sh", "scripts/service-build.sh", "build-agent") }
 }
@@ -123,7 +123,7 @@ val screenServiceRustBuild = tasks.register<ExecTask>("screenServiceRustBuild") 
     inputs.dir("screenService/macos")
     inputs.dir("screenService/linux")
     inputs.files(fileTree("tools/service-build") { exclude("target/**", ".gitignore") })
-    inputs.files("screenService/service.properties", "LICENSES/TermishScreen-Rust.txt", "scripts/service-build.sh")
+    inputs.files("screenService/service.properties", "LICENSES/MacodesScreen-Rust.txt", "scripts/service-build.sh")
     outputs.dir(layout.projectDirectory.dir("screenService/build/binaries"))
     doLast { run("sh", "scripts/service-build.sh", "build-screen") }
 }

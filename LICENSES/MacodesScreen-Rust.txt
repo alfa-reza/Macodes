@@ -1,4 +1,4 @@
-Termish Rust screen service — third-party notices
+Macodes Rust screen service — third-party notices
 
 Dependencies are locked in screenService/rust/Cargo.lock.
 macOS/Linux payloads include the following libraries and build dependencies.
