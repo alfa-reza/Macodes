@@ -37,24 +37,24 @@ import androidx.compose.ui.unit.dp
 import dev.termish.ui.theme.TerminalTheme
 
 /**
- * 画布右下角功能菜单入口（可扩展）：
- * - 待机：品牌绿圆钮 + + 图标；点击展开功能菜单（从按钮向上滑出）
- * - 菜单项：胶囊按钮（图标 + 标签），点击执行并收起菜单；后续功能往里加即可
- * - 录音中整体隐藏（录音态由中间大按钮接管，见 BigVoiceStopButton）
+ * Menu entry in the lower-right corner of the canvas (expandable):
+ * - Standby: brand-green circular button with a “+” icon; tap to expand the function menu (slides up from the button)
+ * - Menu items: Capsule buttons (icon + tag); tapping executes the action and collapses the menu; simply add subsequent features inside.
+ * - Hidden entirely during recording (recording state is taken over by the big center button; see BigVoiceStopButton)
  */
 @Composable
 fun CanvasToolMenu(
-    /** 菜单是否展开。 */
+    /** Is the menu expanded? */
     menuOpen: Boolean,
     onMenuOpenChange: (Boolean) -> Unit,
-    /** 菜单项（自下而上排列，第一个最靠近按钮）。 */
+    /** Menu items (listed from bottom to top, with the first one closest to the button). */
     items: List<CanvasMenuAction>,
     theme: TerminalTheme,
     modifier: Modifier = Modifier,
 ) {
     val brand = MaterialTheme.colorScheme.primary
     val onBrand = MaterialTheme.colorScheme.onPrimary
-    // 展开箭头旋转：+ → ×
+    // Expand arrow rotation: + → ×
     val rotation by animateFloatAsState(
         targetValue = if (menuOpen) 45f else 0f,
         animationSpec = tween(160),
@@ -66,7 +66,7 @@ fun CanvasToolMenu(
         horizontalAlignment = Alignment.End,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        // 功能菜单：自下而上滑出
+        // Function Menu: Slide out from the bottom up
         AnimatedVisibility(
             visible = menuOpen,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(tween(160)),
@@ -82,7 +82,7 @@ fun CanvasToolMenu(
             }
         }
 
-        // 主按钮
+        // Main Button
         Box(
             Modifier
                 .size(44.dp)
@@ -102,7 +102,7 @@ fun CanvasToolMenu(
     }
 }
 
-/** 单个菜单动作：胶囊按钮（图标 + 标签）。 */
+/** Single menu action: capsule button (icon + tag). */
 @Composable
 private fun CanvasMenuActionItem(
     action: CanvasMenuAction,
@@ -144,15 +144,15 @@ private fun CanvasMenuActionItem(
     }
 }
 
-/** 菜单动作定义（可扩展：后续功能往里加）。 */
+/** Menu action definitions (expandable: add future features here). */
 data class CanvasMenuAction(
     val id: String,
     val label: String,
     val icon: ImageVector,
-    /** 图标底徽颜色；null = 品牌绿。 */
+    /** Icon background color; null = brand green. */
     val badge: Color? = null,
     val onClick: () -> Unit,
 )
 
-/** 语音菜单动作图标（复用）。 */
+/** Voice menu action icons (reused). */
 val VoiceMenuIcon: ImageVector get() = Icons.Filled.Mic

@@ -1,8 +1,8 @@
 package dev.termish.mosh
 
 /**
- * 极简 proto2 wire 编解码：仅覆盖 mosh 用到的 varint / bytes / 嵌入消息。
- * 避免引入 protobuf 依赖（KMP iOS 端 protobuf-lite 接入成本高且没必要）。
+ * Minimalist proto2 wire encoding and decoding: Covers only the varint, bytes, and embedded messages used by mosh.
+ * Avoid introducing Protobuf dependencies (the cost of integrating protobuf-lite on the KMP iOS side is high and unnecessary).
  */
 internal class ProtoWriter {
     private val out = ArrayList<Byte>()
@@ -61,7 +61,7 @@ internal class ProtoReader(
 
     val hasMore: Boolean get() = pos < buf.size
 
-    /** 返回 (fieldNumber, wireType)；无更多数据时 null。 */
+    /** Return (fieldNumber, wireType); returns null if no more data is available. */
     fun nextTag(): Pair<Int, Int>? {
         if (pos >= buf.size) return null
         val v = readVarint()

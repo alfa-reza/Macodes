@@ -5,93 +5,93 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
 /**
- * 屏幕会话 UI 状态（挂在会话条目上，切 tab 保留）。
+ * Screen session UI state (attached to the session entry; retained when switching tabs).
  */
 class ScreenUiState {
-    /** 视频播放器（渲染面绑定用；null = 未建立）。 */
+    /** Video player (for rendering surface binding; null = not established). */
     var player by mutableStateOf<ScreenPlayer?>(null)
 
-    /** 播放器已渲染首帧。 */
+    /** The player has rendered the first frame. */
     var videoReady by mutableStateOf(false)
 
-    /** 画面尺寸描述（如 1280×720）。 */
+    /** Screen resolution descriptions (e.g., 1280×720). */
     var frameSize by mutableStateOf("")
 
-    /** 帧率估算。 */
+    /** Frame rate estimation. */
     var fps by mutableStateOf(0)
 
-    /** 最近统计窗口的接收码率。 */
+    /** The recent average bitrate for the statistics window. */
     var bitrateKbps by mutableStateOf(0)
 
-    /** 基于发送/到达间隔差估算的网络抖动。 */
+    /** Network jitter estimated based on the difference in send/receive intervals. */
     var jitterMillis by mutableStateOf(0)
 
-    /** 网络推断丢帧 + 播放器主动丢帧，千分比。 */
+    /** Network-inferred frame drops + player-initiated frame drops, in per mille. */
     var droppedPermille by mutableStateOf(0)
 
-    /** 是否已连通并推流。 */
+    /** Has connectivity been established and streaming initiated? */
     var connected by mutableStateOf(false)
 
-    /** 连接错误。 */
+    /** Connection error. */
     var error by mutableStateOf<String?>(null)
 
-    /** 屏幕状态提示（非错误，可恢复）：Mac 息屏/锁屏等，画面到达自动清除。 */
+    /** Screen status notices (non-error, recoverable): e.g., Mac screen off/locked; cleared automatically when frames arrive. */
     var screenHint by mutableStateOf<String?>(null)
 
-    /** 当前推流帧率（全屏右上角档位显示）。 */
+    /** Current streaming frame rate (shown in the gear icon in the upper-right corner of fullscreen mode). */
     var streamFps by mutableStateOf(30)
 
-    /** 用户选择的帧率上限；自动降档恢复时不会超过它（0 = 等待远端配置回读）。 */
+    /** The maximum frame rate selected by the user; automatic downshifting will not exceed this value (0 = wait for the remote configuration to be read back). */
     var preferredStreamFps: Int = 0
 
-    /** 最近一次自适应调档时间；跨重连保留，提供恢复迟滞。 */
+    /** Time of the most recent adaptive tier adjustment; retained across reconnects, providing recovery hysteresis. */
     var adaptiveFpsChangedAtMillis: Long = 0
 
-    /** 当前画质档位（全屏右上角档位显示）。 */
+    /** Current image quality setting (shown in the top-right corner of the fullscreen view). */
     var streamQuality by mutableStateOf(1)
 
-    /** 解码能力探测的帧率上限（0 = 未知；档位菜单据此隐藏超出项）。 */
+    /** Frame-rate cap from the decode-capability probe (0 = unknown; the level menu hides exceeding items accordingly). */
     var decoderMaxFps by mutableStateOf(0)
 
-    /** 当前画面首次出帧时间；用于区分稳定运行后的偶发断线与刚连接即失败。 */
+    /** Time the current screen first produces a frame; used to distinguish occasional disconnects after stable operation from failure right after connect. */
     var videoReadyAtMillis: Long = 0
 
-    /** 连续自动重连次数；稳定播放后归零，防止失败会话无限循环替换。 */
+    /** Number of consecutive automatic reconnection attempts; resets to zero after stable playback to prevent sessions with failure from being replaced in an infinite loop. */
     var streamReconnectAttempts: Int = 0
 
-    /** 远程操作模式（触摸→鼠标/滚轮，默认开）；关闭 = 纯观看（本地缩放平移，无键盘）。 */
+    /** Remote control mode (touch → mouse/scroll wheel, enabled by default); disabled = view-only (local scale and translate, no keyboard). */
     var controlMode by mutableStateOf(true)
 
-    /** 被控端缺辅助功能权限（relay 状态包上报，引导用户授权）。 */
+    /** The controlled device lacks accessibility permissions (relay status packet reporting; prompt the user to grant authorization). */
     var controlPermissionMissing by mutableStateOf(false)
 
-    /** 被控端缺录屏权限；显式重连时刷新 macOS 服务进程的授权缓存。 */
+    /** The client lacks screen recording permissions; refresh the authorization cache of the macOS service process when explicitly reconnecting. */
     var recordingPermissionMissing: Boolean = false
 
-    /** 被控端当前图形会话没有可用的控制后端（relay 状态 2 上报）。 */
+    /** The controlled end's current graphical session has no available control backend (relay status 2 reported). */
     var controlUnsupported by mutableStateOf(false)
 
-    /** 远程操作发送器（ScreenSession 注入：触摸事件 → TCP 控制包）。 */
+    /** Remote operation sender (ScreenSession injection: touch events → TCP control packets). */
     var controlSender: ((type: Int, x: Float, y: Float, extra: Int) -> Unit)? by mutableStateOf(null)
 
-    /** 远程键盘发送器：keyCode + 修饰掩码 + 文本（文本非空时优先）。 */
+    /** Remote keyboard sender: keyCode + modifier mask + text (text takes precedence if not empty). */
     var keySender: ((keyCode: Int, mods: Int, text: String) -> Unit)? by mutableStateOf(null)
 
-    /** 远端缺 ffmpeg（引导安装信号）。 */
+    /** ffmpeg is missing on the remote server (signal to install). */
     var ffmpegMissing by mutableStateOf(false)
 
-    /** 远端推流服务未运行（引导一键安装信号）。 */
+    /** The remote streaming service is not running (signal for one-click installation). */
     var serviceMissing by mutableStateOf(false)
 
-    /** 远端 relay 版本过旧（引导升级而非首次安装）。 */
+    /** The remote relay version is too old (prompt for an upgrade rather than a fresh installation). */
     var relayNeedsUpgrade by mutableStateOf(false)
 
-    /** 服务安装中。 */
+    /** Service is being installed. */
     var installing by mutableStateOf(false)
 
-    /** Linux 安装 ffmpeg 需要 sudo 密码（仅本次安装使用，不保存）。 */
+    /** Installing FFmpeg on Linux requires a sudo password (used only for this installation; it is not saved). */
     var needsSudoPassword by mutableStateOf(false)
 
-    /** 安装日志（实时展示）。 */
+    /** Install log (displayed in real-time). */
     var installLog by mutableStateOf("")
 }

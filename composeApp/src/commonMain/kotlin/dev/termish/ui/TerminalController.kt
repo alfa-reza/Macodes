@@ -48,8 +48,8 @@ enum class SessionReconnectCause {
     FOREGROUND_RESUME,
 }
 
-/** mosh 链路失联提示阈值（秒）：双方心跳约 3s，5s 避免单包丢失抖动。
- *  失联 banner 与状态点共用。 */
+/** mosh link-loss alert threshold (seconds): both sides heartbeat ~3s; 5s avoids jitter from a single lost packet.
+ *  The "Out of Contact" banner is shared with the status dot. */
 internal const val LINK_LOST_THRESHOLD_SECONDS = 5
 
 data class AuthPromptRequest(
@@ -60,14 +60,14 @@ data class AuthPromptRequest(
 
 data class HostKeyRequest(
     val key: HostKeyInfo,
-    /** 服务器指纹与已保存的不一致（服务器重装/换机/端口转发变化等），需用户重新核对。 */
+    /** The server fingerprint does not match the saved one (due to server reinstallation, hardware replacement, port forwarding changes, etc.); the user must verify it again. */
     val changed: Boolean = false,
     val previousFingerprint: String? = null,
 ) {
     internal val deferred = CompletableDeferred<Boolean>()
 }
 
-/** 所有 SSH UI 确认共用同一超时语义，避免终端/SFTP/Agent 各自无限等待。 */
+/** Ensure that all SSH UI confirmations share the same timeout semantics to prevent the terminal, SFTP, and agent from waiting indefinitely. */
 internal const val SSH_PROMPT_TIMEOUT_MS = 120_000L
 
 internal suspend fun awaitAuthPromptAnswer(deferred: CompletableDeferred<List<String>?>): List<String>? = withTimeoutOrNull(SSH_PROMPT_TIMEOUT_MS) { deferred.await() }
@@ -78,12 +78,12 @@ internal fun awaitHostKeyPromptAnswer(deferred: CompletableDeferred<Boolean>): B
     }
 
 /**
- * 终端会话控制器：持有终端状态（buffer / emulator / 连接状态）供 UI 观察，
- * 并把键盘输入路由到当前传输（SSH shell / mosh）。
+ * Terminal Session Controller: Maintains terminal state (buffer / emulator / connection status) for UI observation,
+ * and route keyboard input to the current transport (SSH shell / mosh).
  *
- * 连接编排（SSH/Mosh 建连、重连、会话启动类型、网络事件）在
- * [SessionConnector]——状态所有权留在这里（Compose 观察点不变），
- * connector 经同包 internal 访问读写。
+ * Connection Orchestration (SSH/Mosh connection establishment, reconnect, session launch types, network events) in
+ * [SessionConnector]—State ownership remains here (Compose observers remain unchanged),
+ * The connector is accessed and modified via internal calls within the same package.
  */
 enum class TerminalLaunchMode {
     SHELL,
@@ -95,15 +95,15 @@ class TerminalController(
     internal val password: String?,
     internal val privateKeyPem: String?,
     internal val repository: HostRepository,
-    /** 意外断线时自动重连（指数退避，最多 3 次）。 */
+    /** Automatically reconnect upon unexpected disconnection (exponential backoff, up to 3 attempts). */
     internal val autoReconnect: Boolean = true,
-    /** 本次会话启动普通 shell 或 herdr；不属于主机连接配置。 */
+    /** This session launches a regular shell or herdr; it is not part of the host connection configuration. */
     val launchMode: TerminalLaunchMode = TerminalLaunchMode.SHELL,
-    /** 连接错误文案提供器（随语言切换取最新 AppStrings）。 */
+    /** Connection error-message provider (retrieve the latest AppStrings when the language toggles). */
     private val strings: () -> AppStrings = { appStringsFor("en") },
-    /** 条目首次创建时间；断线重连与进程恢复后保持不变。 */
+    /** The time the entry was first created; this remains unchanged after a reconnection following a disconnection or after resuming a process. */
     val createdAt: Long = Clock.System.now().toEpochMilliseconds(),
-    /** SSH 会话工厂（测试注入 fake；生产默认走平台引擎）。 */
+    /** SSH session factory (performs injection of `fake` in tests; uses the platform engine by default in production). */
     internal val sessionFactory: (SshConnection, SshCallbacks) -> SshSession = ::createSshSession,
 ) {
     internal val launchHerdr: Boolean get() = launchMode == TerminalLaunchMode.HERDR
@@ -116,15 +116,15 @@ class TerminalController(
     var errorMessage by mutableStateOf<String?>(null)
         internal set
 
-    /** 当前重连尝试次数：>0 且状态为 CONNECTING 时表示正在自动重连。 */
+    /** Current number of reconnection attempts: If this value is >0 and the status is CONNECTING, it indicates that an automatic reconnection is in progress. */
     var reconnectCount by mutableStateOf(0)
         internal set
 
-    /** 最近一次自动恢复原因；仅在重连期间展示，连接成功或手动关闭后清空。 */
+    /** Reason for the most recent automatic resume; displayed only during reconnect and cleared after a successful connection or manual closure. */
     var reconnectCause by mutableStateOf<SessionReconnectCause?>(null)
         internal set
 
-    /** mosh 链路失联秒数（0=健康；达到阈值时 UI 显示「失去联系」banner，会话仍保持）。 */
+    /** mosh link-loss seconds (0 = healthy; at threshold the UI shows the “Lost contact” banner; session kept). */
     var linkLostSeconds by mutableStateOf(0)
         internal set
     var title by mutableStateOf(host.name)
@@ -136,158 +136,158 @@ class TerminalController(
     var exitStatus by mutableStateOf<Int?>(null)
         private set
 
-    /** 变更序号：UI 据此判断是否需要重绘。 */
+    /** Change number: The UI uses this to determine whether a repaint is needed. */
     var frame by mutableStateOf(0L)
         internal set
 
-    /** 光标闪烁相位：纯渲染层动画状态，与协议显隐（buffer.cursorVisible）分离。 */
+    /** Cursor blinking phase: A rendering-layer-only animation state, separate from the protocol’s visibility (buffer.cursorVisible). */
     var cursorBlinkPhase by mutableStateOf(true)
         private set
 
-    /** OSC 52：远端程序写剪贴板时回调（由 UI 层接入系统剪贴板）。 */
+    /** OSC 52: Callback when a remote program writes to the clipboard (accessed by the UI layer via the system clipboard). */
     var onRemoteClipboard: ((String) -> Unit)? = null
 
-    /** 自动探测到远端系统并已保存时回调（Termius 式识别；UI 据此刷新主机列表）。 */
+    /** Callback when a remote system is automatically detected and saved (Termius-style recognition; the UI refreshes the host list accordingly). */
     var onSystemDetected: ((Host) -> Unit)? = null
 
-    /** Herdr 会话启动时远端未安装 herdr（banner 显示安装引导）。 */
+    /** When a Herdr session is launched, Herdr is not installed on the remote machine (the banner shows installation instructions). */
     var herdrNeedsInstall by mutableStateOf(false)
         internal set
 
-    /** herdr 安装进行中（banner 显示进度，避免重复触发）。 */
+    /** herdr installation is underway (progress is shown in a banner to prevent repeated triggers). */
     var herdrInstalling by mutableStateOf(false)
         internal set
 
-    /** herdr 安装脚本的实时输出（引导卡片里展示；挂住时可见无新进展）。 */
+    /** Real-time output from the herdr installation script (displayed in the onboarding card; visible when the process is hung and no new progress is being made). */
     var herdrInstallLog by mutableStateOf("")
         internal set
 
-    /** Mosh 模式：远端未安装 mosh-server（引导卡片：安装或降级 SSH）。 */
+    /** Mosh mode: mosh-server is not installed on the remote (card: Install or fallback to SSH). */
     var moshNeedsInstall by mutableStateOf(false)
         internal set
 
-    /** Mosh 安装进行中（引导卡片显示进度，避免重复触发）。 */
+    /** Mosh installation in progress (a progress card shows the progress to prevent repeated triggers). */
     var moshInstalling by mutableStateOf(false)
         internal set
 
-    /** Mosh 安装命令的实时输出（引导卡片里展示；挂住时可见无新进展）。 */
+    /** Real-time output of Mosh installation commands (displayed in the onboarding card; visible when the process is hung and no new progress is being made). */
     var moshInstallLog by mutableStateOf("")
 
-    /** mosh 引导失败原因（安装卡片提示；null = 未检测到 mosh-server）。 */
+    /** Reason for mosh bootstrap failure (installation card tooltip; null = mosh-server not detected). */
     var moshInstallReason by mutableStateOf<String?>(null)
         internal set
 
-    /** Mosh 安装需要 sudo 密码（卡片显示密码输入框；仅当远端非 root 且 sudo 非免密）。 */
+    /** Installing Mosh requires a sudo password (the card shows a password input field; this applies only if the remote user is not root and sudo is not password-less). */
     var moshNeedsSudoPassword by mutableStateOf(false)
         internal set
 
-    /** 探测到的 herdr 可执行路径（Herdr 会话引导 mosh / 注入命令用）。 */
+    /** Detected Herdr executable paths (used by Herdr to launch mosh sessions and perform command injection). */
     internal var herdrBin: String? = null
 
-    /** 本会话条目已从 mosh 降级到 SSH（UDP 不通，或用户在安装卡片主动选择）：
-     *  后续重连直接走 SSH，不再重试 mosh 引导——UDP 被网络环境阻断不会因重连
-     *  自愈，重试只会每次多耗一次引导 + 5s UDP 确认等待；新开会话才重新尝试 mosh。
-     *  有意不随 close() 重置：降级决策跨重连生效。 */
+    /** This session entry has fallen back from mosh to SSH (UDP connection failed, or the user actively made this selection during installation):
+     *  Subsequent reconnections will use SSH directly; the system will no longer retry the mosh boot—UDP is blocked by the network environment, and reconnecting will not change that.
+     *  Self-healing: Retrying only adds one additional initialization and a 5-second UDP confirmation wait each time; mosh is only retried when a new session is opened.
+     *  Intentionally not reset by `close()`: Fallback decisions take effect across reconnections. */
     internal var moshDegradedToSsh = false
 
-    /** 本会话创建时的凭据签名：主机编辑后凭据变化即可据此判定旧会话过期。 */
+    /** Credential signature at the time this session was created: If the credentials change after the host is edited, this can be used to determine that the old session has expired. */
     val credentialKey: String = credentialSignature(host, password, privateKeyPem)
 
     companion object {
-        /** SSH 输出队列容量（chunk 数，单 chunk ≤64KB）：满时 reader 协程挂起施加
-         *  TCP 背压，不丢字节也不无限撑爆内存（cat 大文件场景）。 */
+        /** SSH output queue capacity (chunks, each ≤64KB): when full, the reader coroutine suspends, imposing
+         *  TCP backpressure—no byte loss and no infinite memory overflow (when using `cat` on large files). */
         private const val OUTPUT_QUEUE_CAPACITY = 256
 
-        /** 主线程批量消费单帧预算：抽干同帧到达的输出后一次性触发重绘，
-         *  避免小包洪泛时每包一次 frame 抖动；到预算即让出主线程。 */
+        /** Main thread batch consumption of single-frame budget: After draining all output arriving in the same frame, trigger a redraw all at once,
+         *  Avoid frame jitter caused by small packet flooding—one packet per frame; yield the main thread once the quota is reached. */
         private const val OUTPUT_BATCH_BUDGET_MS = 8
     }
 
-    // ---- 传输通道（connector 读写；close 时统一释放）----
+    // ---- Transmission Channel (connector reads and writes; all resources are released upon close)----
     internal var session: SshSession? = null
     internal var moshSession: MoshSession? = null
 
-    /** Mosh 成功路径关闭 SSH 引导通道时短路 onClosed（避免误判为意外断线）。 */
+    /** Mosh: Short-circuit `onClosed` when closing the SSH channel on a successful path (to avoid misinterpreting it as an unexpected disconnection). */
     internal var swallowClosed = false
 
-    /** mosh 已接管显示：丢弃 SSH 引导通道的迟到输出。
+    /** mosh has taken over the display: discard late output from the SSH bootstrap channel.
      *
-     * 云主机 PAM MOTD 脚本（landscape/ESM 检测）可能耗时 1-3s，其输出在 mosh
-     * UDP 确认之后才到达——此时 SSH 引导 shell 已使命完结，但 reader 协程仍会把
-     * 迟到字节经 enqueueOutput 写进与 mosh 会话共用的 UI buffer，盖在 herdr TUI
-     * 下方且无后续 mosh 帧覆盖（herdr 空闲不重绘），表现为「herdr 只画顶部一块、
-     * 下面残留 Ubuntu 升级文案」。置位后入队与消费两侧同时门控。 */
+     * The PAM MOTD script for cloud hosts (landscape/ESM detection) may take 1–3s; its output arrives in mosh only after the UDP confirmation
+     * at this point the SSH-launched shell has already finished its task, but the reader coroutine will still
+     * Late bytes are written via `enqueueOutput` into the UI buffer shared with the `mosh` session, overwriting the `herdr` TUI.
+     * Below, with no subsequent MOSH frames overlaying it (HERDR is idle and does not redraw), this manifests as “HERDR only draws the top block,”
+     * leftover Ubuntu upgrade copy below.” After the flag is set, both the enqueue and consume sides are gated simultaneously. */
     @Volatile
     internal var moshDisplayTakeover = false
 
     internal val scope = CoroutineScope(ioDispatcher() + SupervisorJob())
 
-    /** destroy() 后置位：reader 协程停止向输出队列投递（队列已关闭，投递会抛）。 */
+    /** Flag set after `destroy()`: the `reader` coroutine stops enqueuing to the output queue (the queue is closed; attempting to enqueue will throw). */
     @Volatile
     private var destroyed = false
 
     /**
-     * SSH 字节输出队列。reader 协程只投递，主线程单点消费喂 emulator——
-     * 由此 buffer 的全部读写（渲染 / resize / 选择 / 模拟器写入）都串行在主线程，
-     * 消除 reader 写入与 Canvas 绘制之间的竞争（此前 resize 重建行数组中途遇到
-     * reader 写入可能越界；mosh 路径本就是主线程拷贝同步，无此问题）。
+     * SSH byte output queue. The reader coroutine only delivers bytes, while the main thread consumes them one at a time and feeds them to the emulator—
+     * As a result, all read and write operations on this buffer (rendering, resizing, selection, and emulator writes) are serialized on the main thread,
+     * Eliminate the race condition between reader writes and Canvas drawing (previously, resizing caused an interruption while rebuilding the row array)
+     * `reader` may write out of bounds; `mosh` paths are synced via a copy on the main thread, so this issue does not apply).
      */
     private val outputQueue = Channel<ByteArray>(capacity = OUTPUT_QUEUE_CAPACITY)
     internal var lastCols = 80
     internal var lastRows = 24
 
-    /** 会话唯一标识（同主机多会话区分；Compose key() 重组用）。 */
+    /** Session unique identifier (to distinguish between multiple sessions on the same host; used for Compose key() reassembly). */
     val sessionId: String = "${host.id}:${Random.nextLong()}"
     internal var reconnectAttempts = 0
 
     /**
-     * 连接代次：每次建连或主动断开都递增。阻塞在 SSH 引擎内的旧建连
-     * 返回后必须核对代次，不得覆盖新会话或回写新会话状态。
+     * Connection generation: increments on each connect or active disconnect. An old connection blocked inside the SSH engine
+     * must re-check the generation after it returns; stale results must not overwrite the new session or write back the old state.
      */
     @Volatile
     internal var connectionGeneration = 0
 
     private var keepAliveActive = false
 
-    /** 自动重连的延迟任务：close() 时取消，防止关闭后仍被延迟协程拉起。 */
+    /** Delayed automatic-reconnect tasks: cancel them in `close()` so the delayed coroutine does not re-establish the connection after close. */
     internal var reconnectJob: Job? = null
 
-    /** 无损健康检查任务：前台恢复/网络变化共用，避免同一连接并发探测。 */
+    /** Lossless health check tasks: Shared between foreground resume and network changes to avoid concurrency in detection on the same connection. */
     internal var healthCheckJob: Job? = null
 
-    /** Mosh 主题注入：非空表示本会话开启（见 SessionConnector.prepareThemeSync）。 */
+    /** Mosh theme injection: A non-empty value indicates that this session is enabled (see SessionConnector.prepareThemeSync). */
     internal var moshThemePayload: ByteArray? = null
     internal var moshThemeInjected = false
 
-    /** 单调钟：网络免疫期/防抖用单调毫秒，避免墙钟被用户改时间/NTP 校正干扰。 */
+    /** Monotonic clock: Use a monotonic millisecond clock for network immunity and debouncing to avoid interference from users changing the wall clock time or NTP corrections. */
     private val mono = TimeSource.Monotonic.markNow()
 
     internal fun nowMs(): Long = mono.elapsedNow().inWholeMilliseconds
 
     /**
-     * 最近一次终端输出落地时刻（单调钟；消费循环更新）。
-     * herdr 注入等待用：输出静默 = 登录 MOTD 打完，可安全清屏启动 herdr。
+     * The time of the most recent terminal output (monotonic clock; updated by a consumption loop).
+     * For herdr injection: output going quiet = MOTD finished printing; safe to clear the screen and launch herdr.
      */
     @Volatile
     internal var lastOutputAtMs = 0L
 
-    /** 连接成功后的网络事件免疫截止（单调毫秒）：期内不触发主动重连（防刚连上即断）。 */
+    /** Network event immunity period after a successful connection (monotonic milliseconds): No active reconnect is triggered during this period (to prevent disconnections immediately after connecting). */
     internal var networkImmuneUntilMs = 0L
 
-    /** 最近一次主动重连时刻（单调毫秒）：15 秒防抖，避免网络抖动引发连续重连。 */
+    /** Last active reconnect time (monotonic milliseconds): 15-second debounce to prevent continuous reconnections caused by network jitter. */
     internal var lastNetworkReconnectAtMs = 0L
 
     private val connector = SessionConnector(this, strings)
 
     /**
-     * herdr agent 监控器（Herdr 会话时启用）：轮询 `herdr api snapshot`，
-     * blocked 经两轮确认后发 AGENT_TASK 通知（NotificationCenter 前台过滤）。
+     * herdr agent monitor (enabled during Herdr sessions): Polls `herdr api snapshot`,
+     * blocked: Send an AGENT_TASK notification after two rounds of confirmation (filtered by the NotificationCenter foreground).
      *
-     * 生命周期：连接就绪（finishConnected / installHerdr 成功）→ start；
-     * 会话关闭（[close]/[destroy]）→ stop。runCommand 每次执行时动态读取
-     * [session]：重连换新连接后无需重建 monitor。
-     * 当前无 agent 列表 UI（onEvents/onAgents 空回调）：轮询只为后台 blocked
-     * 通知；将来做 agent 面板时这两个回调即数据源。
+     * Lifecycle: Connection ready (finishConnected / installHerdr success) → start;
+     * Session close ([close]/[destroy]) → stop. runCommand dynamically reads each time it is executed
+     * [session]: There is no need to rebuild the monitor after reconnecting with a new connection.
+     * Currently no agent-list UI (onEvents/onAgents callbacks are empty): the polling exists only for background “blocked” notifications
+     * Notification: When developing the agent panel in the future, these two callbacks will serve as data sources.
      */
     private val herdrMonitor =
         HerdrMonitor(
@@ -299,22 +299,22 @@ class TerminalController(
             onAgents = {},
         )
 
-    /** 连接就绪后启动 agent 监控（幂等；仅 Herdr 会话且 CONNECTED 时生效）。 */
+    /** Launch agent monitoring once the connection is ready (idempotent; takes effect only for Herdr sessions when CONNECTED). */
     internal fun startHerdrMonitor() {
         if (!launchHerdr || status != ConnStatus.CONNECTED) return
         herdrMonitor.start()
     }
 
-    /** 会话关闭时停止监控（幂等；close 统一收口）。 */
+    /** Stop monitoring when the session closes (idempotent; use `close` to handle cleanup). */
     internal fun stopHerdrMonitor() {
         herdrMonitor.stop()
     }
 
     init {
-        // 终端默认前景/背景色：SSH 应答 OSC 10/11 与 Mosh 主题注入都依赖它。
-        // 必须在创建时按当前主题设置，不能等 TerminalScreen 组合——后台自动重连、
-        // 会话恢复等路径不经过界面，否则会拿深色初始值告诉远端"手机是深色主题"，
-        // 导致白主题下 pane 渲染成黑色/深色蒙层。
+        // Default terminal foreground/background colors: SSH responses (OSC 10/11) and Mosh theme injection both have a dependency on them.
+        // The settings must be configured according to the current theme when creating; cannot wait for the TerminalScreen composition—automatic background reconnection,
+        // Paths such as session resumption should not go through the UI; otherwise, the dark theme default value will be sent to the remote server, indicating that "the phone is using a dark theme,"
+        // Causes the pane to render as a black/dark overlay on the white theme.
         val terminalTheme =
             TerminalThemes.ALL
                 .getOrElse(repository.loadSettings().terminalThemeIndex) { TerminalThemes.ALL[0] }
@@ -323,27 +323,27 @@ class TerminalController(
         buffer.defaultCursorRgb = argbToRgb(terminalTheme.cursor)
 
         emulator.onTitleChange = { t -> title = t }
-        // OSC 应答（10/11/4 颜色查询、DSR/DA 等）与键盘输入同路由（当前传输）
+        // OSC responses (10/11/4 color queries, DSR/DA, etc.) are routed the same way as keyboard input (current transmission)
         emulator.onResponse = { bytes -> sendBytes(bytes) }
         emulator.onClipboardWrite = { text ->
-            // OSC 52 远端写剪贴板受设置开关控制（远端可静默覆盖剪贴板，默认开）
+            // OSC 52: Remote clipboard writing is controlled by a setting switch (remote clipboard can be silently overwritten; enabled by default)
             if (repository.loadSettings().osc52Clipboard) onRemoteClipboard?.invoke(text)
         }
-        // 输出消费循环：只在主线程动 buffer。批量抽干同帧到达的输出再统一重绘；
-        // 持续洪泛时 receiveCatching 不挂起，必须显式 yield 让 Compose 有机会绘制。
+        // Output consumption loop: Only manipulate the buffer on the main thread. Batch-process output arriving in the same frame and then redraw it all at once;
+        // During continuous flooding, `receiveCatching` does not suspend; you must explicitly `yield` to give Compose a chance to draw.
         scope.launch(Dispatchers.Main) {
             while (true) {
                 val first = outputQueue.receiveCatching().getOrNull() ?: break
-                // mosh 已接管显示：丢弃引导通道迟到字节（含已在队列中的），
-                // 防止写在 mosh 状态之上永久残留
+                // mosh has taken over the display: discard late bytes from the bootstrap channel (including those already queued),
+                // to prevent them from lingering permanently on top of the mosh state
                 if (moshDisplayTakeover) {
                     frame++
                     yield()
                     continue
                 }
-                // 单批字节解析异常（模拟器残留索引 bug 等）不能杀死消费循环——
-                // 否则终端静默冻屏且无任何诊断。记日志丢弃本批续跑：跳过一段输出
-                // 最多花屏，远好于会话永久失去响应
+                // Single-batch byte parsing exceptions (such as emulator residual index bugs) must not terminate the consumption loop—
+                // Otherwise, the terminal will freeze silently without any diagnostics output. Log the error and discard this batch to continue running: skip a section of output
+                // at worst a corrupted display, far better than the session becoming permanently unresponsive
                 try {
                     emulator.write(first)
                     lastOutputAtMs = nowMs()
@@ -367,26 +367,26 @@ class TerminalController(
         rows: Int,
     ) = connector.connect(columns, rows)
 
-    /** 按最近一次窗口尺寸重连（保留屏幕缓冲）；用于退到后台后回前台恢复会话。 */
+    /** Reconnect using the most recent window size (preserving the screen buffer); used to resume the session after returning to the foreground from the background. */
     fun reconnect() = connector.reconnect()
 
-    /** herdr 引导安装：远端未安装时，在已认证连接上执行官网安装脚本并继续连接。 */
+    /** herdr guided installation: If not installed on the remote server, run the official installation script over an authenticated connection and maintain the connection. */
     fun installHerdr() = connector.installHerdr()
 
-    /** Mosh 模式：远端未安装时按系统包管理器安装并继续 mosh 连接。
-     *  @param password sudo 密码（远端非 root 且 sudo 需密码时由引导卡片传入；
-     *  仅本次安装使用，不经 Compose 状态存储、不进日志）。 */
+    /** Mosh mode: If not installed on the remote host, install it using the system package manager and continue the Mosh connection.
+     *  @param password sudo password (passed in via a prompt card when the remote user is not root and sudo requires a password);
+     *  (Used only for this installation; no storage in Compose state and no logging.) */
     fun installMosh(password: String? = null) = connector.installMosh(password)
 
-    /** Mosh 引导卡片上的「降级 SSH」：放弃安装，继续用当前 SSH 连接。 */
+    /** “Fallback SSH” on the Mosh onboarding card: Abort installation and continue using the current SSH connection. */
     fun degradeMoshToSsh() = connector.degradeMoshToSsh()
 
-    /** 关闭错误 banner（清除 [errorMessage]）。 */
+    /** Hide the error banner (clear [errorMessage]). */
     fun dismissError() {
         errorMessage = null
     }
 
-    /** 是否允许自动重连（由打开会话时的设置决定）。 */
+    /** Whether automatic reconnection is allowed (determined by the settings at the time the session is opened). */
     val autoReconnectEnabled: Boolean get() = autoReconnect
 
     internal fun callbacks(
@@ -414,8 +414,8 @@ class TerminalController(
                 TermLog.d("ssh") { "ignore stale close ${host.name} generation=$generation current=$connectionGeneration" }
                 return
             }
-            if (swallowClosed) return // Mosh 成功路径主动关闭引导通道
-            if (status == ConnStatus.CLOSED) return // 用户主动断开
+            if (swallowClosed) return // Mosh success path: proactively closing the bootstrap channel
+            if (status == ConnStatus.CLOSED) return // User proactively disconnected
             connector.onUnexpectedClose(reason)
         }
 
@@ -423,7 +423,7 @@ class TerminalController(
             if (generation != connectionGeneration) return null
             val req = AuthPromptRequest(prompt)
             authPrompt = req
-            // 超时按取消处理：弹窗随页面销毁/长期无人应答时不让连接协程悬挂
+            // Handle timeouts as cancellations: Dialog windows are destroyed along with the screen; do not allow connection coroutines to hang when there is no response for an extended period.
             val r = awaitAuthPromptAnswer(req.deferred)
             if (authPrompt === req && r == null) authPrompt = null
             return if (generation == connectionGeneration) r else null
@@ -431,9 +431,9 @@ class TerminalController(
 
         override fun verifyHostKey(hostKey: HostKeyInfo): Boolean {
             if (generation != connectionGeneration) return false
-            // 优先读仓库里最新保存的指纹：连接成功后 touchConnected 只写了仓库，
-            // 内存中的 Host（AppRoot hosts 状态/本控制器）不会刷新，直接读 host 的
-            // 话同一进程内首次连接后每次重连都会看到 null 而重复弹信任窗。
+            // Prioritize reading the most recently saved fingerprint in the repository: After a successful connection, `touchConnected` only writes to the repository,
+            // The Host in memory (AppRoot hosts state/this controller) does not refresh; it reads directly from the host's
+            // After the initial connection within the same process, every subsequent reconnect returns null and repeatedly displays the trust prompt.
             val known =
                 repository.getHost(host.id)?.knownHostFingerprint
                     ?: host.knownHostFingerprint
@@ -442,50 +442,50 @@ class TerminalController(
                     TermLog.d("ssh") { "hostkey ok ${host.name} ${hostKey.algorithm}" }
                     return true
                 }
-                // 指纹已变更：不再硬失败（否则改地址/服务器换钥后永远连不上、且无重置入口），
-                // 改为弹窗让用户核对新旧指纹后决定。
+                // Fingerprint has changed: no longer results in a hard failure (otherwise, connections would be permanently lost after changing the address or server keys, and there would be no way to reset it),
+                // Change it to a dialog that allows users to compare the old and new fingerprints before making a decision.
                 TermLog.w("ssh") { "hostkey CHANGED ${host.name}: $known -> ${hostKey.fingerprintSha256}" }
                 val req = HostKeyRequest(hostKey, changed = true, previousFingerprint = known)
                 hostKeyPrompt = req
                 val ok = awaitHostKeyAnswer(req)
                 if (generation != connectionGeneration) return false
-                // 接受即采纳新指纹：即使后续认证失败也不重复弹窗（TOFU 信任的是主机密钥）
+                // Accept and adopt the new fingerprint: even in case of failure during subsequent authentication, do not display the dialog again (TOFU trusts the host key).
                 if (ok) repository.recordHostKey(host.id, hostKey.fingerprintSha256)
                 return ok
             }
-            // 首次连接：用户关闭了「首次连接确认」则直接信任（设置里仍可看到指纹）
+            // First-time connection: If the user has disabled “First-time Connection Confirmation,” the connection is trusted immediately (the fingerprint will still be visible in settings).
             if (!repository.loadSettings().verifyHostKeyOnFirstUse) {
                 TermLog.d("ssh") { "hostkey trust-on-first-use skipped (setting off) ${host.name}" }
                 return true
             }
-            // TOFU：首次连接由用户确认
+            // TOFU: First connection requires the user to confirm it
             TermLog.d("ssh") { "hostkey TOFU prompt ${host.name} ${hostKey.fingerprintSha256}" }
             val req = HostKeyRequest(hostKey)
             hostKeyPrompt = req
             val ok = awaitHostKeyAnswer(req)
             if (generation != connectionGeneration) return false
-            // 点信任即记录指纹，与认证成败解耦：否则认证失败（如密码错）时
-            // 每次连接都重复弹授信窗
+            // Tapping “Trust” records the fingerprint, decoupling it from the success or failure of authentication: otherwise, if there is a failure in authentication (e.g., incorrect password),
+            // The authorization window pops up repeatedly with every connection.
             if (ok) repository.recordHostKey(host.id, hostKey.fingerprintSha256)
             return ok
         }
     }
 
-    /** 等待主机密钥确认并兜底清弹窗状态（正常应答已被 respondToHostKey 清过，超时按拒绝）。 */
+    /** Wait for host key confirmation and clear the dialog as a fallback (if a normal response has already been cleared by `respondToHostKey`, treat a timeout as a rejection). */
     private fun awaitHostKeyAnswer(req: HostKeyRequest): Boolean {
         val r = awaitHostKeyPromptAnswer(req.deferred)
         if (hostKeyPrompt === req) hostKeyPrompt = null
         return r
     }
 
-    /** reader 协程投递输出：队列满则挂起施加背压（TCP 窗口收敛），不丢字节。
-     * mosh 接管后丢弃（引导通道使命完结，迟到字节只会污染 mosh 会话画面）。 */
+    /** reader coroutine output: If the queue is full, it suspends to apply backpressure (TCP window convergence) without losing any bytes.
+     * Discard after mosh takes over (the bootstrap channel's work is done; late bytes can only pollute the mosh session view). */
     internal suspend fun enqueueOutput(data: ByteArray) {
         if (destroyed || moshDisplayTakeover) return
         try {
             outputQueue.send(data)
         } catch (_: ClosedSendChannelException) {
-            // destroy() 关闭队列后 send 抛 ClosedSendChannelException：会话已死，丢弃
+            // destroy() closes the queue; attempting to send data afterward throws a ClosedSendChannelException: the session is dead; data is discarded.
         }
     }
 
@@ -532,24 +532,24 @@ class TerminalController(
         moshSession?.resize(columns, rows) ?: session?.resize(columns, rows, widthPx, heightPx)
     }
 
-    /** 光标闪烁：切换渲染相位并触发重绘；稳态样式（2/4/6）不闪。 */
+    /** Cursor blinking: Toggles the rendering phase and triggers a repaint; steady-state styles (2/4/6) do not blink. */
     fun blinkCursor() {
-        // DECSCUSR 稳态样式不闪烁，且不改变相位（绘制时稳态样式不读相位）
+        // DECSCUSR Steady-state styles do not flicker and do not change phase (steady-state styles do not read phase when drawn).
         if (buffer.cursorStyle == 2 || buffer.cursorStyle == 4 || buffer.cursorStyle == 6) return
         cursorBlinkPhase = !cursorBlinkPhase
         frame++
     }
 
     internal fun startKeepAlive() {
-        // Android 按 sessionId 幂等登记；服务被系统停掉后 isActive() 为 false，
-        // 即使控制器仍记得 keepAliveActive，也要重新登记并拉起服务。
+        // Android performs idempotent registration based on sessionId; after the service is stopped by the system, isActive() returns false,
+        // Even if the controller still remembers `keepAliveActive`, it must re-register and restart the service.
         if (!keepAliveActive || !SessionKeepAlive.isActive()) {
             keepAliveActive = true
             SessionKeepAlive.onSessionStart(sessionId)
         }
     }
 
-    /** 保活服务重建后按 sessionId 重新登记；Android 幂等，其他平台为空操作。 */
+    /** After the service is rebuilt, re-register using the sessionId; on Android, this is idempotent; on other platforms, it is a null operation. */
     internal fun restoreKeepAliveRegistration() {
         if (keepAliveActive && isConnected()) SessionKeepAlive.onSessionStart(sessionId)
     }
@@ -561,27 +561,27 @@ class TerminalController(
         }
     }
 
-    /** 前台恢复或默认网络变化时静默探测；健康连接不会改变 UI 状态。 */
+    /** Silently detect changes when the foreground resumes or the default network changes; a healthy connection will not alter the UI state. */
     internal fun verifySshConnection(cause: SessionReconnectCause) = connector.verifySshConnection(cause)
 
-    /** 平台明确无法保留 socket（iOS 挂起）时主动重建，并显示真实恢复语义。 */
+    /** When the platform explicitly cannot retain the socket (iOS suspension), actively rebuild it and show the actual resume semantics. */
     internal fun forceReconnect(cause: SessionReconnectCause) = connector.forceReconnect(cause)
 
     fun close() {
-        // 先使所有在途建连失效；它们即使在底层阻塞调用返回，
-        // 也只会释放自己的资源，不会复活会话。
+        // First, invalidate all pending connection establishment attempts; even if the underlying blocking calls return, they don't go back,
+        // It will only release its own resources and will not revive the session.
         connectionGeneration++
         status = ConnStatus.CLOSED
         linkLostSeconds = 0
-        // herdr agent 监控随会话停止（重连成功后再由 finishConnected 启动）
+        // herdr agent monitoring stops when the session ends (and is launched again by `finishConnected` after a successful reconnect)
         stopHerdrMonitor()
-        // 取消挂起的自动重连，防止 close 后延迟任务又拉起连接
+        // Cancel pending automatic-reconnect tasks so a delayed task does not re-establish the connection after close.
         reconnectJob?.cancel()
         reconnectJob = null
         healthCheckJob?.cancel()
         healthCheckJob = null
         reconnectCause = null
-        // 完成挂起的认证/主机密钥弹窗，释放阻塞在 await 上的 SSH 线程
+        // Complete the suspended authentication/host key dialog and release the SSH thread blocked on `await`.
         authPrompt?.let {
             authPrompt = null
             it.deferred.complete(null)
@@ -598,8 +598,8 @@ class TerminalController(
         } catch (e: Exception) {
             TermLog.w("mosh") { "close failed ${host.name}: ${e.message}" }
         }
-        // 引导安装状态不跨会话残留（重连后重新探测决定）；
-        // moshDegradedToSsh / herdrBin 有意保留：降级决策跨重连生效
+        // Prevent installation status from persisting across sessions (re-detect after reconnection);
+        // moshDegradedToSsh / herdrBin intentionally retained: Fallback decisions take effect across reconnections
         moshNeedsInstall = false
         moshInstalling = false
         moshInstallLog = ""
@@ -614,10 +614,10 @@ class TerminalController(
     }
 
     /**
-     * 销毁控制器（从会话列表移除时调用）：关闭连接、关闭输出队列并取消协程
-     * 作用域，回收延迟任务（稳定期重置/主题注入/重连退避）占用的资源。
-     * 与 [close] 的区别：close 保留重入能力（scope 存活，可 reconnect()），
-     * destroy 后控制器不可再用。
+     * Destroy the controller (called when removed from the session list): close the connection, close the output queue, and cancel the coroutine
+     * Scope: reclaims resources held by delayed tasks (stable-state reset / theme injection / reconnect backoff).
+     * Difference from [close]: close preserves re-entry capability (the scope remains active, and reconnect() is possible),
+     * After `destroy`, the controller can no longer be used.
      */
     fun destroy() {
         close()
@@ -629,7 +629,7 @@ class TerminalController(
     fun isConnected(): Boolean = status == ConnStatus.CONNECTED || status == ConnStatus.AUTH
 
     /**
-     * 网络切换（Wi-Fi ↔ 流量等）时由平台层调用：语义见 [SessionConnector.onNetworkChanged]。
+     * Called by the platform layer on network switches (Wi-Fi ↔ mobile data, etc.): see [SessionConnector.onNetworkChanged] for semantics.
      */
     fun onNetworkChanged(kind: NetworkChangeKind) = connector.onNetworkChanged(kind)
 }

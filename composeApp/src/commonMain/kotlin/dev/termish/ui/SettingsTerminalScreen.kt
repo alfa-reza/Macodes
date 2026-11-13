@@ -44,8 +44,8 @@ import dev.termish.util.TerminalFont
 import dev.termish.util.monospaceFontFamily
 
 /**
- * 终端主题与字体二级页面（Termius 风格）：
- * 顶部字体下拉框，下方主题双列卡片（真实配色预览：背景 + 16 色 + 文字样本）。
+ * Terminal Themes and Fonts Screen (Termius Style):
+ * A font dropdown menu at the top, followed by a two-column card layout for themes below (live color scheme preview: background + 16 colors + text samples).
  */
 @Composable
 fun SettingsTerminalScreen(
@@ -60,7 +60,7 @@ fun SettingsTerminalScreen(
     val selectedFont = TerminalFont.byId(currentFontId)
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        // 页头：返回 + 标题
+        // Page header: Back + Title
         Row(
             Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -76,9 +76,9 @@ fun SettingsTerminalScreen(
             )
         }
 
-        // 字体区固定，主题网格自身滚动（LazyVerticalGrid 不能嵌在 verticalScroll 内）
+        // Fixed font area; theme grid scrolls independently (LazyVerticalGrid cannot be nested within verticalScroll)
         Column(Modifier.fillMaxSize()) {
-            // 字体选择下拉框
+            // Font selection dropdown menu
             Text(
                 s.settingsTerminalFontLabel,
                 style = MaterialTheme.typography.labelLarge,
@@ -129,7 +129,7 @@ fun SettingsTerminalScreen(
                 }
             }
 
-            // 主题双列网格
+            // Theme two-column grid layout
             Text(
                 s.settingsTerminalPalette,
                 style = MaterialTheme.typography.labelLarge,
@@ -157,7 +157,7 @@ fun SettingsTerminalScreen(
     }
 }
 
-/** 主题预览卡片：真实配色（背景/前景/16 色块）+ 名称 + 选中高亮。 */
+/** Theme preview card: Actual color scheme (background/foreground/16 color blocks) + name + highlight when selected. */
 @Composable
 private fun ThemeCard(
     theme: TerminalTheme,
@@ -179,7 +179,7 @@ private fun ThemeCard(
             .clickable(onClick = onClick)
             .padding(10.dp),
     ) {
-        // 预览区：背景 + 前景文字样本 + 16 色块
+        // Preview area: Background + sample foreground text + 16 color blocks
         Column(
             Modifier
                 .fillMaxWidth()

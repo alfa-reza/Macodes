@@ -62,8 +62,8 @@ class VirtualMouseGeometryTest {
 
     @Test
     fun viewportWidthClampsPanelRightEdgeToViewportEdge() {
-        // 视频被右侧控制区推走（frame.left 为负）后，anchor 仍可超出 frame.right
-        // 挤入控制区，但面板右边缘（anchor + controlWidth）不超出视口右缘
+        // After the video is pushed leftwards by the right control area (frame.left goes negative), the anchor may still exceed frame.right
+        // Fit within the control area, but ensure that the right edge of the panel ((anchor + controlWidth)) does not extend beyond the right edge of the viewport.
         val pushedFrame = ScreenRect(-100f, 20f, 900f, 520f)
         val anchor = clampVirtualMouseAnchor(ScreenPoint(9999f, 100f), pushedFrame, 800f, 200f, 80f, 1080f - 700f)
         // maxX = 1080 - 700 = 380
@@ -73,8 +73,8 @@ class VirtualMouseGeometryTest {
 
     @Test
     fun viewportWidthKeepsPanelFullyVisibleWhenPushed() {
-        // 完全推开（overlap = controlWidth）时面板右边缘正好贴视口右缘：
-        // 视口 1080，anchor + controlWidth(700) = 1080
+        // When fully expanded (overlap = controlWidth), the right edge of the panel aligns exactly with the right edge of the viewport:
+        // Viewport 1080, anchor + controlWidth(700) = 1080
         val pushedFrame = ScreenRect(-700f, 20f, 300f, 520f)
         val anchor = clampVirtualMouseAnchor(ScreenPoint(9999f, 100f), pushedFrame, 800f, 200f, 80f, 380f)
         assertEquals(380f, anchor.x)
@@ -82,19 +82,19 @@ class VirtualMouseGeometryTest {
 
     @Test
     fun pushAccumulatesOvershootInsteadOfDiscarding() {
-        // 视口 1080 / 控制区 700 → maxAnchorX=380。rawX 未过右缘：不推、anchor 跟随
+        // Viewport 1080 / Control Area 700 → maxAnchorX=380. rawX does not extend past the right edge: do not push; anchor follows
         val before = computeVirtualMousePush(300f, 1080f, 700f)
         assertEquals(0f, before.overlapPx, 0.01f)
         assertEquals(300f, before.anchorX, 0.01f)
 
-        // 过冲 200：anchor 钉在 380，视频左移 200（过冲累积而不是每帧丢弃——
-        // 否则拖到右缘卡住、光标永远够不到视频最右列）
+        // Overshoot 200: anchor fixed at 380, video shifted left by 200 (overshoot is cumulative rather than discarded per frame—
+        // (Otherwise, it will be dragged to the right edge and get stuck, with the cursor never able to reach the rightmost column of the video.)
         val partial = computeVirtualMousePush(580f, 1080f, 700f)
         assertEquals(200f, partial.overlapPx, 0.01f)
         assertEquals(380f, partial.anchorX, 0.01f)
 
-        // 过冲超过控制区宽：满推（overlap=700），视频右缘 = 1080-700 = 380 =
-        // anchor ——光标恰好点到视频最右列（ToDesk 效果）；更多过冲不再累积
+        // Overshoot exceeds control zone width: full push (overlap=700), right edge of video = 1080-700 = 380 =
+        // anchor ——The cursor is positioned exactly on the rightmost column of the video (ToDesk effect); further overshoots are no longer accumulated
         val full = computeVirtualMousePush(9999f, 1080f, 700f)
         assertEquals(700f, full.overlapPx, 0.01f)
         assertEquals(380f, full.anchorX, 0.01f)
@@ -102,8 +102,8 @@ class VirtualMouseGeometryTest {
 
     @Test
     fun pushSpringsBackBeforePanelMovesLeft() {
-        // 满推态左拖：rawX 回落先回弹视频（overlap → 0），面板钉着不动；
-        // 回完（rawX ≤ maxAnchorX）面板才跟随左移——与右推天然互逆
+        // In the fully-pushed state, dragging left: rawX falls back and the video springs back first (overlap → 0) while the panel stays pinned;
+        // Only after (rawX ≤ maxAnchorX) is the panel shifted to the left—which is naturally the inverse of a rightward push.
         val springBack = computeVirtualMousePush(780f, 1080f, 700f)
         assertEquals(400f, springBack.overlapPx, 0.01f)
         assertEquals(380f, springBack.anchorX, 0.01f)
@@ -115,7 +115,7 @@ class VirtualMouseGeometryTest {
 
     @Test
     fun pushHandlesNarrowViewport() {
-        // 视口比控制区还窄（极端小窗/分屏）：maxAnchorX 钳到 0，不崩不出负值
+        // maxAnchorX is clamped to 0 — it won’t crash and won’t go negative
         val push = computeVirtualMousePush(100f, 500f, 700f)
         assertEquals(100f, push.overlapPx, 0.01f)
         assertEquals(0f, push.anchorX, 0.01f)
@@ -123,13 +123,13 @@ class VirtualMouseGeometryTest {
 
     @Test
     fun zoomedPushCapExtendsToBringRightEdgeToCursor() {
-        // 放大后画面右缘在视口外（2× 宽）：推量上限变大，鼠标钉在右缘、
-        // 画面持续平移过来——鼠标永不滑出屏幕（用户反馈）
+        // When zoomed in, the right edge of the screen is outside the viewport (2× width): the upper limit of the estimate increases, and the mouse pointer is pinned to the right edge,
+        // The screen continuously translates in—the mouse cursor never leaves the screen (user feedback)
         val partial = computeVirtualMousePush(1500f, 1080f, 700f, 2160f)
         assertEquals(1120f, partial.overlapPx, 0.01f)
         assertEquals(380f, partial.anchorX, 0.01f)
 
-        // 满推：右缘 2160 - 1780 = 380 = anchor——光标恰能点到画面最右列
+        // Full push: Right margin 2160 - 1780 = 380 = anchor—the cursor can just reach the far-right column of the screen
         val full = computeVirtualMousePush(9999f, 1080f, 700f, 2160f)
         assertEquals(1780f, full.overlapPx, 0.01f)
         assertEquals(380f, full.anchorX, 0.01f)
@@ -137,8 +137,8 @@ class VirtualMouseGeometryTest {
 
     @Test
     fun zoomedPushCapWhenRightEdgeAlreadyVisible() {
-        // 放大但右缘已在视口内（500 < 1080）：只需推 120 就把右缘送到光标处，
-        // 不再多推（避免把内容无意义地推走）
+        // just a 120 push moves the right edge to the cursor
+        // No further pushes (to avoid unnecessarily pushing content away)
         val push = computeVirtualMousePush(9999f, 1080f, 700f, 500f)
         assertEquals(120f, push.overlapPx, 0.01f)
         assertEquals(380f, push.anchorX, 0.01f)

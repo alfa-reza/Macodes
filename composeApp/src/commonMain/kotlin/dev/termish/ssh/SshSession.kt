@@ -3,11 +3,11 @@ package dev.termish.ssh
 import dev.termish.util.base64Decode
 
 /**
- * 认证方式。
+ * Authentication methods.
  */
 enum class SshAuthMethod { PASSWORD, KEYBOARD_INTERACTIVE, PUBLIC_KEY, PASSPHRASE, NONE }
 
-/** 认证交互提示（keyboard-interactive / password 变更）。 */
+/** Authentication interaction prompts (keyboard-interactive / password change). */
 data class AuthPrompt(
     val method: SshAuthMethod,
     val name: String,
@@ -21,10 +21,10 @@ data class PromptField(
 )
 
 /**
- * 判断 PEM 私钥是否加密（passphrase-protected）：
- * - PKCS#8：`BEGIN ENCRYPTED PRIVATE KEY`
- * - 传统 PEM：`Proc-Type: 4,ENCRYPTED`
- * - OpenSSH：解码 `openssh-key-v1` 头部的 ciphername，非 `none` 即加密
+ * Determine whether a PEM private key is subject to encryption (passphrase-protected):
+ * - PKCS#8: `BEGIN ENCRYPTED PRIVATE KEY`
+ * - Traditional PEM: `Proc-Type: 4,ENCRYPTED`
+ * - OpenSSH: decode the `ciphername` in the `openssh-key-v1` header; if it is not `none`, the key is encrypted
  */
 internal fun isEncryptedPem(pem: String): Boolean {
     if (pem.contains("ENCRYPTED PRIVATE KEY") || pem.contains("Proc-Type: 4,ENCRYPTED")) return true
@@ -32,8 +32,8 @@ internal fun isEncryptedPem(pem: String): Boolean {
     return try {
         val b64 = pem.lineSequence().filter { !it.startsWith("-----") }.joinToString("")
         val bytes = base64Decode(b64)
-        // openssh-key-v1 的 magic 是 15 字节（含结尾 NUL），少一个字节会让
-        // ciphername 长度读取错位、把明文 key 误判为加密
+        // The magic number for `openssh-key-v1` is 15 bytes (including the trailing NUL); if one byte is missing, the
+        // ciphername length reads as misaligned, and a plaintext key is taken for an encrypted one
         val marker = "openssh-key-v1\u0000".encodeToByteArray()
         if (bytes.size < marker.size + 8 || !bytes.copyOfRange(0, marker.size).contentEquals(marker)) {
             return false
@@ -41,14 +41,14 @@ internal fun isEncryptedPem(pem: String): Boolean {
         var off = marker.size
         val clen = readIntBE(bytes, off)
         off += 4
-        // ciphername 为 ASCII；跨平台不能用 JVM 的 Charsets
+        // `ciphername` is ASCII; JVM character sets cannot be used across platforms.
         val cipher =
             buildString {
                 for (b in bytes.copyOfRange(off, off + clen)) append(b.toInt().toChar())
             }
         cipher != "none"
     } catch (_: Exception) {
-        // 解析失败按明文处理，认证阶段自然失败后再提示口令
+        // If parsing fails, handle it as plaintext and display a prompt for the passphrase only after the authentication phase naturally fails
         false
     }
 }
@@ -62,7 +62,7 @@ private fun readIntBE(
         ((b[at + 2].toInt() and 0xFF) shl 8) or
         (b[at + 3].toInt() and 0xFF)
 
-/** 服务器主机密钥指纹（用于 TOFU / known-hosts 校验）。 */
+/** Server host key fingerprint (used for TOFU / known-hosts verification). */
 data class HostKeyInfo(
     val algorithm: String,
     val fingerprintSha256: String,
@@ -75,13 +75,13 @@ data class SessionInfo(
     val kexAlgorithm: String,
 )
 
-/** 单条命令执行结果（Mosh 引导等）。 */
+/** Results of a single command execution (e.g., Mosh boot). */
 data class CommandResult(
     val output: String,
     val hostKey: HostKeyInfo?,
 )
 
-/** 一次连接所需的全部参数（不含回调）。 */
+/** All parameters required for a single connection (excluding callbacks). */
 data class SshConnection(
     val host: String,
     val port: Int = 22,
@@ -89,21 +89,21 @@ data class SshConnection(
     val password: String? = null,
     val privateKeyPem: String? = null,
     val connectTimeoutMillis: Long = 15_000,
-    /** 空闲保活间隔（秒）；<=0 表示不发送应用层 keepalive。 */
+    /** Idle keepalive interval (seconds); <=0 indicates that no app-layer keepalives are sent. */
     val keepAliveSeconds: Int = 30,
-    /** PTY 终端类型（$TERM）：默认 xterm-256color（与本机渲染能力一致）；
-     *  xterm / vt100 / linux 为兼容备选（服务器按 terminfo 降级能力）。 */
+    /** PTY terminal type ($TERM): default xterm-256color (matches the terminal capabilities of the local machine);
+     *  xterm / vt100 / linux are provided as compatibility alternatives (servers will fallback based on terminfo capabilities). */
     val terminalType: String = "xterm-256color",
 )
 
 /**
- * 会话回调。所有回调都在会话的后台线程上触发（[onPrompt] 除外，见下）。
+ * Session callbacks. All callbacks are triggered on the session’s background thread (except [onPrompt]; see below).
  *
- * - [onOutput]/[onStderr] 是挂起函数：引擎在 reader 协程中调用，上层可在
- *   边界做背压（例如投递到有界队列时挂起，而不是阻塞 reader 线程）。
- * - [onExitStatus]/[onClosed] 必须线程安全并尽快返回，由上层决定如何切回 UI 线程。
- * - [onPrompt] 是挂起函数：引擎在认证流程中调用它，允许上层弹出 UI。
- * - [verifyHostKey] 在握手阶段同步调用；返回 false 将中止连接。
+ * - [onOutput]/[onStderr] are suspended functions: the engine calls them in the reader coroutine, and the calling code can
+ *   Apply backpressure at the bounds (for example, suspend when enqueuing to a bounded queue, rather than blocking the reader thread).
+ * - [onExitStatus]/[onClosed] must be thread-safe and return as quickly as possible; the upper layer decides how to switch back to the UI thread.
+ * - [onPrompt] is a suspended function: the engine calls it during the authentication process, allowing the upper layer to display a UI prompt.
+ * - [verifyHostKey] Called synchronously during the handshake phase; returning false will terminate the connection.
  */
 interface SshCallbacks {
     suspend fun onOutput(data: ByteArray)
@@ -119,29 +119,29 @@ interface SshCallbacks {
     fun verifyHostKey(hostKey: HostKeyInfo): Boolean
 
     /**
-     * 连接阶段事件（tcp/kex/auth…）：引擎在对应阶段完成时回调，
-     * 供 TermTrace 做阶段耗时分解。默认空实现（不关心 trace 的调用方可忽略）。
+     * Connection-phase events (tcp/kex/auth…): Callbacks triggered when the engine completes the corresponding phase,
+     * For TermTrace to break down the time spent at each stage. Default empty implementation (can be ignored if you are not concerned with the caller of `trace`).
      */
     fun onTraceStep(step: String) {}
 }
 
 /**
- * 平台无关的 SSH 会话抽象。引擎由平台注入（JVM: sshj；iOS: libssh2/NTermish）。
+ * Platform-independent SSH session abstraction. The engine is subjected to platform injection (JVM: sshj; iOS: libssh2/NTermish).
  */
 interface SshSession {
-    /** 阻塞：连接 + 认证 + 打开 session 通道 + 启动 shell。 */
+    /** Blocking: Connection + Authentication + Open session channel + Launch shell. */
     fun connectAndStart(
         columns: Int,
         rows: Int,
     ): SessionInfo
 
     /**
-     * 阻塞：仅连接 + 认证（不开 shell、不占交互通道）。
-     * 供 exec 型连接使用（屏幕推流等）；返回 null = 平台未实现。
+     * Blocking: Connection + authentication only (no shell, no interactive channel).
+     * For use with exec-type connections (such as screen streaming); a return value of null indicates that the platform has not implemented this feature.
      */
     fun connectAuthOnly(): SessionInfo? = null
 
-    /** 通知远端窗口尺寸变化（字节/像素）。 */
+    /** Notify the remote of window size changes (bytes/pixels). */
     fun resize(
         columns: Int,
         rows: Int,
@@ -149,21 +149,21 @@ interface SshSession {
         heightPx: Int,
     )
 
-    /** 向远端 shell 写入字节（键盘输入）。 */
+    /** Write bytes (keyboard input) to a remote shell. */
     fun sendData(data: ByteArray)
 
-    /** 执行单条命令并等待退出（Mosh 引导等一次性调用；非交互 exec 通道）。 */
+    /** Execute a single command and wait for it to exit (one-time calls such as Mosh bootstrapping; non-interactive exec channels). */
     fun connectAndRun(
         command: String,
         timeoutMs: Long = 15_000,
     ): CommandResult
 
     /**
-     * 在已认证的同一连接上开临时 exec 通道执行命令，返回 stdout；
-     * 失败/未连接/超时返回 null。不重新认证、不打断交互 shell。
-     * 供控制面查询使用（系统探测、herdr api 等）；执行一次性命令且
-     * 连接尚未建立时用 [connectAndRun]（连接+认证+执行+关闭）。
-     * 默认实现委托 [runCommandDetailed]（引擎只需实现后者）。
+     * Open a temporary exec channel on the same authenticated connection to execute the command, returning stdout;
+     * Returns null on failure, disconnection, or timeout. Does not re-authenticate or interrupt the interactive shell.
+     * For use by control-plane queries (system probes, Herdr API, etc.); execute one-time commands and
+     * Use [connectAndRun] (connection + authenticate + execute + close) when the connection has not yet been established.
+     * The default implementation delegates to [runCommandDetailed] (the engine only needs to implement the latter).
      */
     fun runCommand(
         command: String,
@@ -171,11 +171,11 @@ interface SshSession {
     ): String? = runCommandDetailed(command, timeoutMs)?.stdout
 
     /**
-     * 执行单条命令并返回 stdout / stderr / 退出码。
-     * 诊断错误需要 stderr 与退出码：herdr CLI 失败时错误 JSON 走 stderr 且
-     * exit code 非零（如 `herdr agent prompt` 对无效 pane 返回 exit 1 +
-     * stderr `{"error":{...}}`）——只读 stdout 会把失败误判成成功。
-     * 平台实现必须读两个流（stderr 不读会因远端缓冲满阻塞通道）。
+     * Execute a single command and return stdout / stderr / exit code.
+     * Diagnostics for errors require stderr and exit codes: in case of a failure of the herdr CLI, the error JSON is written to stderr and
+     * exit code non-zero (e.g., `herdr agent prompt` returns exit 1 for an invalid pane +
+     * stderr `{"error":{...}}` — Reading only from stdout will cause failures to be mistakenly interpreted as successes.
+     * The platform implementation must read from two streams (failing to read from stderr will cause blocking of the channel due to remote buffering becoming full).
      */
     fun runCommandDetailed(
         command: String,
@@ -183,17 +183,17 @@ interface SshSession {
     ): CommandOutput?
 
     /**
-     * 探测远端系统（Termius 式自动识别）：在已认证连接上执行
-     * [SYSTEM_PROBE_COMMAND]，返回原始输出；失败返回 null。
-     * 默认实现委托 [runCommand]（引擎无需重复实现）。
+     * Detect remote systems (Termius-style automatic recognition): Execute on an authenticated connection
+     * [SYSTEM_PROBE_COMMAND], returns the raw output; returns null on failure.
+     * The default implementation delegates to [runCommand] (the engine does not need to reimplement it).
      */
     fun probeSystem(): String? = runCommand(SYSTEM_PROBE_COMMAND, timeoutMs = 5_000)
 
     /**
-     * 带 PTY 的 exec 通道（如 `herdr` TUI：crossterm 需要 tty，无 tty 会 panic）。
-     * 不经交互 shell——没有提示符/命令回显，输出直接就是程序的界面。
-     * 返回通道（阻塞 read / write / close）；失败/未连接返回 null。
-     * 注意：exec 通道的 pty 尺寸无法后续调整（固定为分配时的尺寸）。
+     * Exec channels with PTY (e.g., `herdr` TUI: crossterm requires a TTY; it will panic if no TTY is available).
+     * No interactive shell—no prompt or command echo; the output is the program's UI itself.
+     * Returns a channel (blocking read / write / close); returns null on failure or if no connection is available.
+     * Note: The pty size of an exec channel cannot be adjusted later (it is fixed at the size allocated at creation).
      */
     fun startExec(
         command: String,
@@ -202,34 +202,34 @@ interface SshSession {
     ): SshExecChannel?
 
     /**
-     * 无 PTY 的流式 exec 通道（如屏幕帧流：二进制输出不能被 pty 改写）。
-     * 不经交互 shell；stdout = 原始字节流，stdin = raw 输入。
-     * 返回通道（阻塞 read / write / close）；失败/未连接返回 null。
-     * 平台必须真正实现（不带 pty）；未实现返回 null。
+     * Streaming exec channels without a PTY (such as screen frames: binary output cannot be rewritten by a PTY).
+     * No interactive shell; stdout = raw byte stream, stdin = raw input.
+     * Returns a channel (blocking read / write / close); returns null on failure or if no connection is available.
+     * The platform must actually implement this (without `pty`); if the implementation is not complete, return `null`.
      */
     fun startExecRaw(command: String): SshExecChannel? = null
 
     /**
-     * 在已认证 SSH 连接上打开 direct-tcpip 通道，连接远端主机可见的 [host]:[port]。
+     * Open a direct-tcpip channel over an authenticated SSH connection to connect to [host]:[port], which is visible to the remote host.
      *
-     * 典型用途是访问只监听远端回环地址的内部服务：数据全程复用 SSH 加密传输，
-     * 无需把服务端口暴露或转发到公网。返回通道的 stdout/stdin 分别对应目标 TCP
-     * 连接的读/写方向；平台未实现或连接失败时返回 null。
+     * A typical use case is accessing an internal service that only has a listener on a remote loopback address: data is transmitted end-to-end by reusing SSH encryption,
+     * There is no need to expose or perform port forwarding for the service port to the public internet. The return channel’s stdout and stdin correspond to the target TCP
+     * The read/write direction of the connection; returns null if the platform has not implemented it or if there is a failure.
      */
     fun openDirectTcpip(
         host: String,
         port: Int,
     ): SshExecChannel? = null
 
-    /** 主动关闭会话。 */
+    /** Close the session proactively. */
     fun close()
 
     /**
-     * 对已建立的 SSH 传输做端到端健康检查。
+     * Perform end-to-end health checks on established SSH connections.
      *
-     * [isActive] 只代表客户端对象尚未主动关闭，设备休眠或网络切换后 TCP 可能
-     * 已经成为半开连接。支持的平台应发送需要服务器响应的 SSH 请求，并在
-     * [timeoutMillis] 内确认；默认实现仅供没有主动探测能力的平台保守兜底。
+     * [isActive] simply indicates that the client object has not yet been actively closed; after the device enters sleep mode or the network toggles, the TCP connection may
+     * It has become a half-open connection. Supported platforms should send an SSH request requiring a server response and, in
+     * Confirm within [timeoutMillis]; the default implementation serves only as a conservative fallback for platforms lacking active detection capabilities.
      */
     fun checkAlive(timeoutMillis: Long = 2_500L): Boolean = isActive()
 
@@ -237,9 +237,9 @@ interface SshSession {
 }
 
 /**
- * exec+pty 通道：stdout = 程序渲染字节流，stdin = raw 输入。
+ * exec+pty channel: stdout = byte stream rendered by the program, stdin = raw input.
  *
- * 单条命令执行结果（stdout + stderr + 退出码；退出码不可得时为 null）。
+ * The result of a single command execution (stdout + stderr + exit code; null if the exit code is unavailable).
  */
 
 data class CommandOutput(
@@ -249,20 +249,20 @@ data class CommandOutput(
 )
 
 interface SshExecChannel {
-    /** 阻塞读下一块（stdout）；EOF/关闭返回 null。 */
+    /** Blocks reading the next block (stdout); returns null on EOF or closure. */
     fun read(): ByteArray?
 
-    /** 阻塞读下一块（stderr）；不读会因缓冲区满阻塞通道；默认不读。 */
+    /** Blocking reading the next block (stderr); failing to read it will cause the channel to block due to a full buffer; by default, it is not read. */
     fun readErr(): ByteArray? = null
 
-    /** 写入远端（exec 通道 stdin）。 */
+    /** Write to a remote destination (exec channel stdin). */
     fun write(data: ByteArray)
 
-    /** 关闭通道（幂等）。 */
+    /** Close channel (idempotent). */
     fun close()
 }
 
-/** 平台工厂：创建对应引擎的 [SshSession]。 */
+/** Platform Factory: Create an [SshSession] for the corresponding engine. */
 expect fun createSshSession(
     connection: SshConnection,
     callbacks: SshCallbacks,

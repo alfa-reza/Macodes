@@ -6,10 +6,10 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * 基于火山 bigmodel_async 实测响应结构（2026-08-21 验证）：
- * - 响应帧：Header(4B) + [Sequence(4B)] + Size(4B) + Payload；首包无 sequence（flags=0）
- * - 最终包帧 flags=0x3（byte1=0x93）；响应体无 code / is_last_package 字段
- * - payload_msg.result 为**对象** {text, utterances, additions}
+ * Response structure based on actual testing with Volcano’s bigmodel_async (verified on August 21, 2026):
+ * - Response frame: Header (4B) + [Sequence (4B)] + Size (4B) + Payload; the first packet has no sequence (flags=0)
+ * - Final packet frame flags=0x3 (byte1=0x93); the response body contains no "code" or "is_last_package" fields
+ * - `payload_msg.result` is an **object** of type {text, utterances, additions}
  */
 class VolcAsrProtocolTest {
     private fun be32(v: Int): ByteArray =
@@ -20,7 +20,7 @@ class VolcAsrProtocolTest {
             v.toByte(),
         )
 
-    /** 构造服务端帧：flags 控制 sequence 段与最终包标记。 */
+    /** Constructing server-side frames: flags control the sequence segment and the final packet header. */
     private fun serverFrame(
         flags: Int,
         sequence: Int?,
@@ -41,7 +41,7 @@ class VolcAsrProtocolTest {
         return bytes + body + payload.encodeToByteArray()
     }
 
-    /** 实测 bigmodel_async 响应：result 为顶层对象（无 payload_msg 包裹）。 */
+    /** Tested bigmodel_async response: `result` is a top-level object (not wrapped in `payload_msg`). */
     private fun realPayload(
         text: String,
         definite: Boolean = false,
@@ -61,7 +61,7 @@ class VolcAsrProtocolTest {
         assertEquals(0x11, f[0].toInt() and 0xff)
         assertEquals(0x20, f[1].toInt() and 0xff) // audio only request, flags=0
         assertEquals(0x00, f[2].toInt() and 0xff) // no serialization / no compression
-        assertEquals(0, (f[4].toInt() and 0xff)) // size 大端
+        assertEquals(0, (f[4].toInt() and 0xff)) // size big-endian
         assertEquals(0, (f[5].toInt() and 0xff))
         assertEquals(0, (f[6].toInt() and 0xff))
         assertEquals(5, (f[7].toInt() and 0xff))
@@ -71,7 +71,7 @@ class VolcAsrProtocolTest {
     @Test
     fun `last audio frame uses negative-packet flag`() {
         val f = VolcAsrProtocol.frame(VolcAsrProtocol.audioHeader(last = true), ByteArray(0))
-        assertEquals(0x22, f[1].toInt() and 0xff) // msg_type=2, flags=2 (负包)
+        assertEquals(0x22, f[1].toInt() and 0xff) // msg_type=2, flags=2 (negative package)
         assertEquals(0, (f[7].toInt() and 0xff))
     }
 
@@ -96,7 +96,7 @@ class VolcAsrProtocolTest {
 
     @Test
     fun `first response without sequence field parses`() {
-        // flags=0：无 sequence，size 在 offset 4（首包应答）
+        // flags=0: No sequence; size at offset 4 (first packet response)
         val payload = """{"result":{"additions":{"log_id":"x"}}}"""
         val frame = serverFrame(flags = 0, sequence = null, payload = payload)
         val parsed = VolcAsrProtocol.parseServerFrame(frame)
@@ -106,7 +106,7 @@ class VolcAsrProtocolTest {
 
     @Test
     fun `real response object result parses final text`() {
-        // 实测结构：flags=3 最终包、result 为对象、无 code 字段
+        // Tested structure: flags=3; final package and result are objects; no "code" field
         val frame =
             serverFrame(
                 flags = 3,
@@ -114,7 +114,7 @@ class VolcAsrProtocolTest {
                 payload = realPayload("你好，这是语音识别功能测试，请把这句话转换成文字。", definite = true),
             )
         val parsed = VolcAsrProtocol.parseServerFrame(frame)
-        assertTrue(parsed.isLastPackage) // flags=3 → 最终包
+        assertTrue(parsed.isLastPackage) // flags=3 → Final package
         assertEquals(
             "你好，这是语音识别功能测试，请把这句话转换成文字。",
             VolcAsrProtocol.finalText(parsed.response),
@@ -131,12 +131,12 @@ class VolcAsrProtocolTest {
 
     @Test
     fun `legacy list result joins segments`() {
-        // 老接口兼容：result 为分句 list
+        // Backward compatibility: `result` is a list of clauses
         val payload = """{"code":0,"is_last_package":true,
             "payload_msg":{"result":[{"text":"ls -la "},{"text":"&& cd src"}]}}"""
         val frame = serverFrame(flags = 1, sequence = 2, payload = payload)
         val parsed = VolcAsrProtocol.parseServerFrame(frame)
-        assertTrue(parsed.isLastPackage) // 响应体 is_last_package=true 兜底
+        assertTrue(parsed.isLastPackage) // Response body: is_last_package=true (fallback)
         assertEquals("ls -la && cd src", VolcAsrProtocol.finalText(parsed.response))
     }
 

@@ -13,8 +13,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * 屏幕推流 UDP 漫游会话的回环测试（Android 本地 JVM）：真实 UDP socket，
- * 假 relay 用普通 DatagramSocket 绑随机端口，验证心跳闭环 + 断网续传。
+ * Loopback test for screen streaming UDP roaming sessions (Android local JVM): real UDP socket,
+ * The mock relay uses a standard DatagramSocket bound to a random port to verify the heartbeat loop and resume transmission after a network outage.
  */
 class ScreenStreamUdpSessionTest {
     private val mtu = 400
@@ -32,12 +32,12 @@ class ScreenStreamUdpSessionTest {
                 )
             session.start()
             try {
-                // 首包应为 reload（重启远端 ffmpeg 重读推流参数）
+                // The first packet should be `reload` (restart the remote FFmpeg to re-read the streaming parameters).
                 val first = receivePacket(relay)
                 assertTrue(first != null && first.contentEquals(SCREEN_RELOAD_MAGIC), "首包应为 reload magic")
-                // 后续包为普通心跳
+                // Subsequent packets are standard heartbeat
                 val second = receivePacket(relay)
-                // 后续包为带丢帧反馈的心跳（THB\x01 + 1 字节丢帧率，初始 0%）
+                // Subsequent packets are heartbeats carrying frame-loss feedback (THB\x01 + 1 byte frame-loss rate, initially 0%)
                 assertTrue(
                     second != null && second!!.size == 5 && second!!.contentEquals(heartbeatWithLoss(0)),
                     "后续包应为带反馈的心跳",
@@ -62,15 +62,15 @@ class ScreenStreamUdpSessionTest {
                 )
             session.start()
             try {
-                // 1. 等手机心跳到达 → 得知手机地址（漫游的地址更新就是靠这个）
+                // 1. Wait for the phone’s heartbeat → Obtain the phone’s address (this is how the roaming address is updated)
                 val phoneAddr = receiveHeartbeat(relay)
                 assertTrue(phoneAddr != null, "应收到手机心跳包")
 
-                // 2. relay 发视频包（ScreenStreamSender 分片 → 普通 socket 发到手机地址）
+                // 2. Relay video packets (ScreenStreamSender fragmentation → standard socket transmission to phone address)
                 val payload = Random(42).nextBytes(5000)
                 sendVideo(relay, phoneAddr!!, payload)
 
-                // 3. 手机应重组出完整视频包
+                // 3. The phone should perform the reassembly of the complete video packet
                 val got =
                     withTimeoutOrNull(5000) {
                         while (received.isEmpty()) delay(50)
@@ -99,20 +99,20 @@ class ScreenStreamUdpSessionTest {
             session.start()
             try {
                 val phoneAddr = receiveHeartbeat(relay)!!
-                relay.soTimeout = 1 // 后面用非阻塞探测
+                relay.soTimeout = 1 // Followed by non-blocking detection
 
-                // 第一批：正常收
+                // First batch: accepted normally
                 val p1 = Random(7).nextBytes(2000)
                 sendVideo(relay, phoneAddr, p1)
                 withTimeoutOrNull(5000) { while (received.size < 1) delay(50) }
                 assertTrue(received.isNotEmpty(), "断网前应收到第一批")
 
-                // 断网：relay 停止发 3 秒（模拟 WiFi 断开）。会话不得退出
+                // Internet Disconnection: The relay stops transmitting for 3 seconds (mocking a WiFi disconnection). The session must not terminate.
                 val before = received.size
                 delay(3000)
                 assertTrue(session.isActive(), "断网期间会话不应退出")
 
-                // 恢复：relay 继续发（可能换了地址，此处回环地址不变）
+                // Resume: relay continues sending (the address may have changed, but the loopback address here remains the same)
                 val p2 = Random(9).nextBytes(2000)
                 sendVideo(relay, phoneAddr, p2)
                 withTimeoutOrNull(5000) { while (received.size <= before) delay(50) }
@@ -124,7 +124,7 @@ class ScreenStreamUdpSessionTest {
             }
         }
 
-    /** 等手机心跳包，返回手机 socket 地址。 */
+    /** Wait for a heartbeat packet from the phone; returns the phone's socket address. */
     private fun receiveHeartbeat(relay: DatagramSocket): java.net.SocketAddress? {
         val buf = ByteArray(64)
         relay.soTimeout = 5000
@@ -138,7 +138,7 @@ class ScreenStreamUdpSessionTest {
         }
     }
 
-    /** 收一个包返回其内容（区分 reload / 心跳 magic）。 */
+    /** Receive a packet and return its content (distinguish reload / heartbeat magic). */
     private fun receivePacket(relay: DatagramSocket): ByteArray? {
         val buf = ByteArray(64)
         relay.soTimeout = 5000
@@ -151,7 +151,7 @@ class ScreenStreamUdpSessionTest {
         }
     }
 
-    /** 用 ScreenStreamSender 分片，逐片发到手机地址。 */
+    /** Use ScreenStreamSender for fragmentation of the stream and sending of each segment to the phone’s address. */
     private fun sendVideo(
         relay: DatagramSocket,
         phoneAddr: java.net.SocketAddress,

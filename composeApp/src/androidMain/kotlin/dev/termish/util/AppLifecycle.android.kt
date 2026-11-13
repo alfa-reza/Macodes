@@ -6,9 +6,9 @@ import android.os.Bundle
 import dev.termish.AppContext
 
 /**
- * Android：用 Activity 前后台计数实现生命周期钩子，回前台时触发
- * sessionManager.reconnectDroppedSessions()（与 iOS 行为一致）。
- * 保活失败/网络掐断导致的断连，回到前台即可自动重连恢复现场。
+ * Android: The lifecycle hook implementation using Activity foreground/background counting, triggered when the app returns to the foreground
+ * sessionManager.reconnectDroppedSessions() (consistent with iOS behavior).
+ * If the connection is lost due to a failure in the keep-alive process or a network interruption, simply return to the foreground to automatically reconnect and resume the session.
  */
 actual fun observeAppLifecycle(listener: (foreground: Boolean) -> Unit): () -> Unit {
     val app =
@@ -18,11 +18,11 @@ actual fun observeAppLifecycle(listener: (foreground: Boolean) -> Unit): () -> U
             null
         } ?: return {}
 
-    // 注册时 MainActivity 已在 STARTED 状态（AppRoot 组合发生在 Activity 启动后），
-    // 而 registerActivityLifecycleCallbacks 不会为已存在的 Activity 补发
-    // onActivityStarted——started 从 0 开始会让首次 onStopped 减成 -1，
-    // listener(false) 永不触发（退后台持久化/回前台重连全部失效）。
-    // 补偿初始计数为 1。
+    // When registering, MainActivity is already in the STARTED state (the AppRoot composition occurs after the Activity has been launched),
+    // However, `registerActivityLifecycleCallbacks` does not resend calls for existing Activities.
+    // onActivityStarted—starting at 0 will cause the first onStopped to be decremented to -1,
+    // listener(false) Never trigger (persistence when moving to the background and reconnection when returning to the foreground will both fail).
+    // The initial count is compensated to 1.
     var started = 1
     val callback =
         object : Application.ActivityLifecycleCallbacks {

@@ -139,26 +139,26 @@ import kotlinx.datetime.toLocalDateTime
 import kotlinx.datetime.todayIn
 import org.jetbrains.compose.resources.painterResource
 
-/** SFTP 排序方式。 */
+/** SFTP sort method. */
 enum class SftpSort { NAME, DATE, SIZE, KIND }
 
 /**
- * SFTP 浏览状态：跟随会话条目存活（SessionManager 持有），
- * 切 tab / 离开终端页再回来不重置路径与列表。
+ * SFTP browsing status: Survives with the session entry (held by SessionManager),
+ * Tabbing away from or closing the terminal screen and returning does not reset the path or list.
  */
 class SftpUiState {
     var path by mutableStateOf("")
     var entries by mutableStateOf<List<SftpEntry>?>(null)
     var loadError by mutableStateOf<String?>(null)
 
-    /** 底层连接已断开（onClosed 主动推送）：banner 立即显示，可手动重连。
-     *  此前断开无感知（onClosed 空实现），只能靠切 tab 重组后 reload 失败才暴露。 */
+    /** The underlying connection has been disconnected (onClosed push notification): A banner is shown immediately; users can manually reconnect.
+     *  Previously, disconnections went unnoticed (empty implementation of `onClosed`), and the issue was only revealed in the event of reloading failure after tab switching and reassembly of the page. */
     var disconnected by mutableStateOf(false)
 
-    /** 断线重连中：顶部显示琥珀色「重新连接中…」banner（同终端重连样式）。 */
+    /** Reconnection after a disconnection: An amber “Reconnecting…” banner shows at the top (same style as terminal reconnection). */
     var reconnecting by mutableStateOf(false)
 
-    /** 断线自动重连是否已尝试：跨重组保留，整个会话生命周期只自动一次（防循环）。 */
+    /** Has automatic reconnection upon disconnection been attempted? Retain across reassembly; automatically attempt only once per session lifecycle (to prevent loops). */
     var autoReconnectAttempted by mutableStateOf(false)
     var sort by mutableStateOf(SftpSort.NAME)
     var showHidden by mutableStateOf(false)
@@ -166,69 +166,69 @@ class SftpUiState {
     var query by mutableStateOf("")
     var newFolderDialog by mutableStateOf(false)
 
-    /** 正在显示操作菜单的文件条目（仅文件；目录点击直接进入）。 */
+    /** File entries that show the context menu (files only; tapping on directories opens them directly). */
     var fileMenu by mutableStateOf<SftpEntry?>(null)
 
-    /** 多选模式：选中的条目名集合（非空 = 多选模式，列表行切换勾选）。 */
+    /** Multiple-selection mode: A set of selected item names (non-empty = multiple-selection mode; toggle checkmarks on list rows). */
     val selection = mutableStateListOf<String>()
 
-    /** 收藏目录路径集合（快捷跳转）。 */
+    /** Collection of bookmarked directory paths (quick navigation). */
     val favorites = mutableStateListOf<String>()
 
-    /** 重命名对话框目标（null = 关闭）。 */
+    /** Rename the dialog target (null = disabled). */
     var renameTarget by mutableStateOf<SftpEntry?>(null)
 
-    /** 删除确认目标列表（null = 关闭）。 */
+    /** Delete the list of confirmation targets (null = disabled). */
     var deleteTargets by mutableStateOf<List<SftpEntry>?>(null)
 
-    /** 多选批量下载的待下载文件路径（DirectorySaver 回调异步消费）。 */
+    /** Path to files selected for batch download (async processing via the DirectorySaver callback). */
     var pendingDownloadMulti by mutableStateOf<List<String>?>(null)
 
-    /** 下拉刷新中。 */
+    /** Refreshing via pull-to-refresh. */
     var refreshing by mutableStateOf(false)
 
-    /** 正在预览的文件条目（null = 预览面板关闭）。 */
+    /** File entries currently being previewed (null = preview panel closed). */
     var previewEntry by mutableStateOf<SftpEntry?>(null)
 
-    /** 视频预览的稳定远端路径和播放位置，切 tab 后恢复。 */
+    /** The stable remote path and playback position for video previews are resumed when switching tabs. */
     var previewRemotePath by mutableStateOf<String?>(null)
     var previewVideoPositionMillis by mutableStateOf(0L)
 
-    /** 预览加载中。 */
+    /** Preview loading... */
     var previewLoading by mutableStateOf(false)
 
-    /** 预览文本（加载完成；null = 未就绪）。 */
+    /** Preview text (loading complete; null = not ready). */
     var previewText by mutableStateOf<String?>(null)
 
-    /** 图片预览位图（图片类文件；null = 未就绪/非图片）。 */
+    /** Image preview bitmap (image file; null = not ready/not an image). */
     var previewImage by mutableStateOf<ImageBitmap?>(null)
 
-    /** 预览被截断（文件超过读取上限，只显示前一段）。 */
+    /** Preview with truncation (file exceeds read limit; only the first paragraph is shown). */
     var previewTruncated by mutableStateOf(false)
 
-    /** 预览失败原因（null = 无错误）。 */
+    /** Preview the cause of the failure (null = no error). */
     var previewError by mutableStateOf<String?>(null)
 
-    /** 等待用户选择保存位置后开始下载的文件（保存回调异步，不能依赖 fileMenu）。 */
+    /** Files that begin downloading after the user selects a save location (the save callback is async; do not depend on `fileMenu`. */
     var pendingDownload by mutableStateOf<SftpEntry?>(null)
 
-    /** 面包屑 "…" 的下拉父级菜单开关。 */
+    /** Switch for the drop-down parent menu in the breadcrumb "…". */
     var showParents by mutableStateOf(false)
 
     /**
-     * 目录浏览历史栈：进入目录/面包屑跳转时压入旧路径，
-     * 返回键弹栈回到上一个浏览位置（而非机械的父目录）。
+     * Directory navigation history stack: Push the old path onto the stack when navigating to a directory or using breadcrumbs,
+     * Pressing Back pops the stack to the previous browsing location (not mechanically the parent directory).
      */
     val history = mutableStateListOf<String>()
 }
 
-/** 远端路径拼接：根目录下不产生双斜杠。 */
+/** Remote path concatenation: Do not include a double slash in the root directory. */
 internal fun joinPath(
     base: String,
     name: String,
 ): String = if (base == "/") "/$name" else "$base/$name"
 
-/** DATE 排序的时间分组桶：今天 / 本周 / 更早（时间未知归更早）。 */
+/** Time-based sorting groups for DATE: Today / This Week / Earlier (if the time is unknown, it falls under “Earlier”). */
 internal fun dateBucket(
     modifiedAt: Long,
     s: AppStrings,
@@ -244,7 +244,7 @@ internal fun dateBucket(
     }
 }
 
-/** 单行条目渲染：多选点击/长按进入多选；非多选时目录进入、文件预览。 */
+/** Single-line entry rendering: Tap or long press to select multiple items; when no items are selected, access the directory or preview the file. */
 @Composable
 private fun EntryRow(
     entry: SftpEntry,
@@ -258,7 +258,7 @@ private fun EntryRow(
 ) {
     SftpRowItem(
         name = entry.name,
-        // 目录显示权限串；文件显示大小（移动端大小比权限更有用）
+        // Show permission strings for directories; show file sizes (file size is more useful than permissions on mobile devices).
         subtitle = if (entry.isDirectory) entry.permissions else formatSize(entry.size),
         time = formatTime(entry.modifiedAt),
         isDirectory = entry.isDirectory,
@@ -275,8 +275,8 @@ private fun EntryRow(
 }
 
 /**
- * 递归下载目录：按相对路径写入本地 [DirectorySink]。跳过 `.`/`..`；
- * 单文件下载失败会沿调用栈抛异常（由调用方提示），已写完的文件关闭。
+ * Recursively download directories: Write to the local [DirectorySink] using relative paths. Skip `.`/`..`;
+ * If a single-file download fails, an exception is thrown up the call stack (prompted by the caller), and any files that have been written are closed.
  */
 internal fun downloadDir(
     session: SftpSession,
@@ -300,7 +300,7 @@ internal fun downloadDir(
     }
 }
 
-/** 批量下载选中的远端文件到本地 sink（目录下载的伴生：多选操作栏用）。 */
+/** Batch download selected remote files to a local sink (used in conjunction with directory downloads: via the multi-select toolbar). */
 internal fun downloadFilesToSink(
     session: SftpSession,
     paths: List<String>,
@@ -318,20 +318,20 @@ internal fun downloadFilesToSink(
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Suppress("DEPRECATION") // Compose 1.8 新 Clipboard 尚无稳定的跨平台纯文本构造 API。
+@Suppress("DEPRECATION") // Compose 1.8’s new Clipboard does not yet have a stable, cross-platform plain-text construction API.
 @Composable
 fun SftpContent(
     host: Host,
     session: SftpSession?,
     state: SftpUiState,
     onBack: () -> Unit,
-    /** 断线重连（由 AppRoot 重建会话并替换当前 tab）。 */
+    /** Reconnection (AppRoot will rebuild the session and replace the current tab). */
     onReconnect: () -> Unit,
-    /** 收藏变更持久化回调（AppRoot 落盘；null = 不持久化）。 */
+    /** Persistence callback for favorites changes (written to disk in AppRoot; null = no persistence). */
     onFavoritesChanged: (List<String>) -> Unit = {},
-    /** 浏览路径变更回调（AppRoot 即时持久化，崩溃/强杀不丢）。 */
+    /** Navigation path change callback (AppRoot provides persistence of data in real time; data is not lost upon crash or force kill). */
     onPathChanged: (String) -> Unit = {},
-    /** 将选中远端路径直接交给同主机 Agent；不经手机下载/重新上传。 */
+    /** Pass the selected remote path directly to the Agent on the same host; do not download to a phone or re-upload. */
     onAskAgent: (AgentLaunchContext) -> Unit = {},
 ) {
     val s = LocalAppStrings.current
@@ -339,7 +339,7 @@ fun SftpContent(
     val snackbar = remember { SnackbarHostState() }
     val clipboard = LocalClipboardManager.current
 
-    // 全部浏览状态委托给会话级 [SftpUiState]：切 tab 离开组合后仍然保留
+    // Delegation of browsing states to the session-level [SftpUiState]: states are retained even after switching tabs or exiting the composition.
     var path by state::path
     var entries by state::entries
     var loadError by state::loadError
@@ -358,13 +358,13 @@ fun SftpContent(
     var previewTruncated by state::previewTruncated
     var previewError by state::previewError
 
-    /** 等待用户选择保存目录后开始递归下载的远端目录。 */
+    /** A remote directory that waits for the user to make a save directory selection before starting a recursive download. */
     var pendingDownloadDir by remember { mutableStateOf<String?>(null) }
 
-    /** 单文件下载进度（null = 无下载中）；顶部进度条横幅数据源。 */
+    /** Single-file download progress (null = no download in progress); data source for the top progress bar banner. */
     var downloadProgress by remember { mutableStateOf<DownloadProgress?>(null) }
 
-    /** header 搜索框焦点：展开后自动聚焦弹键盘。 */
+    /** Header search box focus: Automatically focus the search box and bring up the keyboard when expanded. */
     val searchFocusRequester = remember { FocusRequester() }
     LaunchedEffect(searching) {
         if (searching) {
@@ -372,8 +372,8 @@ fun SftpContent(
             searchFocusRequester.requestFocus()
         }
     }
-    // 递归搜索：输入关键词时遍历当前目录子树，扁平展示结果（文件名 + 相对路径）。
-    // 空关键词恢复普通浏览；query/path/session 变化即取消上一次遍历（LaunchedEffect 自动取消 + debounce）。
+    // Recursive search: When input is provided for a keyword, traverse the subtree of the current directory and display the results in a flat format (filename + relative path).
+    // Resume normal browsing when keywords are empty; any change to query, path, or session immediately cancels the previous iteration (LaunchedEffect automatically cancels + debounce).
     var searchLoading by remember { mutableStateOf(false) }
     var searchResults by remember { mutableStateOf<List<SftpSearchHit>?>(null) }
     LaunchedEffect(query, path, session) {
@@ -389,7 +389,7 @@ fun SftpContent(
             return@LaunchedEffect
         }
         searchLoading = true
-        delay(300) // 输入防抖
+        delay(300) // Input debounce
         val results =
             withContext(ioDispatcher()) {
                 runCatching { searchRecursive(sc, path, query) }.getOrElse { emptyList() }
@@ -398,7 +398,7 @@ fun SftpContent(
         searchLoading = false
     }
 
-    /** 统一目录跳转入口：压入当前路径到浏览历史，再切换目录。 */
+    /** Standardized directory navigation: Add the current path to the browsing history, then toggle between directories. */
     fun navigateTo(newPath: String) {
         if (newPath == path) return
         state.history.add(path)
@@ -406,8 +406,8 @@ fun SftpContent(
         onPathChanged(newPath)
     }
 
-    // SFTP 只注册一个页面级返回处理器，严格按视觉层级收起。
-    // 预览/多选若漏掉会穿透到终端页，表现为从文件页直接回首页。
+    // SFTP registers only one screen-level return handler and collapses elements strictly according to the visual hierarchy.
+    // If preview/multi-select fail to intercept Back, it falls through to the terminal page — landing from the file page straight home.
     PlatformBackHandler(enabled = true) {
         when (
             sftpBackTarget(
@@ -438,10 +438,10 @@ fun SftpContent(
     }
 
     suspend fun reload() {
-        // 重连中不碰旧 session：组合时 reload effect 与自动重连 effect 都会跑，
-        // 旧连接已死必然失败——跳过等重连完成的新组合（新 session 再 reload）。
+        // Do not touch the old session during reconnection: During composition, both the reload effect and the auto-reconnect effect will run,
+        // If the old connection is dead, failure is inevitable—skip it and reconnect using the new connection (then reload the new composition).
         if (state.reconnecting) return
-        val s = session ?: return // 进程重启恢复的条目：等自动重连重建后新组合再加载
+        val s = session ?: return // Items to be resumed after a process restart: Wait for automatic reconnection and rebuilding, then resume the new composition.
         entries = null
         loadError = null
         try {
@@ -453,10 +453,10 @@ fun SftpContent(
         }
     }
 
-    // 断线重连：上次浏览失败（连接已断）或进程重启恢复的条目（session=null）
-    // 时进入 tab 自动重连一次；之后用户可点 banner 上的「重新连接」手动重试。
-    // 标记放 uiState：tab 重组（重连成功后替换 session）会重置 remember，
-    // 放 uiState 才能保证整个会话生命周期只自动重连一次，防循环。
+    // Reconnection after a disconnection: Entries resumed after a failure of the previous session (connection lost) or a process restart (session=null)
+    // entering the tab auto-reconnects once; afterwards the user can tap “Reconnect” on the banner to retry manually.
+    // Put the flag in uiState: tab reassembly (session replaced after reconnect) resets remember,
+    // Set `uiState` to ensure that the entire session lifecycle is automatically reconnected only once, preventing loops.
     LaunchedEffect(Unit) {
         if ((loadError != null || session == null || state.disconnected) && !state.autoReconnectAttempted) {
             state.autoReconnectAttempted = true
@@ -474,7 +474,7 @@ fun SftpContent(
     val pickFile =
         rememberFilePicker { picked ->
             val sc = session ?: return@rememberFilePicker
-            // 多选：选择器对每个选中文件回调一次，各自开上传协程（并发上传）
+            // Multiple choice: The selector calls the callback once for each selected file, launching a separate upload coroutine for each (concurrency in uploads).
             scope.launch {
                 try {
                     withContext(ioDispatcher()) {
@@ -483,7 +483,7 @@ fun SftpContent(
                             joinPath(path, picked.name),
                             picked.size,
                             onProgress = { sent, total ->
-                                // 节流同下载：每 1%（或 64KB，total 未知时）更新一次
+                                // Throttling is the same as for downloads: update once per 1% (or 64 KB, when the total is unknown).
                                 val step = if (total > 0) (total / 100).coerceAtLeast(1) else 64L * 1024
                                 if (sent - lastEmitted >= step || (total > 0 && sent >= total)) {
                                     lastEmitted = sent
@@ -504,7 +504,7 @@ fun SftpContent(
             }
         }
 
-    // 选择保存位置后流式下载；取消保存则完全不回调（不产生下载流量）
+    // After selecting a save location, the download proceeds in real time; if saving is canceled, no callback is triggered at all (no download traffic is generated).
     val savePicker =
         rememberFileSaver { _, sink ->
             val target = pendingDownload ?: return@rememberFileSaver
@@ -517,7 +517,7 @@ fun SftpContent(
                         sc.download(
                             remotePath,
                             onProgress = { loaded, total ->
-                                // 节流：每 1%（或 64KB，total 未知时）才更新一次，避免高频重组
+                                // Throttling: Update only once per 1% (or 64 KB, when the total is unknown) to avoid frequent reassembly.
                                 val step = if (total > 0) (total / 100).coerceAtLeast(1) else 64L * 1024
                                 if (loaded - lastEmitted >= step || (total > 0 && loaded >= total)) {
                                     lastEmitted = loaded
@@ -548,7 +548,7 @@ fun SftpContent(
         savePicker(entry.name)
     }
 
-    /** 文本预览加载：流式读取远端文件（上限 [PREVIEW_MAX_BYTES]）。 */
+    /** Text preview loading: Stream-based reading of remote files (up to [PREVIEW_MAX_BYTES]). */
     fun loadTextPreview(
         sc: SftpSession,
         entry: SftpEntry,
@@ -559,7 +559,7 @@ fun SftpContent(
                     withContext(ioDispatcher()) {
                         readSftpPreview(sc, joinPath(path, entry.name))
                     }
-                if (previewEntry !== entry) return@launch // 已关闭或切到别的文件：丢弃结果
+                if (previewEntry !== entry) return@launch // If the file is closed or switched to another file: discard the result
                 previewText = result.text
                 previewTruncated = result.truncated
             } catch (e: SftpPreviewBinaryException) {
@@ -574,7 +574,7 @@ fun SftpContent(
         }
     }
 
-    /** 预览入口：图片、视频和文本分别加载；结果挂在会话级 uiState。 */
+    /** Preview entry points: Images, videos, and text are loaded separately; results are stored in session-level `uiState`. */
     fun startPreview(entry: SftpEntry) {
         val sc = session ?: return
         previewEntry = entry
@@ -586,7 +586,7 @@ fun SftpContent(
         previewTruncated = false
         previewLoading = true
         if (fileKindOf(entry.name) == SftpFileKind.VIDEO) {
-            previewLoading = false // 原生播放器管理缓冲与按需读取
+            previewLoading = false // Native Player buffering and on-demand reading
         } else if (isImageName(entry.name)) {
             scope.launch {
                 try {
@@ -594,7 +594,7 @@ fun SftpContent(
                         withContext(ioDispatcher()) {
                             readSftpPreviewBytes(sc, joinPath(path, entry.name), PREVIEW_IMAGE_MAX_BYTES)
                         }
-                    if (previewEntry !== entry) return@launch // 已关闭或切到别的文件：丢弃
+                    if (previewEntry !== entry) return@launch // If the file is closed or switched to another file: discard
                     val bmp = withContext(ioDispatcher()) { decodeImage(bytes, isSvg = extensionOf(entry.name) == "svg") }
                     if (previewEntry !== entry) return@launch
                     if (bmp == null) {
@@ -628,14 +628,14 @@ fun SftpContent(
         previewLoading = false
     }
 
-    // 选择保存目录后递归下载当前目录 / 批量下载选中文件；取消保存则不回调
+    // After a directory save selection, recursively download the current directory / batch download selected files; if saving is canceled, no callback will be triggered.
     val saveDir =
         rememberDirectorySaver { _, sink ->
             val dir = pendingDownloadDir
             val files = state.pendingDownloadMulti
             if (dir == null && files == null) {
-                // 没有待下载目标（防御路径）：直接放弃，不调 sink.close()——
-                // iOS 的 close 会弹导出面板，空目录也会弹
+                // No targets to download (defensive path): Abort immediately; do not call `sink.close()`——
+                // On iOS, clicking “Close” brings up an export panel; doing so on an empty directory also brings up a panel.
                 return@rememberDirectorySaver
             }
             val sc = session ?: return@rememberDirectorySaver
@@ -651,7 +651,7 @@ fun SftpContent(
                     sink.close()
                     snackbar.showSnackbar(s.sftpDownloaded)
                 } catch (e: Exception) {
-                    // 失败不调 sink.close()：iOS 只在全部成功时弹导出面板，避免导出半成品目录
+                    // Do not call `sink.close()` on failure: On iOS, the export panel only appears when all operations are successful; this prevents the export of incomplete directories.
                     snackbar.showSnackbar(s.sftpDownloadFailed(e.message ?: "download"))
                 }
             }
@@ -664,10 +664,10 @@ fun SftpContent(
         saveDir(name)
     }
 
-    // 首次进入（path 尚未初始化）：realpath 解析真实用户主目录（~），
-    // 失败回退 /home/{user}，再失败回退根目录；切回不重置。
-    // key 含 session：恢复条目（null）重连成功后（非 null）重新执行——
-    // 否则 path 为空且首次被跳过时永远不解析 home。
+    // First entry (path uninitialized): realpath parses the real user's home directory (~),
+    // If a failure occurs, fall back to /home/{user}; if that fails, fall back to the root directory; switching back does not reset.
+    // key contains session: Resume entry (null); re-execute after successful reconnection (non-null)——
+    // Otherwise, "home" is never parsed when the path is empty and skipped for the first time.
     LaunchedEffect(session) {
         if (state.path.isEmpty() && session != null) {
             path =
@@ -686,17 +686,17 @@ fun SftpContent(
                 }
         }
     }
-    // key 含 session：重连成功后（null → 新对象）必须重新加载——
-    // 首次组合的 reload 可能被 reconnecting 跳过，仅靠 path/sort 变化
-    // 不会再次触发（否则「一直连接中」，切 tab 才恢复）。
+    // key contains session: After a successful reconnect (null → new object), it must be reloaded—
+    // The first reload of a composition may be skipped by "reconnecting" based solely on changes to path or sort.
+    // ...otherwise it stays “Connecting…” forever and only recovers on tab switch.
     LaunchedEffect(path, sort, showHidden, session) {
         if (path.isNotEmpty()) reload()
     }
 
-    // 面包屑动态显示当前路径：始终最多两个层级
-    // - 1 段：User（根）或 A
-    // - 2 段：A > B
-    // - 3+ 段：... > B（… 点击下拉全部父级目录）
+    // Breadcrumbs dynamically show the current path: always a maximum of two levels deep
+    // - 1 section: User (root) or A
+    // - 2 segments: A > B
+    // - 3+ segments: ... > B (… tap to drop down all parent directories)
     val parts = path.split('/').filter { it.isNotBlank() }
     val displayParts = if (parts.firstOrNull() == "home") listOf(s.sftpUser) + parts.drop(1) else parts
     val breadcrumbs =
@@ -705,7 +705,7 @@ fun SftpContent(
         } else {
             displayParts.ifEmpty { listOf(s.sftpUser) }
         }
-    // 被折叠的父级目录（最后一段之前的所有层级）
+    // Collapsed parent directories (all levels before the last segment)
     val hiddenParents = if (displayParts.size > 2) displayParts.dropLast(1) else emptyList()
 
     fun pathForBreadcrumb(index: Int): String {
@@ -728,7 +728,7 @@ fun SftpContent(
                 }
             }
 
-    // ---- 多选 / 删除 / 重命名 / 刷新 ----
+    // ---- Select Multiple / Delete / Rename / refresh ----
     fun selecting() = state.selection.isNotEmpty()
 
     fun enterSelection(name: String) {
@@ -747,12 +747,12 @@ fun SftpContent(
         visible.forEach { state.selection.add(it.name) }
     }
 
-    /** 删除确认（单文件菜单 / 多选底部栏共用）。 */
+    /** Delete confirmation (shared between single-file menu and multi-select bottom bar). */
     fun confirmDelete(targets: List<SftpEntry>) {
         state.deleteTargets = targets
     }
 
-    /** 执行删除（递归，平台实现内部处理目录）；成功后刷新并退出多选。 */
+    /** Perform deletion (recursively; the platform handles internal directories); after success, refresh and exit the multi-select mode. */
     fun doDelete(targets: List<SftpEntry>) {
         val sc = session ?: return
         scope.launch {
@@ -774,7 +774,7 @@ fun SftpContent(
         }
     }
 
-    /** 执行重命名。 */
+    /** Perform renaming. */
     fun doRename(
         entry: SftpEntry,
         newName: String,
@@ -798,7 +798,7 @@ fun SftpContent(
         }
     }
 
-    /** 手动/下拉刷新当前目录。 */
+    /** Manually refresh or use the pull-to-refresh gesture to refresh the current directory. */
     fun refreshNow() {
         if (state.refreshing) return
         state.refreshing = true
@@ -808,20 +808,20 @@ fun SftpContent(
         }
     }
 
-    /** 收藏夹对话框开关（MoreMenu 进入）。 */
+    /** Bookmarks dialog switch (access via MoreMenu). */
     var favoritesOpen by remember { mutableStateOf(false) }
 
-    /** 预览面板 ⋮ 操作菜单开关。 */
+    /** Switch the preview panel ⋮ action menu. */
     var previewMenu by remember { mutableStateOf(false) }
 
-    /** 收藏/取消收藏当前目录（header 星标）；变更持久化。 */
+    /** Bookmark/Cancel the current directory (star icon in the header); persistence is changed. */
     fun toggleFavorite(p: String) {
         if (p in state.favorites) state.favorites.remove(p) else state.favorites.add(p)
         onFavoritesChanged(state.favorites.toList())
     }
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize()) {
-            // 多选顶部选择条：计数 + 全选 + 退出（紧贴 header 上方）
+            // Multi-select toolbar at the top: Count + select all + Exit (immediately above the header)
             if (selecting()) {
                 Row(
                     Modifier
@@ -866,8 +866,8 @@ fun SftpContent(
                     }
                 }
             }
-            // 断线 banner（红色 + 重连按钮）；重连中改画布居中指示器
-            // （与终端页同款，见 ConnectingIndicator）
+            // Disconnection banner (red + reconnect button); change the canvas centering indicator while performing a reconnection
+            // (Same as the terminal screen; see ConnectingIndicator)
             val bannerText =
                 when {
                     state.reconnecting -> null
@@ -896,12 +896,12 @@ fun SftpContent(
                     }
                 }
             }
-            // 精简头部：无边框、小字体、图标用终端前景色（深色背景下可见）
+            // Simplify the header: no borders, small font size, and icons in the terminal’s foreground color (visible against a dark background).
             Row(
                 Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // 面包屑常驻左侧（可点击跳转；… 下拉父级）
+                // Breadcrumb navigation is always displayed on the left (tap to navigate; tap “…” to expand and view parent levels).
                 Row(
                     Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically,
@@ -979,7 +979,7 @@ fun SftpContent(
                         }
                     }
                 }
-                // 收藏当前目录（星标）：收藏夹列表在三点菜单「收藏夹」里查看/跳转
+                // Bookmark the current directory (star): View/navigate to the bookmarks list via the “Bookmarks” option in the three-dot menu.
                 IconButton(onClick = { toggleFavorite(path) }) {
                     Icon(
                         if (path in state.favorites) Icons.Filled.Star else Icons.Filled.StarBorder,
@@ -1028,7 +1028,7 @@ fun SftpContent(
                         startDownloadDir()
                     },
                 )
-                // 搜索开关：图标切换（搜索 ⇄ 关闭），搜索框在下方垂直展开
+                // Search switch: Toggle icon (Search ⇄ Off); the search box expands vertically at the bottom
                 IconButton(
                     onClick = {
                         if (searching) {
@@ -1046,7 +1046,7 @@ fun SftpContent(
                     )
                 }
             }
-            // 搜索框：与主机/连接页同款——点击 header 图标垂直展开 + 淡入，自动聚焦
+            // Search bar: Same design as the Host/Connection page—tap the header icon to expand vertically + fade in, with automatic focus
             AnimatedVisibility(
                 visible = searching,
                 enter = expandVertically() + fadeIn(),
@@ -1074,16 +1074,16 @@ fun SftpContent(
                 )
             }
             when {
-                // 首连/目录加载中（entries 未就绪）：不在列表区画提示，
-                // 统一走外层 ConnectingIndicator 胶囊（与终端页同款）
+                // Initial connection/directory loading (entries not ready): Do not display tooltips in the list area,
+                // Unify the use of the outer-layer ConnectingIndicator capsule (same as the terminal screen).
                 entries == null -> Box(Modifier.fillMaxSize())
-                // 断开/加载失败：主提示在顶部 banner（红色+重连按钮，同终端样式），
-                // 内容区只留中性副提示，不重复红色错误文字
+                // Disconnect/Loading Failure: Main tooltip in the top banner (red + reconnect button, same as terminal style),
+                // Leave only neutral secondary tooltips in the content area; do not repeat the red error text.
                 loadError != null ->
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(s.sftpDisconnected, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                // 递归搜索：输入关键词时展示跨目录结果（文件名 + 相对路径）
+                // Recursive search: Display cross-directory results (file name + relative path) when performing input.
                 query.isNotBlank() ->
                     Column(
                         Modifier
@@ -1145,7 +1145,7 @@ fun SftpContent(
                             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp)),
                     ) {
                         if (visible.isEmpty()) {
-                            // 空态
+                            // Empty state
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Icon(
@@ -1163,7 +1163,7 @@ fun SftpContent(
                                 }
                             }
                         } else {
-                            // 下拉刷新 + 列表（DATE 排序按 今天/本周/更早 分组）
+                            // Pull-to-refresh + List (sorted by DATE and grouped by Today/This Week/Earlier)
                             PullToRefreshBox(
                                 isRefreshing = state.refreshing,
                                 onRefresh = { refreshNow() },
@@ -1188,7 +1188,7 @@ fun SftpContent(
                                         }
                                     }
                                     if (sort == SftpSort.DATE && !selecting()) {
-                                        // 时间分组头：今天 / 本周 / 更早（未知时间归更早）
+                                        // Time group headers: Today / This Week / Earlier (unknown times are grouped under “Earlier”)
                                         val buckets = linkedMapOf<String, MutableList<SftpEntry>>()
                                         visible.forEach { e ->
                                             buckets.getOrPut(dateBucket(e.modifiedAt, s)) { mutableListOf() }.add(e)
@@ -1241,7 +1241,7 @@ fun SftpContent(
                     }
             }
         }
-        // 多选底部操作栏：下载 / 删除 / 复制路径 / 取消（盖在列表底部）
+        // Multi-select bottom action bar: Download / Delete / Copy Path / Cancel (overlapping the bottom of the list)
         if (selecting()) {
             val selEntries = visible.filter { it.name in state.selection }
             Surface(
@@ -1288,7 +1288,7 @@ fun SftpContent(
             }
         }
 
-        // 单文件下载进度：右下角悬浮卡片（与终端上传同款 TransferProgressCard）
+        // Single-file download progress: Floating card in the lower-right corner (same as the TransferProgressCard used for terminal uploads)
         val downloading = downloadProgress
         if (downloading != null) {
             TransferProgressCard(
@@ -1304,7 +1304,7 @@ fun SftpContent(
             )
         }
 
-        // ---- 重命名 / 删除 / 收藏夹 对话框 ----
+        // ---- Rename / Delete / Favorites Dialog ----
         state.renameTarget?.let { entry ->
             var newName by remember(entry.name) { mutableStateOf(entry.name) }
             AlertDialog(
@@ -1403,15 +1403,15 @@ fun SftpContent(
             )
         }
 
-        // 文件预览覆盖层：全屏模态盖住列表；标题栏（名称+大小+复制+关闭）+ 等宽文本滚动区。
-        // 预览状态挂在会话级 uiState：切 tab 离开再回来，预览面板原样保留。
+        // File preview overlay: Fullscreen modal covering the list; header (name + size + copy + close) + monospaced text scroll area.
+        // Preview state is stored in session-level `uiState`: when you switch tabs, leave, and return, the preview panel remains exactly as it was.
         previewEntry?.let { entry ->
             val isVideo = fileKindOf(entry.name) == SftpFileKind.VIDEO
             val lines = remember(previewText) { previewText.orEmpty().lines() }
-            val err = previewError // delegated property 不能 smart cast，取局部值
-            // 图片预览：true=适配屏幕；false=原始像素（可滚动）
+            val err = previewError // Delegated properties cannot be smart-cast; retrieve the local value instead.
+            // Image preview: true = screen-optimized; false = original pixels (scrollable)
             var imageFit by remember(entry.name) { mutableStateOf(true) }
-            // Markdown：渲染/源码 切换（默认渲染模式）；仅 md/markdown 文件显示
+            // Markdown: Toggle between rendered and source code views (default rendered mode); show only md/markdown files
             val isMarkdown = extensionOf(entry.name) in setOf("md", "markdown")
             var mdRender by remember(entry.name) { mutableStateOf(true) }
             Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
@@ -1441,9 +1441,9 @@ fun SftpContent(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        // 复制全部：预览文本已整段在内存，一键进剪贴板（SelectionContainer
-                        // 在 LazyColumn 上只能行内选择，长文复制靠这个按钮兜底）
-                        val previewCopyable = previewText // delegated property 不能 smart cast
+                        // Copy All: The preview text is loaded in memory; click to copy to the clipboard (SelectionContainer
+                        // (In LazyColumn, you can only make in-row selections; use this button as a fallback for copying long text.)
+                        val previewCopyable = previewText // Delegated properties cannot be smart-casted
                         if (previewCopyable != null) {
                             IconButton(
                                 onClick = {
@@ -1458,7 +1458,7 @@ fun SftpContent(
                                 )
                             }
                         }
-                        // 图片预览：适配 / 原始大小切换（原始大小可滚动查看细节）
+                        // Image preview: Toggle between resized and original sizes (scroll to view details in the original size)
                         if (previewImage != null) {
                             IconButton(onClick = { imageFit = !imageFit }) {
                                 Icon(
@@ -1468,7 +1468,7 @@ fun SftpContent(
                                 )
                             }
                         }
-                        // Markdown 渲染 ⇄ 源码 切换
+                        // Toggle between Markdown rendering and source code
                         if (isMarkdown && previewText != null) {
                             Row(
                                 Modifier
@@ -1500,8 +1500,8 @@ fun SftpContent(
                                 }
                             }
                         }
-                        // 更多操作：下载 / 重命名 / 删除 / 复制路径（文件操作入口，
-                        // 列表单击已改为直接预览，操作集中在此 + 多选栏）
+                        // More actions: Download / Rename / Delete / Copy Path (file operations entry point,
+                        // (List clicking has been changed to direct preview; operations are now centralized here + multi-select bar)
                         Box {
                             IconButton(onClick = { previewMenu = true }) {
                                 Icon(
@@ -1556,7 +1556,7 @@ fun SftpContent(
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
                             }
-                        // 图片预览：黑底居中，适配模式整图可见，原始模式可滚动查看细节
+                        // Image preview: Centered on a black background; in adaptive mode, the entire image is visible; in original mode, scroll to view details
                         previewImage != null ->
                             Box(
                                 Modifier.fillMaxSize().background(Color.Black),
@@ -1596,8 +1596,8 @@ fun SftpContent(
                                 )
                             }
                         isVideo && session != null ->
-                            // 两个文件 tab 可占同一组合位置；独立 key 防止旧播放器的
-                            // onDispose 把播放位置写进刚切入的另一个会话。
+                            // Two file tabs can occupy the same composition position; a separate key prevents the old player from
+                            // onDispose writes the playback position to another session that has just been switched to.
                             key(state, session, state.previewRemotePath) {
                                 SftpVideoPlayer(
                                     session = session,
@@ -1628,7 +1628,7 @@ fun SftpContent(
                                 }
                                 val srcText = previewText.orEmpty()
                                 if (isMarkdown && mdRender) {
-                                    // 渲染模式：Markdown 效果展示（可复制），纵向滚动
+                                    // Rendering mode: Markdown preview (copyable), vertical scrolling
                                     Column(
                                         Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
                                     ) {
@@ -1647,7 +1647,7 @@ fun SftpContent(
                                         }
                                     }
                                 } else {
-                                    // 源码模式：逐行等宽（Markdown 与其他文本文件一致）
+                                    // Source code mode: line-by-line monospaced (consistent with Markdown and other text files)
                                     LazyColumn(
                                         Modifier.fillMaxSize(),
                                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
@@ -1670,8 +1670,8 @@ fun SftpContent(
             }
         }
 
-        // SnackbarHost 放预览层之后（z 序最高）：预览模式下复制成功等提示不被面板遮住
-        // 多选底部操作栏：下载 / 删除 / 复制路径 / 取消（盖在列表底部）
+        // Place SnackbarHost after the preview layer (highest z-order): in preview mode, hints like “Copy successful” aren't covered by the panel.
+        // Multi-select bottom action bar: Download / Delete / Copy Path / Cancel (overlapping the bottom of the list)
         if (selecting()) {
             val selEntries = visible.filter { it.name in state.selection }
             Surface(
@@ -1720,8 +1720,8 @@ fun SftpContent(
 
         TermishSnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
 
-        // 首连（列表未加载）与断线重连共用同一居中胶囊（终端页同款，淡入淡出）：
-        // 同页不再出现裸文本「连接中…」，两页连接态视觉完全统一
+        // The initial connection (list not loading) and reconnection after a disconnection share the same centered capsule (same as the terminal screen, with fade-in and fade-out effects):
+        // The plain text “Connection…” no longer appears on the same page, and the visual presentation of the connection status is completely consistent across both pages.
         ConnectingIndicator(
             visible = state.reconnecting || entries == null,
             text = if (state.reconnecting) s.sftpReconnecting else s.sftpConnecting,
@@ -1752,7 +1752,7 @@ fun SftpContent(
     }
 }
 
-/** 三点菜单：新建文件夹 / 排序 / 收藏 / 刷新 / 下载目录 / 复制路径 / 隐藏文件。 */
+/** Three-dot menu: New File Folder / Sort / Favorites / Refresh / Download Directory / Copy Path / Hidden Files. */
 @Composable
 private fun SftpMoreMenu(
     sort: SftpSort,
@@ -1858,8 +1858,8 @@ private fun SftpSortItem(
     )
 }
 
-/** 文件/文件夹列表行：icon + 名称（目录=权限/文件=大小副标题）+ 时间；
- *  支持多选选中态与长按（进入多选）。 */
+/** File/folder list rows: icon + name (directory = permissions / file = size subtitle) + time;
+ *  Supports multi-select mode and long press (to enter multi-select mode). */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SftpRowItem(
@@ -1888,7 +1888,7 @@ private fun SftpRowItem(
                     rememberVectorPainter(fileKindIcon(fileKindOf(name)))
                 },
             contentDescription = null,
-            // 文件夹用主题色（翠绿）；文件用类型色（线性图标小尺寸清晰，色彩保留区分）
+            // Use the theme color (emerald green) for folders; use the type-specific color for files (ensuring small linear icons remain clear while retaining color distinctions).
             tint =
                 if (isDirectory) {
                     MaterialTheme.colorScheme.primary
@@ -1964,8 +1964,8 @@ internal fun formatTime(millis: Long): String {
 }
 
 /**
- * SFTP 文件名匹配：空格分隔多关键词（AND 关系）；含 `*`/`?` 的关键词按通配符匹配，
- * 其余按忽略大小写的包含匹配。例：`*.log`、`conf nginx`、`readme?`。
+ * SFTP file name matching: multiple keywords separated by spaces (AND relationship); keywords containing `*`/`?` are matched as wildcards,
+ * others match as case-insensitive substring match. Examples: `*.log`, `conf nginx`, `readme?`.
  */
 internal fun matchesQuery(
     name: String,
@@ -2001,7 +2001,7 @@ internal fun globMatch(
     return Regex(regex, RegexOption.IGNORE_CASE).containsMatchIn(name)
 }
 
-/** 递归搜索结果：文件名 + 完整远端路径 + 相对当前目录的路径。 */
+/** Recursive search results: file name + full remote path + path relative to the current directory. */
 data class SftpSearchHit(
     val name: String,
     val fullPath: String,
@@ -2011,7 +2011,7 @@ data class SftpSearchHit(
     val modifiedAt: Long,
 )
 
-/** 单文件下载进度（顶部进度条横幅数据源）；total=0 表示服务器未报大小。 */
+/** Single-file download progress (data source for the top progress bar banner); total=0 indicates that the server did not report the file size. */
 data class DownloadProgress(
     val name: String,
     val loaded: Long,
@@ -2019,10 +2019,10 @@ data class DownloadProgress(
 )
 
 /**
- * 递归搜索：从 [root] 起遍历目录树，返回文件名匹配 [query] 的条目
- * （匹配沿用 [matchesQuery]：多关键词 AND + glob）。深度优先栈迭代；
- * [maxDepth] 限深、[maxResults] 限结果数，防超深目录/海量结果拖垮会话。
- * 单目录 list 失败（权限/断开）跳过该子树继续；每层目录间响应协程取消。
+ * Recursive search: Traverse the directory tree starting from [root] and return entries whose file names match [query].
+ * (Match using [matchesQuery]: multiple keywords AND + glob). Depth-first stack traversal;
+ * [maxDepth] limits the depth, and [maxResults] limits the number of results, to prevent excessively deep directories or a massive number of results from crashing the session.
+ * If a single directory list fails (permission/disconnect), skip that subtree and continue; each directory level responds to coroutine cancellation.
  */
 suspend fun searchRecursive(
     session: SftpSession,
@@ -2054,7 +2054,7 @@ suspend fun searchRecursive(
     return results
 }
 
-/** 递归搜索结果行：文件/目录图标 + 名称 + 相对路径（主色标注），右下角时间。 */
+/** Recursive search results row: File/directory icon + name + relative path (highlighted in the primary color), with the time displayed in the lower-right corner. */
 @Composable
 private fun SftpSearchRow(
     hit: SftpSearchHit,
@@ -2113,9 +2113,9 @@ private fun SftpSearchRow(
     }
 }
 
-// ---------- 文件类型识别（列表 icon + 预览分流） ----------
+// ---------- File Type Recognition (List Icon + Preview Routing) ----------
 
-/** SFTP 文件类型：决定列表 icon 与预览方式。 */
+/** SFTP file types: Determine the list icons and preview methods. */
 enum class SftpFileKind {
     IMAGE,
     VIDEO,
@@ -2141,13 +2141,13 @@ enum class SftpFileKind {
 
 internal fun extensionOf(name: String): String = name.substringAfterLast('.', "").lowercase()
 
-/** 可在线预览的图片格式（平台解码：Android BitmapFactory / iOS UIImage；gif 显示首帧）。 */
+/** Image formats that can be previewed online (platform decoding: Android BitmapFactory / iOS UIImage; GIFs show the first frame). */
 internal val PREVIEW_IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "svg")
 
-/** 图片类文件：走位图预览分支（文本预览的 NUL 检测会误杀图片）。 */
+/** Image files: Use the bitmap preview branch (the NUL detection in the text preview may incorrectly flag images). */
 internal fun isImageName(name: String): Boolean = extensionOf(name) in PREVIEW_IMAGE_EXTENSIONS
 
-/** 按扩展名识别文件类型（列表 icon 用）；未知类型归 OTHER。 */
+/** Identify file types by extension (used for list icons); unknown types are classified as OTHER. */
 internal fun fileKindOf(name: String): SftpFileKind =
     when (extensionOf(name)) {
         in setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "heic", "ico", "avif") -> SftpFileKind.IMAGE
@@ -2249,7 +2249,7 @@ internal fun fileKindOf(name: String): SftpFileKind =
         else -> SftpFileKind.OTHER
     }
 
-/** 文件类型 icon（material-icons-extended 线性图标；tint 由调用方按类型色/主题色给）。 */
+/** File type icon (material-icons-extended linear icons; tint is provided by the caller based on type color/theme color). */
 @Composable
 private fun fileKindIcon(kind: SftpFileKind): ImageVector =
     when (kind) {
@@ -2275,7 +2275,7 @@ private fun fileKindIcon(kind: SftpFileKind): ImageVector =
         SftpFileKind.OTHER -> Icons.AutoMirrored.Filled.InsertDriveFile
     }
 
-/** 文件类型着色（线性图标 tint；列表行色彩区分，文件夹仍用主题色）。 */
+/** File type highlighting (linear icon tint; color-coded list rows; folders retain their theme colors). */
 internal fun fileKindColor(kind: SftpFileKind): Color =
     when (kind) {
         SftpFileKind.IMAGE -> Color(0xFF43A047)
@@ -2300,33 +2300,33 @@ internal fun fileKindColor(kind: SftpFileKind): Color =
         SftpFileKind.OTHER -> Color(0xFF78909C)
     }
 
-// ---------- 文本预览 ----------
+// ---------- Text Preview ----------
 
-/** 预览读取上限：超过即截断（大文件不整读进内存，渲染也不卡）。 */
+/** Preview read limit: Truncation occurs when the read limit is exceeded (to prevent large files from being loaded entirely into memory and to ensure smooth rendering). */
 const val PREVIEW_MAX_BYTES: Int = 512 * 1024
 
-/** 图片预览读取上限：解码需要完整数据，放宽到 8MB（超限提示无法预览而非截断坏图）。 */
+/** Image preview size limit: Since decoding requires the full data, the limit has been raised to 8MB (the "preview unavailable" tooltip indicates the image is too large, not that there is truncation or corruption). */
 const val PREVIEW_IMAGE_MAX_BYTES: Int = 8 * 1024 * 1024
 
-/** 二进制采样区大小：前 4KB 内出现 NUL 字节即判定为二进制。 */
+/** Binary sampling size: a NUL byte appears in the first 4KB → classified as binary. */
 internal const val PREVIEW_BINARY_SAMPLE = 4096
 
-/** 文本预览结果：UTF-8 解码内容 + 是否被截断。 */
+/** Text preview result: UTF-8 decoded content + truncation. */
 data class SftpPreviewResult(
     val text: String,
     val truncated: Boolean,
 )
 
-/** 二进制文件（内容含 NUL），无法预览。 */
+/** Binary files (with NUL content) cannot be previewed. */
 class SftpPreviewBinaryException : Exception()
 
-/** 超过读取上限（内部信号：中断下载流，结果截断展示）。 */
+/** Exceeded read limit (internal signal: download stream interrupted; result subject to truncation). */
 class SftpPreviewTooLargeException : Exception()
 
 /**
- * 流式读取远端文件前 [maxBytes] 字节（图片预览用：不整读大文件）。
- * 超过上限抛 [SftpPreviewTooLargeException]（图片截断无法解码，调用方提示超限）；
- * 不做 NUL 检测：图片内容必然含 NUL。
+ * Stream the first [maxBytes] bytes of a remote file (for image previews: do not read large files in their entirety).
+ * If the limit is exceeded, throw a [SftpPreviewTooLargeException] (image subject to truncation and cannot be decoded; caller is notified of the limit exceeded);
+ * Do not check for NUL characters: image content will inevitably contain NUL characters.
  */
 suspend fun readSftpPreviewBytes(
     session: SftpSession,
@@ -2353,13 +2353,13 @@ suspend fun readSftpPreviewBytes(
     }
 
 /**
- * 流式读取远端文件前 [maxBytes] 字节并解码为 UTF-8 文本：
- * - 超过上限立即中断下载（不整读大文件），结果标记截断
- * - 内容前 4KB 含 NUL 字节判定为二进制，抛 [SftpPreviewBinaryException]
- * - 非法 UTF-8 序列按替换字符处理，不会崩
+ * Stream-read the first [maxBytes] bytes of the remote file and decode them into UTF-8 text:
+ * - Immediately interrupt the download if the limit is exceeded (do not read large files in their entirety); perform truncation on the result
+ * - If the first 4KB of content contains NUL bytes, it is deemed binary, and a [SftpPreviewBinaryException] is thrown.
+ * - Invalid UTF-8 sequences are handled as replacement characters and will not cause a crash.
  *
- * 复用 [SftpSession.download] 的分块回调：onChunk 抛异常即中断传输
- * （两平台实现都在 finally 关闭通道），无需额外 close 语义。
+ * Reuse the chunked callback from [SftpSession.download]: throwing an exception in `onChunk` will interrupt the transfer
+ * (Both platform implementations close the channel in the `finally` block), so no additional `close` statement is needed.
  */
 suspend fun readSftpPreview(
     session: SftpSession,
@@ -2373,7 +2373,7 @@ suspend fun readSftpPreview(
         var binary = false
         try {
             session.download(remotePath) { chunk ->
-                // 采样区检测 NUL：不依赖扩展名白名单，无扩展名文本（LICENSE/Makefile）也能预览
+                // NUL detection in the sample area: Does not depend on a file extension whitelist; text files without extensions (such as LICENSE or Makefile) can also be previewed.
                 if (!binary && total < PREVIEW_BINARY_SAMPLE) {
                     val n = minOf(chunk.size, PREVIEW_BINARY_SAMPLE - total)
                     for (i in 0 until n) {
@@ -2399,11 +2399,11 @@ suspend fun readSftpPreview(
             c.copyInto(bytes, off)
             off += c.size
         }
-        // common API：decodeToString 默认 UTF-8，非法序列替换字符（与 JVM toString(Charsets.UTF_8) 一致）
+        // Common API: `decodeToString` defaults to UTF-8 and replaces invalid sequences with characters (consistent with JVM `toString(Charsets.UTF_8)`)
         SftpPreviewResult(bytes.decodeToString(), truncated)
     }
 
-/** 人类可读文件大小（1024 进制，KB 起保留一位小数）：如 512 B / 1.5 KB / 2.3 MB。 */
+/** Human-readable file sizes (base 1024, rounded to one decimal place starting at KB): e.g., 512 B / 1.5 KB / 2.3 MB. */
 internal fun formatSize(bytes: Long): String {
     if (bytes <= 0) return "0 B"
     val units = arrayOf("B", "KB", "MB", "GB", "TB")

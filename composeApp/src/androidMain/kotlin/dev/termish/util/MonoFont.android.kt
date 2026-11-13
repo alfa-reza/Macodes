@@ -3,6 +3,6 @@ package dev.termish.util
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.font.FontFamily
 
-/** Android：系统字体自带 CJK 回退。 */
+/** Android: The system font includes built-in CJK fallback. */
 @Composable
 actual fun cjkFontFamily(): FontFamily = FontFamily.Default

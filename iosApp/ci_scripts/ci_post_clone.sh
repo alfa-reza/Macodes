@@ -1,12 +1,12 @@
 #!/bin/bash
-# Xcode Cloud 构建前准备（Xcode Cloud 检出代码后自动执行，本地构建无影响）：
+# Pre-build setup for Xcode Cloud (automatically executed after code checkout in Xcode Cloud; has no effect on local builds):
 #
-#   1. JDK 17——Xcode Cloud 镜像不带 Java，「Build Kotlin Framework」阶段
-#      的 gradlew 没有 JDK 直接失败（PhaseScriptExecution failed）。
-#      装到 ~/Library/Java/JavaVirtualMachines（免 sudo，java_home 可发现）
-#   2. Rust 远端画面与 Agent 服务——手机资源包含 Mac/Linux 的预编译可执行文件
-#   3. OpenSSL + libssh2 静态库 → iosApp/native/——该目录 git-ignored，
-#      干净检出没有；缺失时 Kotlin framework 的 cinterop/链接直接失败
+#   1. JDK 17—Xcode Cloud images do not include Java; during the “Build Kotlin Framework” phase
+#      There is a failure with the `gradlew` command if the JDK is not present (PhaseScriptExecution failed).
+#      Install to ~/Library/Java/JavaVirtualMachines (no sudo required; java_home can be detected)
+#   2. Rust Remote Interface and Agent Service—Phone resources include precompiled executables for Mac and Linux
+#   3. OpenSSL + libssh2 static libraries → iosApp/native/——This directory is git-ignored,
+#      No clean checkout; if missing, there is an immediate failure in the Kotlin Framework’s cinterop/linking.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -17,8 +17,8 @@ else
   echo "== 安装 JDK 17（Adoptium Temurin，免 sudo） =="
   JDK_HOME="$HOME/Library/Java/JavaVirtualMachines/temurin-17.jdk"
   mkdir -p "$JDK_HOME"
-  # Adoptium API 的 arch 用 aarch64/x64（macOS uname 返回 arm64/x86_64，直接拼 URL 会 404）。
-  # 未知架构兜底轮询（Xcode Cloud 只有 ARM/Intel 两种机器）；tar 校验确保拿到有效包而非错误页
+  # For the Adoptium API, use `aarch64/x64` as the arch (macOS `uname` returns `arm64/x86_64`; naive URL construction gets a 404).
+  # Fallback polling for unknown architectures (Xcode Cloud only supports ARM and Intel machines); verify the tar file to ensure a valid package is obtained rather than an error page.
   RAW_ARCH="$(uname -m)"
   case "$RAW_ARCH" in
     arm64|aarch64) ARCHES=(aarch64) ;;

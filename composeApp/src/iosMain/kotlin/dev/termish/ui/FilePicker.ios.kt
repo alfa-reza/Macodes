@@ -32,14 +32,14 @@ import platform.posix.stat
 private const val CHUNK = 64 * 1024
 
 /**
- * iOS：UIDocumentPicker（import 模式）选文件上传——对齐 Android 的
- * OpenDocument 流式读：安全作用域 URL 先经 NSFileCoordinator 拷到临时目录，
- * 再 POSIX fd 分块读。内存峰值 = 单块 64KB，任意大小文件不整体驻堆；
- * readChunk 到 EOF 时关闭 fd，临时文件由系统按需清理（NSTemporaryDirectory）。
+ * iOS: UIDocumentPicker (import mode) file selection and upload—alignment with Android’s
+ * OpenDocument stream reading: URLs with security scopes are first copied to a temporary directory via NSFileCoordinator,
+ * Then read in blocks using POSIX file descriptors. Peak memory usage = 64 KB per block; files of any size are not loaded entirely into memory;
+ * When `readChunk` reaches EOF, close the file descriptor; temporary files are cleaned up by the system as needed (NSTemporaryDirectory).
  *
- * 协调回调内完成拷贝 + 打开 fd + 回调 onPicked（回调返回即数据就绪，
- * 不依赖 coordinateReading 的同步/异步方言）；onPicked 投递上传协程，
- * 后续 readChunk 逐块拉取。
+ * The copy + open-fd + onPicked callback all complete inside the coordinating callback (data is ready as soon as the callback returns,
+ * (does not depend on the sync/async dialects of `coordinateReading`); `onPicked` dispatches an upload coroutine,
+ * The `readChunk` function will then pull the data block by block.
  */
 @OptIn(ExperimentalForeignApi::class)
 @Composable
@@ -56,13 +56,13 @@ actual fun rememberFilePicker(onPicked: (PickedFile) -> Unit): () -> Unit =
                     controller: UIDocumentPickerViewController,
                     didPickDocumentsAtURLs: List<*>,
                 ) {
-                    // 多选：每个 URL 独立走安全作用域 + 协调拷贝 + fd 流式读，逐文件回调
+                    // Multiple choices: Independent security scopes for each URL + coordinated copying + fd streaming, with callbacks for each file
                     didPickDocumentsAtURLs.filterIsInstance<NSURL>().forEach { url ->
                         val name = url.lastPathComponent ?: "file"
                         val coordinator = NSFileCoordinator()
-                        // 安全作用域 URL：document picker 返回的 URL 必须先申请访问权，
-                        // 再经 NSFileCoordinator 协调拷贝（reading-for-uploading 语义下
-                        // 被占用中的文件也可读）；访问权与拷贝完成成对释放。
+                        // Security scope URL: The URL returned by the document picker must first have access permissions granted,
+                        // Then copied via NSFileCoordinator (under the “reading-for-uploading” semantics)
+                        // (Files that are in use can also be read); access rights and copies are released in pairs upon completion.
                         val scoped = url.startAccessingSecurityScopedResource()
                         try {
                             coordinator.coordinateReadingItemAtURL(
@@ -142,7 +142,7 @@ actual fun rememberFilePicker(onPicked: (PickedFile) -> Unit): () -> Unit =
         }
     }
 
-/** 顶层 VC（FileSaver.ios.kt 同款逻辑，独立一份避免跨文件私有可见性）。 */
+/** Top-level VC (same logic as FileSaver.ios.kt; keep it separate to avoid cross-file private visibility). */
 private fun topViewController(): UIViewController? {
     val window =
         UIApplication.sharedApplication.connectedScenes

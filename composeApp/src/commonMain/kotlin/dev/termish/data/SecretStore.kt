@@ -1,7 +1,7 @@
 package dev.termish.data
 
 /**
- * 平台安全存储：密码 / 私钥等秘密。keychain（iOS）/ Keystore（Android）。
+ * Secure platform storage: passwords, private keys, and other secrets. Keychain (iOS) / Keystore (Android).
  */
 expect object SecretStore {
     fun get(
@@ -21,7 +21,7 @@ expect object SecretStore {
     )
 }
 
-/** 秘密存储用的 service 名。 */
+/** Service name used for secret storage. */
 const val SECRET_SERVICE = "dev.termish.secrets"
 
 fun secretAccountFor(
@@ -29,7 +29,7 @@ fun secretAccountFor(
     kind: String,
 ): String = "$hostId.$kind"
 
-/** 从平台安全存储解析主机认证凭据，返回 password to privateKey。 */
+/** Parse the host authentication credentials from the platform's secure storage and return password / privateKey. */
 fun resolveCredentials(host: Host): Pair<String?, String?> {
     val password = SecretStore.get(SECRET_SERVICE, secretAccountFor(host.id, "password"))
     val privateKey = SecretStore.get(SECRET_SERVICE, secretAccountFor(host.id, "privateKey"))
@@ -40,11 +40,11 @@ fun resolveCredentials(host: Host): Pair<String?, String?> {
     }
 }
 
-/** 火山引擎流式语音识别 API Key（新版控制台 API Key 管理页获取）的存储账号。 */
+/** The storage account for the Volcano Engine Streaming Speech Recognition API Key (obtained from the API Key Management page in the new console). */
 const val ASR_API_KEY_ACCOUNT = "asr.apiKey"
 
-/** 语音识别服务实例的密钥账号（provider 粒度，见 AsrProvider）。 */
+/** The key and account for the speech recognition service instance (at the provider level; see AsrProvider). */
 fun asrKeyAccount(providerId: String): String = "asr.$providerId.apiKey"
 
-/** Agent 模型供应商 API Key（provider 粒度，不写入普通 Settings）。 */
+/** Agent model provider API key (at the provider level; does not write to general Settings). */
 fun agentProviderKeyAccount(providerId: String): String = "agent.provider.$providerId.apiKey"

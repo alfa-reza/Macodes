@@ -1,8 +1,8 @@
 package dev.termish.mosh
 
 /**
- * SSP 分片层：Fragment 线上格式 = 8B instruction id || 2B (final<<15 | num) || 内容。
- * 线上格式与 mosh 的 SSP 分片协议一致（互操作所必需），实现为独立 Kotlin 重写。
+ * SSP fragmentation layer: Fragment wire format = 8B instruction id || 2B (final<<15 | num) || content.
+ * The wire format is consistent with mosh's SSP fragmentation protocol (required for interoperability) and is implemented as a standalone Kotlin rewrite.
  */
 internal class Fragment(
     val id: ULong,
@@ -37,14 +37,14 @@ internal class Fragment(
     }
 }
 
-/** 收端重组：同一 id 的分片收齐后解压并还原 Instruction。 */
+/** Receiver-side reassembly: after collecting all fragments with the same id, decompress them and restore the Instruction. */
 internal class FragmentAssembly {
     private var fragments = arrayOfNulls<Fragment>(0)
     private var currentId: ULong? = null
     private var arrived = 0
     private var total = -1
 
-    /** 新 id 顶掉未完成包时置位（丢包拖垮标志，供上层丢帧统计；完成时清）。 */
+    /** Set this bit when a new id overrides an unfinished packet (assembly abandoned due to packet loss; for upper-layer frame-loss statistics; cleared on completion). */
     var lastAbandoned = false
         private set
 
@@ -59,7 +59,7 @@ internal class FragmentAssembly {
         } else {
             lastAbandoned = false
             if (fragments.size > frag.num && fragments[frag.num] != null) {
-                // 重复分片忽略
+                // Ignore duplicate fragmentation
             } else {
                 if (fragments.size < frag.num + 1) {
                     fragments = fragments.copyOf(frag.num + 1)
@@ -77,7 +77,7 @@ internal class FragmentAssembly {
 
     fun assembly(): TransportInstruction = TransportInstruction.parse(assembleBytes())
 
-    /** 通用：返回重组后解压的原始字节（视频流等非 SSP 负载用，由调用方自行解析）。 */
+    /** General: Returns the original bytes after reassembly and decompression (used for non-SSP payloads such as video streams; the caller is responsible for parsing them). */
     fun assembleBytes(): ByteArray {
         val encoded = fragments.joinToByteArray()
         fragments = arrayOfNulls(0)
@@ -98,20 +98,20 @@ internal class FragmentAssembly {
     }
 }
 
-/** 发端分片：SSP 用同 header 复用 instruction id；通用负载每次新 id。内容按 MTU 切片。 */
+/** Fragmentation: SSP reuses instruction IDs with the same header; general payloads use a new ID each time. Content is fragmented according to MTU. */
 internal class Fragmenter {
     private var nextInstructionId = 0uL
     private var lastInstruction: TransportInstruction? = null
     private var lastMtu = -1
 
-    /** SSP 专用：TransportInstruction 分片（同 header 复用 instruction id，重发去重）。 */
+    /** SSP-specific: TransportInstruction fragmentation (reuse instruction IDs from the header; deduplicate on resend). */
     fun makeFragments(
         inst: TransportInstruction,
         mtu: Int,
     ): List<Fragment> {
         val usable = mtu - Fragment.HEADER_LEN
         val last = lastInstruction
-        // SSP 语义：同 old/new 的重发必须携带相同 diff（防重发内容漂移）
+        // SSP Semantics: Re-submissions of "old/new" must include the same diff (to prevent content drift in re-submissions).
         if (last != null && inst.oldNum == last.oldNum && inst.newNum == last.newNum) {
             check(inst.diff.contentEquals(last.diff)) { "同 old/new 的 diff 不一致" }
         }
@@ -123,7 +123,7 @@ internal class Fragmenter {
         return sliceToFragments(inst.serialize(), mtu, nextInstructionId)
     }
 
-    /** 通用：任意 payload 分片（每个包分配新 instruction id，无 SSP 复用语义）。 */
+    /** General: Any payload fragmentation (each packet is allocated a new instruction ID; no SSP reuse semantics). */
     fun makeFragments(
         payload: ByteArray,
         mtu: Int,
@@ -132,7 +132,7 @@ internal class Fragmenter {
         return sliceToFragments(payload, mtu, nextInstructionId)
     }
 
-    /** 压缩 + 按 MTU 切片（公共逻辑）。 */
+    /** Compress + slice by MTU (common logic). */
     private fun sliceToFragments(
         payload: ByteArray,
         mtu: Int,

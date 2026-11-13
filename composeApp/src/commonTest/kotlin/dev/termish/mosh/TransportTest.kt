@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** MoshTransport 定时/发送路径回归：nowMs 注入、sendDatagram 旁路捕获。 */
+/** MoshTransport timing/send path regression: nowMs injection, sendDatagram bypass catch. */
 class TransportTest {
     private class Harness {
         var now = 0L
@@ -31,14 +31,14 @@ class TransportTest {
 
     @Test
     fun rationalizeWithUnackedPrefixDoesNotThrow() {
-        // 回归：front 未 ack 且 current 有 ≥2 个不同字节时，rationalizeStates
-        // 曾持引用自减导致 "前缀不匹配" 崩会话。
+        // Regression: If `front` is not acknowledged and `current` has ≥2 differing bytes, `rationalizeStates`
+        // `rationalizeStates` held a reference and decremented it anyway, causing a “prefix mismatch” that crashed the session.
         val h = Harness()
         h.transport.pushBytes("abc123".encodeToByteArray())
         h.now += 100
         h.transport.tick()
         h.now += 100
-        h.transport.tick() // 第二次 rationalize（front 已被减过一次）
+        h.transport.tick() // Second rationalize (front has already been decremented once)
         h.now += 5000
         h.transport.tick()
         assertTrue(h.sent.isNotEmpty())
@@ -47,11 +47,11 @@ class TransportTest {
     @Test
     fun emptyAckHeartbeat() {
         val h = Harness()
-        h.transport.tick() // 初始立即 ack
+        h.transport.tick() // Initial immediate ack
         val initial = h.sent.size
         h.now += 3500
         h.transport.tick()
-        assertTrue(h.sent.size > initial) // 3s 后有心跳空 ack
+        assertTrue(h.sent.size > initial) // there is a heartbeat empty-ack after 3s
     }
 
     @Test
@@ -60,19 +60,19 @@ class TransportTest {
         h.transport.tick()
         val before = h.sent.size
         h.transport.pushBytes(ByteArray(2000) { (it % 256).toByte() })
-        h.now += 300 // 超过 sendInterval 上限 250ms（帧率限制是 mosh 的正常行为）
-        h.transport.tick() // 记录 mindelayClock
-        h.now += 20 // 越过 mindelay(8ms)
+        h.now += 300 // Exceeded the sendInterval limit of 250 ms (frame rate limiting is normal behavior for mosh)
+        h.transport.tick() // Record mindelayClock
+        h.now += 20 // Exceeded mindelay (8 ms)
         h.transport.tick()
-        assertTrue(h.sent.size > before) // 用户输入产生新数据报（含分片）
+        assertTrue(h.sent.size > before) // User input generates a new datagram (including fragmentation)
     }
 
     @Test
     fun serverShutdownIsAckedWithMaxNum() {
-        // 服务器 shutdown（new_num = ULLONG_MAX）：客户端应加速回 ack_num=-1，
-        // 之后 counterpartyShutdownAckSent() 为 true（mosh 干净退出条件之一）
+        // Server shutdown (new_num = ULLONG_MAX): The client should send an accelerated acknowledgment with ack_num=-1,
+        // Afterward, `counterpartyShutdownAckSent()` returns `true` (one of the conditions for a clean exit from Mosh).
         val h = Harness()
-        h.transport.tick() // 初始握手 ack
+        h.transport.tick() // Initial handshake ack
         val inst =
             TransportInstruction(
                 protocolVersion = 2,
@@ -86,14 +86,14 @@ class TransportTest {
         val payload = Fragmenter().makeFragments(inst, 400).first().toBytes()
         h.transport.processPacket(MoshCryptoSession.PlainPacket(1u, 0, 0xffff, payload))
         assertFalse(h.transport.counterpartyShutdownAckSent())
-        h.now += 5000 // 超过 ACK_INTERVAL，且 ack_num==-1 会触发加速
+        h.now += 5000 // Exceeding ACK_INTERVAL while ack_num == -1 will trigger acceleration.
         h.transport.tick()
         assertTrue(h.transport.counterpartyShutdownAckSent())
     }
 
     @Test
     fun emptyDiffStateDoesNotNotifyRenderer() {
-        // 空 diff（纯 ack/心跳）不应触发 onNewState：内容未变，避免无谓的全量 UI 拷贝
+        // An empty diff (pure ack/heartbeat) should not trigger onNewState: since the content has not changed, this avoids an unnecessary full UI copy.
         val h = Harness()
         val inst =
             TransportInstruction(

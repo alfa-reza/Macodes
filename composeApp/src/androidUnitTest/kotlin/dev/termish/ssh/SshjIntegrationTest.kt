@@ -11,9 +11,9 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * sshj 引擎集成测试：连接本地测试 sshd（127.0.0.1:22222）并运行命令。
+ * sshj engine integration test: Connect to the local test sshd (127.0.0.1:22222) and run the command.
  *
- * sshd 未运行时自动跳过（scripts/test-sshd.sh 或 ./gradlew startTestSshd 启动）。
+ * Automatically skip when sshd is not running (start it with scripts/test-sshd.sh or ./gradlew startTestSshd).
  */
 class SshjIntegrationTest {
     private fun env(
@@ -141,7 +141,7 @@ class SshjIntegrationTest {
         )
     }
 
-    /** 自动系统探测（Termius 式）：连接后 probeSystem 应返回并识别出远端系统。 */
+    /** Automatic system detection (Termius-style): After the connection, `probeSystem` should return and identify the remote system. */
     @Test
     fun probeSystemDetectsHostOs() {
         if (!skipUnlessSshd()) return
@@ -185,9 +185,9 @@ class SshjIntegrationTest {
     }
 
     /**
-     * 控制面命令（herdr api 等）：复用已认证连接执行命令，
-     * 不重新认证，且【不打断交互 shell】——跑完 runCommand 后
-     * sendData 必须仍然正常回显（这是它与 connectAndRun 的本质区别）。
+     * Control-plane commands (Herdr API, etc.): Reuse an authenticated connection to execute commands,
+     * Do not re-authenticate, and [do not interrupt the interactive shell]—after runCommand finishes executing
+     * sendData must still return a normal response (this is the fundamental difference between it and connectAndRun).
      */
     @Test
     fun runCommandReusesConnectionWithoutKillingShell() {
@@ -227,7 +227,7 @@ class SshjIntegrationTest {
         try {
             session.connectAndStart(columns = 100, rows = 40)
 
-            // 未连接时（close 后）runCommand 应返回 null，不抛异常
+            // When not connected (after `close`), `runCommand` should return `null` and not throw an exception.
             val closedSession =
                 createSshSession(
                     SshConnection(host = "127.0.0.1", port = 22222, username = "x", privateKeyPem = null),
@@ -248,19 +248,19 @@ class SshjIntegrationTest {
             assertTrue(closedSession.runCommand("echo nope") == null, "未连接的会话 runCommand 应返回 null")
             closedSession.close()
 
-            // 复用已认证连接执行控制面命令
+            // Reuse an authenticated connection to execute control plane commands
             val r1 = session.runCommand("echo Termish_RUNCMD_OK")
             assertNotNull(r1, "runCommand 应返回命令输出")
             assertContains(r1!!, "Termish_RUNCMD_OK")
             println("runCommand #1: ${r1.trim()}")
 
-            // 多行输出 + 明确超时
+            // Multi-line output + explicit timeout
             val r2 = session.runCommand("echo A; echo B", timeoutMs = 3_000)
             assertNotNull(r2, "多行命令应返回输出")
             assertContains(r2!!, "A")
             assertContains(r2, "B")
 
-            // 关键：runCommand 不打断交互 shell——之后 sendData 仍正常回显
+            // Key point: `runCommand` does not interrupt the interactive shell—`sendData` continues to display output in a normal manner afterward.
             session.sendData("echo Termish_SHELL_ALIVE\n".encodeToByteArray())
             val deadline = System.currentTimeMillis() + 10_000
             while (System.currentTimeMillis() < deadline) {

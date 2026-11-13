@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import dev.termish.ssh.SftpSession
 
-/** 原生播放器按需读取 SFTP 文件；离开页面释放连接，后台暂停，位置由会话保存。 */
+/** The native player reads SFTP files on demand; the connection is released when the screen is left, playback is paused in the background, and the playback position is saved in the session. */
 @Composable
 expect fun SftpVideoPlayer(
     session: SftpSession,

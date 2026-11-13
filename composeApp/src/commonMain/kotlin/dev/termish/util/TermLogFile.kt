@@ -1,9 +1,9 @@
 package dev.termish.util
 
 /**
- * 跨平台日志文件句柄（诊断日志 1MB 轮转用）：
- * commonMain 不能直接引用 java.io.File（Kotlin/Native 无 JVM），
- * 平台实现：Android = java.io.File；iOS = NSFileManager/NSFileHandle。
+ * Cross-platform log file handle (for diagnostics logs with 1MB rotation):
+ * commonMain cannot directly reference java.io.File (Kotlin/Native does not have a JVM),
+ * Platform implementation: Android = java.io.File; iOS = NSFileManager/NSFileHandle.
  */
 internal expect class TermLogFile(
     path: String,
@@ -14,10 +14,10 @@ internal expect class TermLogFile(
 
     fun delete()
 
-    /** 重命名（覆盖目标不存在的前提）。 */
+    /** Rename (assuming the target does not exist). */
     fun renameTo(target: String): Boolean
 
-    /** 追加写（文件不存在时创建）。 */
+    /** Append (create the file if it does not exist). */
     fun appendText(text: String)
 
     fun absolutePath(): String

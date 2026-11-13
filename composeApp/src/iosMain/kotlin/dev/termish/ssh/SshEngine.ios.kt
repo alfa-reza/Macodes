@@ -1,6 +1,6 @@
 package dev.termish.ssh
 
-/** iOS 引擎工厂（libssh2 + OpenSSL 静态链接）。 */
+/** iOS engine factory (libssh2 + OpenSSL statically linked). */
 actual fun createSshSession(
     connection: SshConnection,
     callbacks: SshCallbacks,

@@ -50,22 +50,22 @@ import dev.termish.util.openApplicationSettings
 import dev.termish.voice.VolcAsrProtocol
 import dev.termish.voice.rememberMicPermissionRequester
 
-/** 火山引擎语音识别控制台 API Key 管理页。 */
+/** Volcano Engine Speech Recognition Console API Key Management page. */
 private const val VOLC_ASR_CONSOLE_URL =
     "https://console.volcengine.com/speech/new/setting/apikeys?projectName=default"
 
 /**
- * 语音输入设置二级页：总开关 + **识别服务列表**（可插拔 provider：
- * 添加/编辑/删除/启停，每项独立密钥与参数；未来新增服务类型只需加枚举）。
+ * Voice Input Settings Subpage: Master Switch + **List of Recognition Services** (Pluggable providers:
+ * Add/edit/delete/start/stop—each with its own key and parameters; new service types in the future only require adding to the enumeration).
  */
 @Composable
 fun SettingsVoiceScreen(
     enabled: Boolean,
     providers: List<AsrProvider>,
-    /** 读取某 provider 的 API Key（平台安全存储）。 */
+    /** Read a provider’s API key (secure storage on the platform). */
     apiKeyOf: (AsrProvider) -> String,
     onChangeEnabled: (Boolean) -> Unit,
-    /** 增/改/删 provider。 */
+    /** Add, modify, or remove providers. */
     onAddProvider: (AsrProvider, apiKey: String) -> Unit,
     onUpdateProvider: (AsrProvider, apiKey: String) -> Unit,
     onDeleteProvider: (AsrProvider) -> Unit,
@@ -74,7 +74,7 @@ fun SettingsVoiceScreen(
     val s = LocalAppStrings.current
     val uriHandler = LocalUriHandler.current
     val micPermission = rememberMicPermissionRequester()
-    // 编辑弹窗状态：null = 关闭；否则编辑该 provider（新建时 id 为空）
+    // Edit dialog status: null = disabled; otherwise, edit this provider (ID is empty when new)
     var editing by remember { mutableStateOf<AsrProvider?>(null) }
     var isNew by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<AsrProvider?>(null) }
@@ -104,7 +104,7 @@ fun SettingsVoiceScreen(
             )
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            // 总开关
+            // Main Switch
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -137,7 +137,7 @@ fun SettingsVoiceScreen(
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
 
-            // 服务列表
+            // Service List
             if (providers.isEmpty()) {
                 Text(
                     s.voice.providerEmpty,
@@ -163,7 +163,7 @@ fun SettingsVoiceScreen(
                 }
             }
 
-            // 添加按钮
+            // Add Button
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -202,7 +202,7 @@ fun SettingsVoiceScreen(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
 
-            // 使用说明 + 控制台入口
+            // Usage Instructions + Console Entry Point
             Text(
                 s.voice.settingsVoiceHint,
                 style = MaterialTheme.typography.bodySmall,
@@ -250,7 +250,7 @@ fun SettingsVoiceScreen(
         )
     }
 
-    // 添加 / 编辑弹窗
+    // Add / Edit Dialog
     editing?.let { provider ->
         AsrProviderEditDialog(
             provider = provider,
@@ -268,7 +268,7 @@ fun SettingsVoiceScreen(
         )
     }
 
-    // 删除确认
+    // Delete Confirm
     pendingDelete?.let { p ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
@@ -289,7 +289,7 @@ fun SettingsVoiceScreen(
     }
 }
 
-/** 单条识别服务：名称/类型/密钥状态 + 开关 + 编辑/删除。 */
+/** Single-item recognition service: Name/Type/Key Status + Switch + Edit/Delete. */
 @Composable
 private fun AsrProviderRow(
     provider: AsrProvider,
@@ -353,7 +353,7 @@ private fun AsrProviderRow(
     }
 }
 
-/** 添加 / 编辑弹窗：名称 + API Key + 类型专属参数（火山：资源 ID）。 */
+/** Add / Edit dialog: Name + API Key + type-specific params (Volcano Engine: Resource ID). */
 @Composable
 private fun AsrProviderEditDialog(
     provider: AsrProvider,
@@ -372,7 +372,7 @@ private fun AsrProviderEditDialog(
         title = { Text(if (isNew) s.voice.providerAdd else s.voice.providerEdit) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                // 类型（新建时选择；当前仅火山流式，后续扩展下拉）
+                // Type (selection when new; currently only "Volcano Streaming," with dropdown options to be expanded later)
                 Text(
                     s.voice.providerTypeLabel + "：" + providerTypeLabel(provider.type, s),
                     style = MaterialTheme.typography.labelMedium,
@@ -401,7 +401,7 @@ private fun AsrProviderEditDialog(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    // 常用资源 ID 快捷选择
+                    // Quick Selection of Common Resource IDs
                     Row(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
                         VolcAsrProtocol.RESOURCE_IDS.forEach { rid ->
                             TextButton(onClick = { resourceId = rid }) {
@@ -441,13 +441,13 @@ private fun AsrProviderEditDialog(
     )
 }
 
-/** provider 类型图标。 */
+/** Provider type icon. */
 private fun providerIcon(type: AsrProviderType) =
     when (type) {
         AsrProviderType.VOLC_STREAMING -> Icons.Filled.Mic
     }
 
-/** provider 类型显示名。 */
+/** Show the name of the `provider` type. */
 internal fun providerTypeLabel(
     type: AsrProviderType,
     s: AppStrings,

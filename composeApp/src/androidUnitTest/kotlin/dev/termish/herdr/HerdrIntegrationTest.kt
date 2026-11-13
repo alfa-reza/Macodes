@@ -12,14 +12,14 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * herdr 端到端集成测试：真实 sshj 连接本地测试 sshd（127.0.0.1:22222），
- * 在已认证连接上 runCommand 执行 `herdr api snapshot`，验证：
- * 1. runCommand 复用连接执行控制面命令（M1 能力）
- * 2. 解析真实远端 herdr 输出（协议层模型）
- * 3. 状态机在真实数据上跑通
+ * herdr end-to-end integration test: Establish a real sshj connection to test the local sshd (127.0.0.1:22222),
+ * Execute `herdr api snapshot` using `runCommand` on an authenticated connection, and verify:
+ * 1. runCommand: Reuse connections to execute control plane commands (M1 capability)
+ * 2. Parse real remote herdr output (protocol-layer model)
+ * 3. The state machine runs successfully on real data
  *
- * self-detect：sshd 或 herdr 缺席时 SKIP（不算失败）——CI 无 herdr 时
- * 自动跳过，本机验证时自动跑（测试 sshd 的 exec PATH 含 herdr）。
+ * self-detect: SKIP (not considered a failure) when sshd or herdr is missing — when CI does not have herdr
+ * Automatically skipped; runs automatically during verification on the local machine (to test whether sshd’s exec PATH includes herdr).
  */
 class HerdrIntegrationTest {
     private fun env(
@@ -68,13 +68,13 @@ class HerdrIntegrationTest {
         try {
             session.connectAndStart(columns = 100, rows = 40)
             val raw = session.runCommand("herdr api snapshot", timeoutMs = 5_000)
-            // 缺失措辞跨 shell 不同：bash=command not found，dash/sh=not found，
-            // 另有 No such file；均为远端无 herdr → SKIP（CI 无 herdr 时自动跳过）
+            // Missing terms vary across shells: bash = "command not found," dash/sh = "not found,"
+            // Additionally, "No such file" entries—all of which indicate "no herdr" on the remote → SKIP (automatically skipped when herdr is missing in CI).
             if (raw == null || raw.contains("not found") || raw.contains("No such file")) {
                 println("SKIP: 远端无 herdr（raw=${raw?.take(100)}）——本机装了 herdr 时此测试自动跑")
                 return
             }
-            // 输出非法（非 JSON 快照）也按缺席处理：环境异常不该砸 CI
+            // Invalid output (non-JSON snapshots) is also handled as missing: environment exceptions should not crash CI.
             val snapshot = parseHerdrSnapshot(raw)
             if (snapshot == null) {
                 println("SKIP: 远端 herdr 输出无法解析（raw=${raw.take(100)}）")
@@ -86,9 +86,9 @@ class HerdrIntegrationTest {
                     "agents=${snapshot.agents.map { "${it.agent}/${it.agentStatus}" }}",
             )
 
-            // 状态机在真实数据上跑通：首轮首事件 + 同快照无变化。
-            // 事件数 ≤ agents 数：DONE 状态不产生事件（无迁移可报），
-            // 断言按状态分类精确验证而非依赖现场会话恰好全 working
+            // The state machine passes tests on real data: first round, first event + no changes compared to the same snapshot.
+            // Number of events ≤ number of agents: The "DONE" status does not generate events (no migration to report),
+            // Assertions should be verified precisely by status class rather than relying on the live session happening to be all 'working'
             val m = HerdrAgentStateMachine()
             val first = m.update(snapshot)
             val eventful = snapshot.agents.count { it.agentStatus != HerdrAgentStatus.DONE }

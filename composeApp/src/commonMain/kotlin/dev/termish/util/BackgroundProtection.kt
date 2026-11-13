@@ -1,13 +1,13 @@
 package dev.termish.util
 
-/** Android 后台电池策略状态；其他平台返回 [NOT_APPLICABLE]。 */
+/** Android background battery policy status; other platforms return [NOT_APPLICABLE]. */
 enum class BackgroundProtectionState {
     NOT_APPLICABLE,
     SYSTEM_MANAGED,
     SYSTEM_EXEMPT,
 }
 
-/** 厂商电池管理入口不同，仅用于选择对应的用户引导文案。 */
+/*Battery management entries differ by vendor; used only to pick the appropriate user-facing guidance text. */
 enum class BackgroundProtectionVendor {
     GENERIC,
     OPPO_FAMILY,
@@ -16,13 +16,13 @@ enum class BackgroundProtectionVendor {
     SAMSUNG,
 }
 
-/** 查询系统 Doze 豁免状态。厂商私有的后台开关通常无法由应用读取。 */
+/** Query the exemption status of the Doze system. Vendor-specific background switches typically cannot be read by the app. */
 expect fun backgroundProtectionState(): BackgroundProtectionState
 
-/** 查询设备厂商，以显示可操作的后台设置路径。 */
+/** Query the device manufacturer to show the applicable background settings path. */
 expect fun backgroundProtectionVendor(): BackgroundProtectionVendor
 
-/** 打开当前应用的系统详情页；电池、通知和麦克风的永久拒绝均可从这里恢复。 */
+/** Open the system details page for the current app; permanent denials for battery, notifications, and microphone can all be resumed from here. */
 expect fun openApplicationSettings()
 
 internal fun shouldShowBackgroundProtectionGuide(

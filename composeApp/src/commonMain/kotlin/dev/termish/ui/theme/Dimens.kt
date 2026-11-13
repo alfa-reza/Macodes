@@ -3,9 +3,9 @@ package dev.termish.ui.theme
 import androidx.compose.ui.unit.dp
 
 /**
- * 设计系统尺寸 token：全 App 间距/圆角统一从这里取，不再散落硬编码数值。
+ * Design system token: All app-wide spacing and corner radii are now uniformly derived from this source, eliminating scattered hard-coded values.
  *
- * 间距基于 4dp 网格：xs=4 sm=8 md=12 lg=16 xl=24 xxl=32。
+ * Spacing is based on a 4dp grid: xs=4, sm=8, md=12, lg=16, xl=24, xxl=32.
  */
 object Spacing {
     val None = 0.dp
@@ -17,7 +17,7 @@ object Spacing {
     val Xxl = 32.dp
 }
 
-/** 圆角 token。 */
+/** Tokens with corner radius. */
 object Corners {
     val Sm = 8.dp
     val Md = 12.dp
@@ -25,75 +25,75 @@ object Corners {
     val Full = 999.dp
 }
 
-/** 组件尺寸 token。 */
+/** Component-sized tokens. */
 object Sizes {
-    /** 通用细边框。 */
+    /** Use a thin border throughout. */
     val BorderThin = 1.dp
 
-    /** 紧凑页头内容高度（不含状态栏避让）。 */
+    /** Compact header content height (excluding status bar padding). */
     val HeaderCompact = 48.dp
 
-    /** 列表项状态圆点。 */
+    /** List item status circles. */
     val StatusDot = 10.dp
 
-    /** 设置页头像。 */
+    /** Settings page avatar. */
     val Avatar = 72.dp
 
-    /** 通用小图标。 */
+    /** Generic small icons. */
     val IconSmall = 18.dp
 
-    /** 通用中图标 / 紧凑加载指示器。 */
+    /** Generic icon / compact loading indicator. */
     val IconMedium = 24.dp
 
-    /** 最小触控目标。 */
+    /** Minimum touch target. */
     val TouchTarget = 48.dp
 
-    /** 表单输入框最小高度，与 Material 3 OutlinedTextField 对齐。 */
+    /** Minimum height of form input fields, with alignment with Material 3 OutlinedTextField. */
     val FormFieldMinHeight = 64.dp
 
-    /** 主机卡片更多菜单宽度：容纳会话时间与状态，同时避免弹层占据大半卡片。 */
+    /** Host card menu width: Accommodate session time and status while ensuring the pop-up layer does not occupy most of the card. */
     val HostActionsMenuWidth = 240.dp
 
-    /** Agent 远端目录选择器固定内容高度；列表在内部滚动，确认按钮始终可见。 */
+    /** Set a fixed height for the Agent remote directory selector; allow the list to scroll internally, and ensure the confirmation button remains visible at all times. */
     val AgentDirectorySheet = 400.dp
 
-    /** Agent 工作区侧栏占屏幕宽度的比例，保留主界面以维持抽屉层级感。 */
+    /** The Agent workspace sidebar should occupy a ratio of the screen width that preserves the main UI to maintain the drawer-style hierarchy. */
     val AgentDrawerWidthFraction = 0.7f
 
-    /** Agent 对话头像。 */
+    /** Agent avatar. */
     val AgentAvatar = 32.dp
 
-    /** Agent 输入区附件 Chip 最大宽度，超长文件名在内部省略。 */
+    /** Max width of an attachment chip in the Agent input area; excessively long file names are ellipsized internally. */
     val AgentAttachmentChipMaxWidth = 240.dp
 
-    /** Agent 输入框斜杠命令候选区最大高度。 */
+    /** Max height of the slash-command candidate area in the Agent input field. */
     val AgentSlashMenuMaxHeight = 224.dp
 
-    /** Agent 工具时间线轨道宽度与线宽。 */
+    /** Agent tool timeline track width and line width. */
     val AgentTimelineRailWidth = 20.dp
     val AgentTimelineLineWidth = 2.dp
     val AgentTimelineDot = 8.dp
 
-    /** Agent 时间线条目的统一图标容器。 */
+    /** Agent: A container for standardized icons on the time line. */
     val AgentActivityIconContainer = 36.dp
 
-    /** 用户消息气泡最多占对话内容区的宽度比例，短消息仍按内容自适应。 */
+    /** User message bubbles occupy no more than a certain ratio of the conversation area’s width; short messages still adapt to fit the content. */
     val AgentUserBubbleMaxWidthFraction = 0.86f
 
-    /** Agent 回复进行中的三点指示器。 */
+    /** Agent responds with a three-dot indicator indicating the task is in progress. */
     val AgentTypingDot = 6.dp
 
-    /** Agent 对话页从屏幕左缘触发返回手势的范围。 */
+    /** The range on the Agent conversation page where a back gesture triggers from the left edge of the screen. */
     val AgentBackGestureEdge = 32.dp
 
-    /** Agent 对话页右滑返回所需的最小水平位移。 */
+    /** The minimum horizontal scroll distance required to go back to the Agent conversation page by swiping right. */
     val AgentBackGestureThreshold = 72.dp
 
-    /** 无实体 Header 时，为顶部悬浮导航按钮预留的内容净空。 */
+    /** When there is no Header element, this content space is reserved for the top floating navigation buttons. */
     val AgentChromeClearance = 56.dp
 }
 
-/** 远程画面悬浮键盘 / 虚拟鼠标尺寸。 */
+/** Remote screen floating keyboard / virtual mouse size. */
 object ScreenControlDimens {
     val PermissionBannerBottom = 48.dp
     val PermissionBannerSide = 24.dp

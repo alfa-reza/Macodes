@@ -35,7 +35,7 @@ class SftpVideoDataSourceTest {
         ): ByteArray {
             reads += offset to maxBytes
             if (truncate) return byteArrayOf()
-            // 模拟服务器短读，确保调用者按实际读到的字节数推进。
+            // Mock short reads on the server to ensure the caller advances based on the actual number of bytes read.
             return ByteArray(minOf(maxBytes.toLong(), 4096, length - offset).toInt()) { ((offset + it) % 251).toByte() }
         }
 

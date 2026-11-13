@@ -133,7 +133,7 @@ private fun ScreenStrings.toSessionMessages(): ScreenSessionMessages =
         playerUnsupported = playerUnsupported,
     )
 
-/** 极简底栏项：图标 + 等宽字体小标签，选中=主题绿，无胶囊指示器。 */
+/** Minimalist bottom bar items: icon + small monospace font tag; when selected, the item turns the theme’s green color; no capsule indicator. */
 @Composable
 private fun HomeTabItem(
     label: String,
@@ -187,11 +187,11 @@ private sealed interface Screen {
         val context: AgentLaunchContext? = null,
     ) : Screen
 
-    /** 直接持有 controller 引用：会话由 SessionManager 管理，跨页面存活。 */
+    /** Directly holds a reference to the controller: Sessions are managed by SessionManager and persist across screens. */
     data object Terminal : Screen
 }
 
-/** 设置页二级页（统一由 AppRoot 管理开关：返回链 + 全屏 + 底部 tab 隐藏）。 */
+/** Subpages of the Settings page (all managed by AppRoot: back button + fullscreen + bottom tabs are hidden). */
 enum class SettingsSubPage {
     TERMINAL,
     NOTIFICATION,
@@ -201,22 +201,22 @@ enum class SettingsSubPage {
     PRIVACY,
 }
 
-/** 屏幕会话条目（远程画面推流）。 */
+/** Screen session entries (remote screen streaming). */
 data class ScreenSessionEntry(
     val host: Host,
-    /** 创建该屏幕会话的终端 tab 会话 id：小窗只在该 tab 显示。 */
+    /** Terminal tab session ID that creates this screen session: The floating window is shown only in that tab. */
     val ownerSessionId: String,
     val session: ScreenSession?,
     val uiState: ScreenUiState,
-    /** 条目首次创建时间；推流重连和参数切换时保持不变。 */
+    /** Time when the entry was first created; remains unchanged during streaming reconnection and parameter toggling. */
     val createdAt: Long = Clock.System.now().toEpochMilliseconds(),
 )
 
 @Composable
 fun AppRoot(repository: HostRepository) {
-    // 旧版 Agent 供应商迁移：type=DEEPSEEK（单一 DeepSeek）→ OPENAI 类型 +
-    // anthropic 兼容端点（claude 可用 /anthropic，opencode/pi 走 openai 兼容），
-    // 参考 tuiniverse 的 Provider 模型。旧 id/名称/baseUrl 保持不变。
+    // Legacy Agent Provider Migration: type=DEEPSEEK (single DeepSeek) → OPENAI type +
+    // Anthropic-compatible endpoints (Claude uses /anthropic; OpenCode/Pi uses OpenAI-compatible endpoints),
+    // Refer to the Provider model from tuiniverse. Keep the old IDs, names, and baseURLs unchanged.
     fun migrateLegacyProviders(s: AppSettings): AppSettings {
         val providers = s.agentProviders
         val needsMigration =
@@ -242,8 +242,8 @@ fun AppRoot(repository: HostRepository) {
         return s.copy(agentProviders = migrated)
     }
 
-    // 语音识别服务旧配置（单实例 asrResourceId）迁移到 provider 列表：
-    // 首次启动把旧资源 ID + 旧密钥搬进列表，避免用户重配
+    // Perform the migration of the old speech recognition service configuration (single-instance `asrResourceId`) to the provider list:
+    // On first launch, import the old resource IDs and old keys into the list to avoid requiring users to reconfigure them.
     fun migrateLegacyAsr(s: AppSettings): AppSettings {
         if (s.asrProviders.isNotEmpty() || s.asrResourceId.isBlank()) return s
         val legacyKey = SecretStore.get(SECRET_SERVICE, ASR_API_KEY_ACCOUNT)
@@ -284,9 +284,9 @@ fun AppRoot(repository: HostRepository) {
         navigation.pop()
     }
 
-    // 语言文案（提前声明供 connectSftp 等 lambda 使用）
+    // Language Strings (Pre-declared for use by Lambda functions such as connectSftp)
     val appStrings = remember(settings.language) { appStringsFor(settings.language) }
-    // 连接错误文案随语言即时切换：SessionManager 跨重组复用，须经 State 取最新值
+    // Connection error messages toggle instantly based on language: SessionManager is reused during reassembly; the latest value must be retrieved via State
     val currentStrings = rememberUpdatedState(appStrings)
     val sessionManager = remember { SessionManager(repository, strings = { currentStrings.value }) }
 
@@ -294,33 +294,33 @@ fun AppRoot(repository: HostRepository) {
         notificationPermissionController.refresh { notificationPermissionState = it }
     }
 
-    /** 终端页当前显示的 tab（SSH 会话或 SFTP，同主机多会话切换用）。 */
+    /** The tab currently shown on the terminal screen (SSH session or SFTP; used to toggle between multiple sessions on the same host). */
     var currentTab by remember { mutableStateOf<SessionTab?>(null) }
 
-    /** tab 切换历史（tab id 栈）：返回时弹栈回到上一个 tab，栈空才回首页。 */
+    /** Toggle between tabs (tab ID stack): When returning, pop the stack to go back to the previous tab; only when the stack is empty will it return to the home page. */
     val tabHistory = remember { mutableStateListOf<String>() }
 
-    /** 等待连接完成后再跳转的会话（连接期间卡片头像转圈）。 */
+    /** Sessions that wait for the connection to complete before redirecting (the card avatar spins while the connection is being established). */
     var pendingNavigate by remember { mutableStateOf<TerminalController?>(null) }
 
-    /** 终端 + 菜单「收藏夹」对话框：host + 收藏路径列表（null = 关闭）。 */
+    /** Terminal + Menu “Favorites” dialog: host + list of favorite paths (null = disabled). */
     var favoritesDialog by remember { mutableStateOf<Pair<Host, List<String>>?>(null) }
 
-    /** 屏幕会话条目（远程画面推流）。 */
+    /** Screen session entries (remote screen streaming). */
     val screenSessions = remember { mutableStateListOf<ScreenSessionEntry>() }
 
-    /** 每台主机最多一个画面重连任务，避免旧任务完成后关闭刚建立的新通道。 */
+    /** Limit each host to one task to reconnect the screen to prevent newly established channels from being closed after an old task is completed. */
     val screenReconnectJobs = remember { mutableMapOf<String, Job>() }
 
-    /** 从主机卡点“画面”时，首帧到达后自动展开全屏；普通终端菜单启动不受影响。 */
+    /*When the user taps “Screen” on the host card, automatically expand to fullscreen once the first frame arrives; normal terminal-menu launches are unaffected. */
     var screenFullscreenRequestHostId by remember { mutableStateOf<String?>(null) }
 
-    /** SFTP：选主机覆盖层 / 当前会话 / 认证与主机密钥弹窗。 */
+    /** SFTP: Select host overlay / Current session / Authentication and host key dialog. */
     var sftpPickerVisible by remember { mutableStateOf(false) }
     var sftpAuth by remember { mutableStateOf<AuthPromptRequest?>(null) }
     var sftpHostKey by remember { mutableStateOf<HostKeyRequest?>(null) }
 
-    /** Agent 控制连接跨页面保留；弹窗也必须由 AppRoot 持有，不能捕获已销毁页面状态。 */
+    /*The Agent control connection persists across pages; dialogs must also be owned by AppRoot and cannot capture the state of a destroyed screen. */
     var agentAuth by remember { mutableStateOf<Pair<String, AuthPromptRequest>?>(null) }
     var agentHostKey by remember { mutableStateOf<Pair<String, HostKeyRequest>?>(null) }
     val agentControllers = remember { mutableStateMapOf<String, AgentBridgeController>() }
@@ -344,8 +344,8 @@ fun AppRoot(repository: HostRepository) {
                     controller.close()
                     TermLog.i("agent") { "idle connection closed ${controller.host.name}" }
                 },
-                // 页面离开后可以回收空闲控制连接，但远端任务运行中或等待审批时
-                // 必须继续监听事件，否则用户收不到完成/审批通知。
+                // Idle control connections can be recycled after leaving the screen, but while remote tasks are running or waiting for approval,
+                // You must continue to use the event listener; otherwise, users will not receive completion or approval notifications.
                 canCloseResource = { controller ->
                     !controller.hasActiveWork
                 },
@@ -420,19 +420,19 @@ fun AppRoot(repository: HostRepository) {
     lateinit var applyScreenStreamConfig: (Host, Int, String, Boolean) -> Unit
 
     /**
-     * 建立 SFTP 会话（认证/主机密钥确认走全局弹窗），成功后回调 [onEstablished]。
-     * 供首次连接与断线重连复用；失败由调用方处理（首次=Snackbar，重连=保持 banner）。
-     * 定义在 connectSftp 之前：局部函数不能前向引用。
-     * suspend：createSftpSession 是阻塞连接，必须切 IO 线程（调用方在 Main scope，
-     * 否则重连按钮点击后 UI 冻结几秒——「点了没反应」）。
+     * Establish an SFTP session (authentication/host key confirmation via a global dialog); call the [onEstablished] callback upon success.
+     * Reusable for initial connection and reconnection after a disconnection; failure is handled by the caller (initial connection = Snackbar, reconnection = keep banner).
+     * Defined before `connectSftp`: Local functions cannot be forward-referenced.
+     * suspend: `createSftpSession` is a blocking operation; the I/O thread must be switched (the caller is in the `Main` scope,
+     * Otherwise, the UI freezes for a few seconds after tapping the "Reconnect" button—"No response after tapping").
      */
     suspend fun establishSftp(
         host: Host,
         onEstablished: (SftpSession, Any) -> Unit,
     ) {
-        // 本次连接的身份代次标识：onClosed 凭此区分「本代连接意外断开」与
-        // 「重连/换新时旧连接被主动关闭」（close 会同步触发旧回调，
-        // 不比对代次就会把断开 banner 误标回刚重连成功的会话）
+        // Identifier for this connection: onClosed. Use this to distinguish between “unexpected disconnection of this connection” and
+        // “reconnecting / switching: old connection actively closed” (close synchronously triggers the old callback,
+        // without comparing generations, the disconnect banner would be wrongly applied to the just-reconnected session)
         val connectionToken = Any()
         val (pw, key) = resolveCredentials(host)
         val callbacks =
@@ -444,9 +444,9 @@ fun AppRoot(repository: HostRepository) {
                 override fun onExitStatus(status: Int) {}
 
                 override fun onClosed(reason: String?) {
-                    // SFTP 断开主动推送：立即置 disconnected（banner 红条 + 重连入口）。
-                    // 代次比对：重连/换新/移除时被 close 的旧连接回调仍会触发，
-                    // 但条目已登记新代次（或已移除）→ 忽略，不误标
+                    // SFTP disconnect pushed proactively: immediately set disconnected (red banner + reconnect entry).
+                    // Generation comparison: callbacks of old connections closed during reconnect/replace/removal still fire,
+                    // However, if an entry has been updated to a new version (or removed) → ignore it; do not mislabel it.
                     val entry =
                         sessionManager.sftpSessions
                             .firstOrNull { it.host.id == host.id && it.session != null }
@@ -464,20 +464,20 @@ fun AppRoot(repository: HostRepository) {
                 }
 
                 override fun verifyHostKey(hostKey: HostKeyInfo): Boolean {
-                    // 与终端连接同源：已授信指纹匹配自动通过，不重复弹窗
+                    // Same origin as the terminal connection: Automatically passes if the fingerprint matches; no duplicate dialogs.
                     val known =
                         repository.getHost(host.id)?.knownHostFingerprint
                             ?: host.knownHostFingerprint
                     if (known != null) {
                         if (known == hostKey.fingerprintSha256) return true
-                        // 指纹变更：弹窗让用户核对新旧指纹
+                        // Fingerprint changes: A dialog prompts the user to verify the new and old fingerprints
                         val req = HostKeyRequest(hostKey, changed = true, previousFingerprint = known)
                         sftpHostKey = req
                         val accepted = awaitHostKeyPromptAnswer(req.deferred)
                         if (accepted) repository.touchConnected(host.id, hostKey.fingerprintSha256)
                         return accepted
                     }
-                    // 首次连接：设置关闭首次确认则直接信任
+                    // First connection: Set the settings to skip the initial confirmation and trust immediately
                     if (!repository.loadSettings().verifyHostKeyOnFirstUse) return true
                     val req = HostKeyRequest(hostKey)
                     sftpHostKey = req
@@ -501,8 +501,8 @@ fun AppRoot(repository: HostRepository) {
     }
 
     /**
-     * 建立屏幕推流会话（认证/主机密钥确认走全局弹窗，与 SFTP 同模式）。
-     * 成功后注册条目并切到屏幕 tab；失败由调用方提示。
+     * Establish a screen streaming session (authentication and host key confirmation are handled via a global dialog, similar to the SFTP mode).
+     * Upon success, register the entry and switch to the screen tab; in case of failure, the caller should display a tooltip.
      */
     suspend fun establishScreen(
         host: Host,
@@ -565,13 +565,13 @@ fun AppRoot(repository: HostRepository) {
                 uiState,
                 messages = currentStrings.value.screen.toSessionMessages(),
                 refreshPermissionsBeforeStart = refreshPermissionsBeforeStart,
-                // 断流自动重连：同主机只允许一个任务，且替换前再次核对会话代次。
-                // 否则并发旧任务会轮流关闭刚建立的新通道，形成固定周期断开循环。
+                // Automatic reconnect on stream loss: only one task per host, and re-verify the session generation before replacing.
+                // Otherwise, concurrency will cause old tasks to take turns closing the newly created channel, creating a cycle of disconnections at fixed intervals.
                 onStreamLost = {
                     scope.launch schedule@{
-                        // 安装/升级 relay 会主动重启远端服务，旧视频通道断开是预期
-                        // 生命周期；安装完成回调负责唯一一次重建，不能再并发排一条
-                        // 3 秒自动重连去关闭刚建立的新通道。
+                        // Installing or upgrading Relay will automatically restart remote services; it is expected that old video channels will be disconnected.
+                        // Lifecycle; the install-complete callback owns the single rebuild — do not also schedule a concurrent
+                        // 3-second auto-reconnect that would close the brand-new channel.
                         if (uiState.installing) {
                             TermLog.i("screen") { "skip reconnect while installing ${host.name}" }
                             return@schedule
@@ -597,8 +597,8 @@ fun AppRoot(repository: HostRepository) {
                                     return@reconnect
                                 }
 
-                                // 原画/高清若刚出帧就断，逐级回退；原画实际宽度不超过
-                                // 1920 时不反向放大。稳定运行后的偶发断线保持用户画质。
+                                // If the original image or high-resolution version cuts off immediately after the frame appears, roll back step by step; the actual width of the original image must not exceed
+                                // when actual width ≤ 1920, do not upscale in reverse. Keep the user's quality setting on occasional drops after a stable run.
                                 val readyWidth =
                                     sourceUiState.player
                                         ?.videoDims
@@ -655,13 +655,13 @@ fun AppRoot(repository: HostRepository) {
         onEstablished(session, uiState)
     }
 
-    // 终端 + 菜单「屏幕」：建推流会话，**留在当前 tab**——小窗出现在终端页，
-    // 点小窗全屏按钮在当前页展开（不跳 tab）
+    // Terminal + Menu “Screen”: Create a streaming session, **stay in the current tab**—a floating window appears on the terminal screen,
+    // Click the fullscreen button to expand the floating window on the current page (without switching tabs).
     val openScreen: (Host) -> Unit = { host ->
         screenReconnectJobs.remove(host.id)?.cancel()
         val ownerId = (currentTab as? SessionTab.Terminal)?.controller?.sessionId ?: ""
-        // 连接开始即注册占位条目：不同主机首次打开画面时也能立即显示该主机的
-        // 全屏连接反馈，不必等 SSH + 推流建好后才隐藏终端按钮和系统状态栏。
+        // Register placeholder entries upon connection: so that when a screen is opened for the first time on a different host, the host’s
+        // Fullscreen connection feedback—there’s no need to wait until SSH and streaming are set up before the terminal button and system status bar are hidden.
         val pendingUiState = ScreenUiState()
         screenSessions.firstOrNull { it.host.id == host.id }?.session?.close()
         screenSessions.removeAll { it.host.id == host.id }
@@ -669,7 +669,7 @@ fun AppRoot(repository: HostRepository) {
         scope.launch {
             try {
                 establishScreen(host, pendingUiState) { session, uiState ->
-                    // 同主机若已发起更新请求，旧请求完成后不得覆盖新条目。
+                    // If an update request was already initiated on the same host, the old request must not overwrite the new entry once it completes.
                     val pending = screenSessions.firstOrNull { it.host.id == host.id }
                     if (pending?.uiState !== pendingUiState) {
                         session.close()
@@ -688,8 +688,8 @@ fun AppRoot(repository: HostRepository) {
         }
     }
 
-    // 屏幕推流服务安装（引导卡片按钮）：复用已认证会话跑安装脚本（流式日志），
-    // 装完重建推流会话重连。与 herdr 安装引导同模式。
+    // Screen Streaming Service Installation (Wizard Card Button): Reuse an authenticated session to run the installation script (streaming logs),
+    // After installation, rebuild the streaming session to reconnect. This follows the same mode as the herdr installation guide.
     val installScreenService: (Host, String?) -> Unit = { host, sudoPassword ->
         screenReconnectJobs.remove(host.id)?.cancel()
         val entry = screenSessions.firstOrNull { it.host.id == host.id && it.session != null }
@@ -700,7 +700,7 @@ fun AppRoot(repository: HostRepository) {
                 onComplete = { ok ->
                     if (ok) {
                         screenReconnectJobs.remove(host.id)?.cancel()
-                        // 装完重建推流会话（读流重连）
+                        // After installation, rebuild the streaming session (reconnect the read stream).
                         scope.launch {
                             try {
                                 establishScreen(host) { session, uiState ->
@@ -732,7 +732,7 @@ fun AppRoot(repository: HostRepository) {
         }
     }
 
-    // 屏幕重连（就地全屏/重连按钮）：重建推流会话（关旧会话防泄漏）
+    // Screen Reconnect (Fullscreen In Place / Reconnect Button): Rebuild the streaming session (close the old session to prevent leaks)
     val reconnectScreenForHost: (Host) -> Unit = { host ->
         screenReconnectJobs.remove(host.id)?.cancel()
         val existingEntry = screenSessions.firstOrNull { it.host.id == host.id }
@@ -762,31 +762,31 @@ fun AppRoot(repository: HostRepository) {
         }
     }
 
-    // 关闭屏幕会话并移除条目（全屏 ✕ / Agent 页关闭按钮）
+    // Close the screen session and remove the entry (fullscreen ✕ / Close button on the Agent page)
     val closeScreenForHost: (Host) -> Unit = { host ->
         screenReconnectJobs.remove(host.id)?.cancel()
         screenSessions.firstOrNull { it.host.id == host.id }?.session?.close()
         screenSessions.removeAll { it.host.id == host.id }
     }
 
-    // 帧率/画质切换：SSH 写远端 relay 配置 → 重建会话生效。
-    // userInitiated=false 时保留用户上限，后续稳定窗口可逐级恢复。
-    // ⚠️ 档位必须设置在【重建后的新 uiState】上：重建（establishScreen）
-    // 会创建新 ScreenUiState（默认档位），设在旧对象上会被替换掉，
-    // 右上角数字永远不变（用户反馈）
+    // Frame rate/image quality toggle: Write the remote relay configuration via SSH → The changes take effect after rebuilding the session.
+    // When `userInitiated=false`, retain the user limit; it can be gradually resumed in subsequent stability windows.
+    // ⚠️ The quality tier must be set on the new uiState after rebuild: Rebuild (establishScreen)
+    // It will create a new ScreenUiState (default state); if set on an existing object, it will be replaced,
+    // The number in the upper-right corner never changes (user feedback)
     applyScreenStreamConfig = { host, fps, scale, userInitiated ->
         screenReconnectJobs.remove(host.id)?.cancel()
         lateinit var configJob: Job
         configJob =
             scope.launch {
-                // 菜单连续切帧率/画质时只应用最后一次选择。此前每次点击都会启动
-                // 独立 SSH + direct-tcpip；慢请求在被新请求替换后仍可能晚到并踢掉
-                // 当前画面，表现为固定数秒重复断开。
+                // When switching frame rate/quality rapidly in the menu, only the last choice is applied. Previously each tap started
+                // an independent SSH + direct-tcpip; a slow request, though superseded, can still arrive late and kick out the
+                // The current screen repeatedly disconnects for a fixed number of seconds.
                 delay(250)
                 val entry = screenSessions.firstOrNull { it.host.id == host.id }
-                // 旧条目 uiState 也同步档位：断流自动重连（onStreamLost）
-                // 用旧 uiState 重建时会保留新档位，不被 30 覆盖（用户反馈：
-                // 切帧率后右上角仍显示 30——自动重连与重建竞态）
+                // The old entry `uiState` has also been synced: Automatic reconnection upon stream loss (`onStreamLost`)
+                // When rebuilding with the old `uiState`, the new settings are retained and not overwritten by `30` (user feedback:
+                // The frame rate is still showing 30 in the upper-right corner after adjustment—(automatic reconnection and rebuild race condition)
                 entry?.uiState?.streamFps = fps
                 entry?.uiState?.streamQuality = ScreenSession.qualityIndexFor(scale)
                 if (userInitiated) entry?.uiState?.preferredStreamFps = fps
@@ -825,22 +825,22 @@ fun AppRoot(repository: HostRepository) {
         applyScreenStreamConfig(host, fps, scale, true)
     }
 
-    // 覆盖层选主机后：建立 SFTP 会话（认证/主机密钥弹窗走全局 sftpAuth/sftpHostKey）。
-    // [initialPath] 非空时打开后直接定位到该目录（终端「文件管理」菜单：当前工作目录）。
+    // After the host is selected in the overlay layer: Establish an SFTP session (authentication/host key dialogs use the global `sftpAuth` and `sftpHostKey`).
+    // If [initialPath] is not empty, open the file and navigate directly to that directory (Terminal “File Management” menu: Current Working Directory).
     val connectSftp: (Host, String?) -> Unit = { host, initialPath ->
         sftpPickerVisible = false
         scope.launch {
             try {
                 establishSftp(host) { session, token ->
                     val entry = sessionManager.addSftp(host, session, token)
-                    // 持久化收藏恢复到会话（终端 + 菜单收藏夹读取同一份）
+                    // Persisted favorites restored into the session (terminal + menu bookmarks read the same copy)
                     repository.loadFavorites(host.id).forEach { entry.uiState.favorites.add(it) }
                     if (!initialPath.isNullOrBlank()) {
                         entry.uiState.path = initialPath
                     }
-                    // 与 entry 共用同一 uiState：浏览路径变化能反映到持久化（退后台保存）
-                    // 从终端页进入：压当前终端 tab 进返回历史（返回时回到终端，
-                    // 而非直接回主页——与 tab 栏切换同一返回链）
+                    // Shares the same `uiState` with `entry`: changes in the navigation path are reflected in persistence (saved in the background).
+                    // From the terminal screen: push the current terminal tab onto the back history (Back returns to the terminal,
+                    // (rather than returning directly to the home page—same back path as toggling via the tab bar)
                     (currentTab as? SessionTab.Terminal)?.let { tabHistory.add(it.id) }
                     currentTab = SessionTab.Sftp(host, session, entry.uiState)
                     navigate(Screen.Terminal)
@@ -851,7 +851,7 @@ fun AppRoot(repository: HostRepository) {
         }
     }
 
-    /** 主机能力入口：同一主机、同一启动类型优先复用；否则创建独立会话。 */
+    /** Host Capability Entry Point: Prioritize reuse on the same host and with the same launch type; otherwise, create a separate session. */
     fun openHostTerminal(
         host: Host,
         launchMode: TerminalLaunchMode,
@@ -872,7 +872,7 @@ fun AppRoot(repository: HostRepository) {
             }
     }
 
-    /** 主机卡画面入口需要一个终端页宿主；画面 SSH 本身仍使用独立连接。 */
+    /** The host screen entry point requires a terminal screen host; the screen SSH itself still uses an independent connection. */
     val openScreenFromHost: (Host) -> Unit = { host ->
         val signature = sessionManager.signatureFor(host)
         val owner =
@@ -887,7 +887,7 @@ fun AppRoot(repository: HostRepository) {
         openScreen(host)
     }
 
-    /** 重新进入已有画面会话：复用推流，只补齐终端页宿主并展开全屏。 */
+    /** Re-enter an existing screen session: Reuse the streaming, only update the terminal screen host, and expand to fullscreen. */
     val showScreenSession: (ScreenSessionEntry) -> Unit = { entry ->
         val signature = sessionManager.signatureFor(entry.host)
         val owner =
@@ -912,22 +912,22 @@ fun AppRoot(repository: HostRepository) {
 
     LaunchedEffect(pendingNavigate) {
         val target = pendingNavigate ?: return@LaunchedEffect
-        // TUI 会话（herdr 工作台 / 启动命令）不预连：列表页无终端画布只能
-        // 80x24 起步，herdr/tmux 按错误尺寸布局后再 resize 会整体重排跳动；
-        // 直接进终端页等画布量到实际尺寸后建连，首帧即正确布局
-        // （纯 shell 预连无此问题——resize 只是把提示符换行）
+        // TUI sessions (herdr workspace / launch commands) are not pre-connected: the list page has no terminal canvas, so the PTY can
+        // only start at 80×24; herdr/tmux then lay out at the wrong size, and a later resize re-flows everything with visible jumps.
+        // Go straight to the terminal screen, measure the canvas to its real size and only then connect, so the layout is right from the first frame.
+        // (Pure-shell pre-connect doesn't have this issue — `resize` just reprints the prompt on a new line.)
         if (target.launchMode == TerminalLaunchMode.HERDR || target.host.startupCommand.isNotBlank()) {
             currentTab = SessionTab.Terminal(target)
             navigate(Screen.Terminal)
             pendingNavigate = null
             return@LaunchedEffect
         }
-        // 列表页没有终端画布：用默认尺寸先行建连（跳转后 TerminalView 会 resize
-        // 到实际画布尺寸），否则会话停留在 IDLE 永远无法连接
+        // The list page does not have a terminal canvas: create the connection using the default size first (TerminalView will resize after the redirect).
+        // (to the actual canvas size), otherwise the session will remain in IDLE and will never be able to establish a connection
         if (target.status == ConnStatus.IDLE) {
             target.connect(80, 24)
         }
-        // 轮询等待连接结果：成功跳转终端页，失败留在列表（头像停止转圈）
+        // Wait for connection results: If success, redirect to the terminal screen; if failure, remain in the list (avatar stops spinning).
         while (target.status == ConnStatus.CONNECTING || target.status == ConnStatus.AUTH) {
             delay(200)
         }
@@ -936,11 +936,11 @@ fun AppRoot(repository: HostRepository) {
             currentTab = SessionTab.Terminal(target)
             navigate(Screen.Terminal)
         } else if (target.status == ConnStatus.ERROR) {
-            // 连接失败（IP 不可达 / 认证失败等）：留在列表并提示原因
+            // Connection failure (IP unreachable / authentication failure, etc.): Keep in the list and display the reason as a tooltip
             snackbarHostState.showSnackbar(target.errorMessage ?: appStrings.hostsConnectFailed)
         }
     }
-    // 恢复上次运行时的会话列表（仅一次；进程死亡连接必死，恢复为未连接可重连）
+    // Resume the session list from the last run (only once; if the process dies, the connection will be lost; resuming to an unconnected state allows for reconnection)
     var sessionsRestored by remember { mutableStateOf(false) }
     if (!sessionsRestored) {
         sessionManager.restoreRecent(hosts, settings.autoReconnect) {
@@ -949,17 +949,17 @@ fun AppRoot(repository: HostRepository) {
         sessionsRestored = true
     }
 
-    // iOS：退到桌面后系统挂起进程、掐断 socket；回前台时自动重连活跃会话（缓冲保留）。
-    // Android 由前台服务保活，对应实现为空操作。
+    // iOS: When returning to the home screen, the system suspends the process and closes the socket; when returning to the foreground, it automatically reconnects to active sessions (retaining the buffer).
+    // Android is kept alive by a foreground service, which has a null implementation.
     val disposeNetwork =
         observeNetworkChange { kind ->
-            // 网络事件：SSH 对默认网络变化先探测再决定是否重连；mosh 靠 UDP 漫游自愈
-            // （实现与 NetworkChangeKind 注释一致：mosh 仅客户端异常退出时才走自动重连）
+            // Network events: SSH first detects changes in the default network before deciding whether to reconnect; mosh relies on UDP roaming for self-healing.
+            // (Implementation of the NetworkChangeKind comment: mosh only performs automatic reconnection when the client exits with an exception.)
             sessionManager.sessions.forEach { it.onNetworkChanged(kind) }
         }
     DisposableEffect(Unit) {
-        // 通知中心：注入设置读取器；前后台状态供后台事件通知过滤；
-        // 「重新连接」动作 → 找到该主机会话重连（无活跃会话则打开主机页）
+        // Notification Center: Perform injection of a settings reader; provide foreground and background states to filter background event notifications;
+        // "Reconnect" action → Find and reconnect to the session on this host (if there is no active session, open the host page)
         NotificationCenter.settingsProvider = { repository.loadSettings() }
         NotificationCenter.foreground = true
         NotificationCenter.onReconnectRequest = { hostId ->
@@ -983,8 +983,8 @@ fun AppRoot(repository: HostRepository) {
                 if (foreground) {
                     notificationPermissionController.refresh { notificationPermissionState = it }
                     backgroundProtection = backgroundProtectionState()
-                    // 先读取恢复策略再重建服务登记：Android 的 VERIFY 依据是“后台期间
-                    // 服务曾被停”，登记恢复后 isActive 会变化，但仍需验证旧 socket。
+                    // First read the recovery strategy, then rebuild the service registration: Android’s VERIFY is based on “during background operation”
+                    // "The service was once suspended"; after resuming registration and restoration, `isActive` will change, but the old socket still needs to be verified.
                     val recovery = SessionKeepAlive.foregroundSshRecovery()
                     if (!SessionKeepAlive.isActive()) {
                         sessionManager.restoreKeepAliveRegistrations()
@@ -992,7 +992,7 @@ fun AppRoot(repository: HostRepository) {
                     sessionManager.reconnectDroppedSessions(recovery)
                 } else {
                     sessionManager.noteBackgrounded()
-                    // 退后台即保存最新 SFTP 浏览路径：杀 App 重进后恢复到上次目录
+                    // Save the latest SFTP browsing path when exiting to the background: Resume at the previous directory after closing and reopening the app.
                     sessionManager.persistNow()
                 }
             }
@@ -1003,8 +1003,8 @@ fun AppRoot(repository: HostRepository) {
         }
     }
 
-    // 全局返回栈：一级页面弹栈回到真实来源；设置二级页回设置；主页非主机 tab 回主机 tab。
-    // 子页面若漏拦截返回，根层也只弹一层，不再把目标写死成首页。
+    // Global back stack: on the first-level screen, pop back to the actual source; on the second-level screen, back to settings; on the home screen, if not on the "Host" tab, switch to the "Host" tab.
+    // If a subpage fails to intercept Back, the root layer pops only one level; the target is no longer hardcoded to home.
     var homeTab by remember { mutableStateOf(HomeTab.HOSTS) }
     var settingsSubPage by remember { mutableStateOf<SettingsSubPage?>(null) }
     val homeHasBackTarget = screen == Screen.Home && (settingsSubPage != null || homeTab != HomeTab.HOSTS)
@@ -1057,9 +1057,9 @@ fun AppRoot(repository: HostRepository) {
         LocalTerminalFont provides TerminalFont.byId(settings.terminalFontId),
     ) {
         TermishTheme(settings.theme) {
-            // 状态栏图标颜色只看当前页面实际背景亮度：
-            // - 终端 tab → 按终端主题背景亮度
-            // - 其余页面 → 按应用主题亮度
+            // The status bar icon color depends solely on the actual brightness of the current screen’s background:
+            // - Terminal tab → Adjust brightness based on terminal theme background brightness
+            // - Other screens → Adjust brightness based on app theme
             val pageDark =
                 if (screen is Screen.Terminal && currentTab is SessionTab.Terminal) {
                     terminalTheme.background().luminance() < 0.5f
@@ -1068,8 +1068,8 @@ fun AppRoot(repository: HostRepository) {
                 }
             PlatformStatusBarIcons(lightIcons = pageDark)
             Box(Modifier.fillMaxSize()) {
-                // 会话级弹窗全局渲染：认证 / 主机密钥确认在首页连接等待时也能弹出，
-                // 不必先进入终端页（否则连接卡在转圈却看不到授权请求）
+                // Global rendering of session-level dialogs: Authentication and host key confirmation dialogs should appear even while waiting for a connection on the home page,
+                // There is no need to open the terminal screen first (otherwise, the connection will get stuck spinning without displaying the authorization request).
                 sessionManager.sessions.forEach { controller ->
                     controller.authPrompt?.let { prompt ->
                         AuthPromptDialog(prompt.prompt) { answers ->
@@ -1089,8 +1089,8 @@ fun AppRoot(repository: HostRepository) {
                 AnimatedContent(
                     targetState = screen,
                     transitionSpec = {
-                        // 终端包含持续刷新的画布/原生视频面，只做短淡变，避免滑动期间
-                        // 两份 Surface 同时移动；普通层级页面按 push/pop 方向成对滑动。
+                        // The terminal features a continuously refreshing canvas/native video display that undergoes only subtle changes to avoid disruption during swiping.
+                        // Two Surface instances move simultaneously; standard-level screens swipe in pairs according to the push/pop direction.
                         if (initialState is Screen.Terminal || targetState is Screen.Terminal) {
                             fadeIn(tween(140)).togetherWith(fadeOut(tween(120)))
                         } else if (navigation.direction == NavigationDirection.BACKWARD) {
@@ -1111,13 +1111,13 @@ fun AppRoot(repository: HostRepository) {
                     when (val s = targetScreen) {
                         Screen.Home -> {
                             Scaffold(
-                                // 各页面 Header 自行避让状态栏，底部 NavigationBar 自行避让导航条，
-                                // 外层不再重复施加（否则标题上方出现双倍状态栏高度）
+                                // Each screen’s header should automatically adjust to avoid the status bar, and the bottom NavigationBar should automatically adjust to avoid the navigation bar,
+                                // Do not apply it repeatedly to outer elements (otherwise, the status bar height above the title will double).
                                 contentWindowInsets = WindowInsets(0, 0, 0, 0),
                                 bottomBar = {
-                                    // 设置二级页打开时全屏：隐藏底部 tab（二级页由返回链统一关闭）
+                                    // In fullscreen mode, set subpages to open: the bottom tab is hidden (subpages are closed uniformly via the back button).
                                     if (settingsSubPage == null) {
-                                        // 自绘极简底栏：无胶囊指示器，选中=主题绿，等宽字体小标签
+                                        // Custom-drawn minimalist bottom bar: no capsule indicators; selected items = theme green; monospaced font for small tags
                                         val mono = monospaceFontFamily()
                                         Column {
                                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -1196,7 +1196,7 @@ fun AppRoot(repository: HostRepository) {
                                                         openHostTerminal(host, TerminalLaunchMode.HERDR)
                                                     },
                                                     onConnectBatch = { batch ->
-                                                        // 批处理连接：逐个建立会话（后台运行），不跳转终端页
+                                                        // Batch connection: Establish sessions one by one (run in the background) without redirecting to the terminal screen
                                                         batch.forEach { host ->
                                                             sessionManager.open(host, settings.autoReconnect) {
                                                                 hosts = repository.listHosts()
@@ -1204,14 +1204,14 @@ fun AppRoot(repository: HostRepository) {
                                                         }
                                                     },
                                                     onDisconnect = { host ->
-                                                        // 断开该主机全部会话：终端断开保留 + SFTP 释放（与「全部关闭」一致）
+                                                        // Disconnect all sessions from this host: Keep terminal connections open + release SFTP connections (same as “Close All”)
                                                         sessionManager.closeAllForHost(host.id)
                                                         closeScreenForHost(host)
                                                         agentControllerPool.remove(host.id)
                                                     },
                                                     onOpenSession = { controller ->
-                                                        // 卡片点击 = 用当前配置连这台主机：配置/凭据已变更的旧会话不复用，
-                                                        // 用当前配置新建（旧会话保留在连接页，可手动关闭/重入）
+                                                        // Tap the card = Connect to this host using the current configuration: Old sessions with changed configurations or credentials will not be reused,
+                                                        // Create a new session using the current configuration (previous sessions remain on the Connections page and can be manually closed or re-entered).
                                                         if (controller.credentialKey !=
                                                             sessionManager.signatureFor(controller.host)
                                                         ) {
@@ -1230,7 +1230,7 @@ fun AppRoot(repository: HostRepository) {
                                                         }
                                                     },
                                                     onOpenSftp = { host, session ->
-                                                        // 用 entry 的 uiState（若已存在）：重新进入不重置浏览状态/路径
+                                                        // Use the entry's `uiState` (if available): re-enter without resetting the browser state/path
                                                         val entry =
                                                             sessionManager.sftpSessions.firstOrNull {
                                                                 it.host.id ==
@@ -1244,7 +1244,7 @@ fun AppRoot(repository: HostRepository) {
                                                     onStartSftp = { host -> connectSftp(host, null) },
                                                     onOpenScreen = openScreenFromHost,
                                                     onCloseAllSessions = { host ->
-                                                        // 关闭该主机全部会话：终端断开保留 + SFTP 释放
+                                                        // Close all sessions on this host: Disconnect terminal session + Release SFTP connection
                                                         sessionManager.closeAllForHost(host.id)
                                                         closeScreenForHost(host)
                                                         agentControllerPool.remove(host.id)
@@ -1287,7 +1287,7 @@ fun AppRoot(repository: HostRepository) {
                                                                 navigate(Screen.Terminal)
                                                             }
                                                             is HostSessionItem.Sftp -> {
-                                                                // 连接页重入：用 entry 的 uiState（浏览状态/路径保留）
+                                                                // Page Re-entry: Use the `uiState` of the `entry` (preserve browsing state/path)
                                                                 val entry =
                                                                     sessionManager.sftpSessions.firstOrNull {
                                                                         it.host.id == item.host.id &&
@@ -1316,8 +1316,8 @@ fun AppRoot(repository: HostRepository) {
                                                                 }
                                                             }
                                                             is HostSessionItem.Sftp -> {
-                                                                // 与终端同语义两段式：活跃=断开保留（重连恢复路径），
-                                                                // 已断开（session=null）=从列表移除
+                                                                // Use the same two-part syntax as in the terminal: active = disconnect (retains path to reconnect),
+                                                                // Disconnected (session=null) = Removed from the list
                                                                 val entry =
                                                                     sessionManager.sftpSessions
                                                                         .firstOrNull {
@@ -1347,7 +1347,7 @@ fun AppRoot(repository: HostRepository) {
                                                 SettingsScreen(
                                                     settings = settings,
                                                     onChange = { new ->
-                                                        // 即改即存
+                                                        // Save as you go
                                                         repository.saveSettings(new)
                                                     },
                                                     repository = repository,
@@ -1407,9 +1407,9 @@ fun AppRoot(repository: HostRepository) {
                                     initialContext = s.context,
                                     onRelease = { agentControllerPool.release(host.id) },
                                     onBack = ::navigateBack,
-                                    // 屏幕远控（复用终端页推流基础设施）：会话条目/回调
-                                    // 由 AppRoot 持有，Agent 页内全屏播放、关闭/重连/安装/档位
-                                    // 走同一套 establishScreen 流程（Agent 连接不因切页而断）
+                                    // Remote Screen Control (Reusing Terminal Screen Streaming Infrastructure): Session Entries/Callbacks
+                                    // Owned by AppRoot; fullscreen playback, close/reconnect/install/tier on the Agent page
+                                    // Follow the same establishScreen workflow (the agent connection is not interrupted when switching pages)
                                     screenEntry = screenSessions.firstOrNull { it.host.id == host.id },
                                     onStartScreen = openScreen,
                                     onCloseScreen = closeScreenForHost,
@@ -1420,13 +1420,13 @@ fun AppRoot(repository: HostRepository) {
                             }
                         }
 
-                        // 返回主页不断开：默认后台运行，会话保留在 SessionManager，
-                        // 由前台服务保活，从「连接」页可重新进入（终端缓冲原样保留）
-                        // 终端页 tabs = 全部会话（跨主机）：连任何主机都进同一个终端页，
-                        // tab 栏以「user@host + 状态点」区分（Termius 式全局会话）
+                        // Return to the home page without disconnecting: Runs in the background by default, and the session is retained in SessionManager,
+                        // Kept alive by the foreground service; you can re-enter from the “Connection” page (terminal buffer is preserved as-is).
+                        // Terminal screens = All sessions (across hosts): Connect to any host on the same terminal screen,
+                        // The tab bar is organized by “user@host + status point” (Termius-style global sessions)
                         is Screen.Terminal -> {
-                            // 终端会话 tab 不过滤状态：断开/失败也保留（tab 内状态点体现），
-                            // 关闭 tab 时才从列表移除；否则创建 SFTP 后重组会把非活跃终端 tab 丢掉
+                            // Terminal session tab does not filter status: disconnected/failure sessions are retained (reflected in status points within the tab),
+                            // Remove from the list only when the tab is closed; otherwise, reassembly after creating an SFTP connection will discard inactive terminal tabs.
                             val terminalTabs = sessionManager.sessions.map { SessionTab.Terminal(it) }
                             val sftpTabs =
                                 sessionManager.sftpSessions
@@ -1438,14 +1438,14 @@ fun AppRoot(repository: HostRepository) {
                                 } ?: allTabs.firstOrNull()
                             if (current != null) {
                                 val tabs = allTabs
-                                // 「+」新增会话归属：当前选中会话的主机（SFTP tab 用其主机）
+                                // "+" Add session affiliation: The host of the currently selected session (use the host from the SFTP tab)
                                 val currentHost =
                                     when (current) {
                                         is SessionTab.Terminal -> current.controller.host
                                         is SessionTab.Sftp -> current.host
                                         is SessionTab.Screen -> current.host
                                     }
-                                // 屏幕会话条目（小窗/全屏主机名同源：不依赖 current tab）
+                                // Screen session entries (same-origin for floating window/fullscreen hostnames: no dependency on the current tab)
                                 val pipEntry =
                                     (current as? SessionTab.Terminal)?.let { termTab ->
                                         screenSessions.firstOrNull {
@@ -1459,24 +1459,24 @@ fun AppRoot(repository: HostRepository) {
                                     settings = settings,
                                     repository = repository,
                                     onBack = {
-                                        // 返回优先弹 tab 历史（SFTP/屏幕 → 回到上一个终端 tab），
-                                        // 栈空才回首页
+                                        // When going back, prioritize switching to the tab in history (SFTP/screen → Return to the previous terminal tab),
+                                        // only when the stack is empty does it return home
                                         val prevId = tabHistory.removeLastOrNull()
                                         val target = prevId?.let { id -> allTabs.firstOrNull { it.id == id } }
                                         if (target != null && target.id != currentTab?.id) {
                                             currentTab = target
                                         } else {
-                                            // 页面退出动画仍会渲染终端约 120ms；此时清空会让
-                                            // current 回退到 allTabs.firstOrNull()，第二个 tab
-                                            // 离场时就闪出第一个 tab。保留选中项直到下次入口覆盖。
+                                            // The screen exit animation will still render in the terminal for approximately 120 ms; clearing it at this point will cause
+                                            // current: Revert to allTabs.firstOrNull(), the second tab
+                                            // The first tab should appear immediately upon exiting. Keep the selection until the next entry overwrites it.
                                             refreshHosts()
                                             navigateBack()
                                         }
                                     },
                                     onSwitchTab = { it ->
-                                        // 手动点 tab 是平级切换，不写返回历史；只有“文件管理”等
-                                        // 功能入口显式进入二级 tab 时才由入口记录来源。否则
-                                        // Terminal → SFTP → Terminal 会把两边都压栈，返回来回跳。
+                                        // Manual tab taps are same-level switches and don't write back history; only function entries like “File Management” that explicitly enter a second-level tab record the source. Otherwise
+                                        // The entry point only records the source when explicitly entering a second-level tab. Otherwise,
+                                        // Terminal → SFTP → Terminal pushes both sides onto the stack, causing you to jump back and forth.
                                         currentTab = it
                                     },
                                     onAddSession = {
@@ -1502,7 +1502,7 @@ fun AppRoot(repository: HostRepository) {
                                                 }
                                             }
                                         }
-                                        // 清理历史栈中失效的 tab id（已关闭的会话）
+                                        // Clean up invalid tab IDs from the history stack (closed sessions)
                                         val liveIds =
                                             (
                                                 sessionManager.sessions
@@ -1534,10 +1534,10 @@ fun AppRoot(repository: HostRepository) {
                                         }
                                     },
                                     onOpenSftpPicker = { sftpPickerVisible = true },
-                                    // 文件管理：直接对当前主机建 SFTP 会话并切到 SFTP tab
-                                    // （复用 connectSftp 全流程：认证弹窗 / 主机密钥 / 断线重连）
+                                    // File Management: Establish an SFTP session directly with the current host and switch to the SFTP tab
+                                    // (Reuse the entire connectSftp workflow: authentication dialog / host key / reconnection)
                                     onOpenSftpForHost = connectSftp,
-                                    // 收藏夹：读取持久化收藏，弹列表跳转（无收藏则提示）
+                                    // Favorites: read persisted favorites, pop a list to jump (if none, show a hint)
                                     onOpenFavorites = { host ->
                                         val favs = repository.loadFavorites(host.id)
                                         if (favs.isEmpty()) {
@@ -1550,18 +1550,18 @@ fun AppRoot(repository: HostRepository) {
                                             favoritesDialog = host to favs
                                         }
                                     },
-                                    // 屏幕：建推流会话并切到屏幕 tab
+                                    // Screen: Create a streaming session and switch to the Screen tab
                                     onOpenScreen = openScreen,
-                                    // 屏幕推流服务安装（引导卡片按钮）：流式日志 → 装完重建会话重连
+                                    // Screen Streaming Service Installation (Guide Card Button): Streaming Log → Reconnect after installation and session rebuild
                                     onInstallScreenService = installScreenService,
-                                    // 屏幕重连（就地全屏）：按主机重建会话
+                                    // Screen Reconnect (Fullscreen In-Place): Rebuild the session on the host
                                     onReconnectScreenForHost = reconnectScreenForHost,
-                                    // 全屏帧率/画质切换：SSH 写远端 relay 配置 → 重建会话生效。
-                                    // ⚠️ 档位必须设置在【重建后的新 uiState】上：重建（establishScreen）
-                                    // 会创建新 ScreenUiState（默认档位），设在旧对象上会被替换掉，
-                                    // 右上角数字永远不变（用户反馈）
+                                    // Fullscreen frame rate/image quality toggle: Write the remote relay configuration via SSH → Rebuild the session for the changes to take effect.
+                                    // ⚠️ The quality tier must be set on the new uiState after rebuild: Rebuild (establishScreen)
+                                    // It will create a new ScreenUiState (default state); if set on an existing object, it will be replaced,
+                                    // The number in the upper-right corner never changes (user feedback)
                                     onStreamConfigChange = streamConfigChange,
-                                    // 屏幕断线重连：重建会话替换 tab
+                                    // Reconnection after a screen disconnect: Rebuild the session and replace the tab
                                     onReconnectScreen = { tab ->
                                         scope.launch {
                                             try {
@@ -1588,15 +1588,15 @@ fun AppRoot(repository: HostRepository) {
                                             }
                                         }
                                     },
-                                    // 终端页小窗：只显示**属于当前终端 tab** 的屏幕会话（切走即隐藏）
+                                    // Terminal-screen floating window: only show screen sessions **belonging to the current terminal tab** (hidden when switching away)
                                     screenPip = pipEntry?.uiState,
                                     screenFullscreenRequestHostId = screenFullscreenRequestHostId,
                                     onScreenFullscreenRequestConsumed = {
                                         screenFullscreenRequestHostId = null
                                     },
-                                    // 屏幕会话自己的主机（全屏头部显示，不依赖 current tab）
+                                    // Screen session on your own host (shown in the fullscreen header, independent of the current tab)
                                     pipHost = pipEntry?.host,
-                                    // 小窗 ✕：关闭当前屏幕会话（销毁推流 + 移除条目）
+                                    // Floating window ✕: Close the current screen session (destroy the streaming + remove the entry)
                                     onCloseScreenPip = {
                                         val ownerId = (current as? SessionTab.Terminal)?.controller?.sessionId
                                         if (ownerId != null) {
@@ -1607,18 +1607,18 @@ fun AppRoot(repository: HostRepository) {
                                             }
                                         }
                                     },
-                                    // 收藏变更：SFTP 页增删收藏即落盘
+                                    // Bookmark Changes: Adding or removing bookmarks on the SFTP page is now saved to disk immediately
                                     onFavoritesChanged = { host, favs ->
                                         repository.saveFavorites(host.id, favs)
                                     },
-                                    // 浏览路径即时持久化：导航即保存（退后台保存为兜底）
+                                    // Instantly achieve browsing path persistence: Save as you navigate (fallback to saving in the background when minimized).
                                     onSftpPathChanged = { _, _ -> sessionManager.persistNow() },
-                                    // 终端输出/SFTP 远端路径直达同主机 Agent，不经过剪贴板或文件中转。
+                                    // Terminal output and SFTP remote paths go directly to the Agent on the same host, without passing through the clipboard or a file.
                                     onAskAgent = { host, context -> navigate(Screen.Agents(host.id, context)) },
-                                    // SFTP 断线重连：重建会话替换 tab（保留 uiState 的路径/列表）
+                                    // SFTP Reconnection: Rebuild the session by replacing the tab (preserving the path/list in uiState)
                                     onReconnectSftp = { tab ->
-                                        // session 可空（进程重启恢复条目）：host.id + 引用双重匹配，
-                                        // 避免多个 null-session 条目时错配
+                                        // session (optional; resumes entries upon process restart): host.id + reference double match,
+                                        // Avoid mismatches when there are multiple "null-session" entries.
                                         val entry =
                                             sessionManager.sftpSessions.find {
                                                 it.host.id == tab.host.id && it.session === tab.session
@@ -1628,12 +1628,12 @@ fun AppRoot(repository: HostRepository) {
                                                 establishSftp(tab.host) { newSession, token ->
                                                     entry?.let { sessionManager.reconnectSftp(it, newSession, token) }
                                                     currentTab = SessionTab.Sftp(tab.host, newSession, tab.uiState)
-                                                    // 重连成功：清除重连中/断开状态，SftpContent 继续用原路径浏览
+                                                    // Reconnect success: Clears the "Reconnecting" or "Disconnected" status; SftpContent continues browsing using the original path.
                                                     tab.uiState.reconnecting = false
                                                     tab.uiState.disconnected = false
                                                 }
                                             } catch (e: Exception) {
-                                                // 重连失败：保持 banner，用户可点按钮重试
+                                                // Reconnect failure: Keep the banner; users can click the button to retry.
                                                 tab.uiState.reconnecting = false
                                                 tab.uiState.loadError = e.message
                                             }
@@ -1645,7 +1645,7 @@ fun AppRoot(repository: HostRepository) {
                     }
                 }
 
-                // New SFTP connection 覆盖层（盖在当前页面之上）
+                // New SFTP connection overlay (displayed on top of the current screen)
                 if (sftpPickerVisible) {
                     SftpHostPickerOverlay(
                         hosts = hosts,
@@ -1654,7 +1654,7 @@ fun AppRoot(repository: HostRepository) {
                     )
                 }
 
-                // 收藏夹对话框（终端 + 菜单入口）：列收藏路径，点击直达
+                // Favorites dialog (terminal + menu entry): Lists favorite paths; tap to go directly
                 favoritesDialog?.let { (host, favs) ->
                     SftpFavoritesDialog(
                         favorites = favs,
@@ -1671,7 +1671,7 @@ fun AppRoot(repository: HostRepository) {
                     )
                 }
 
-                // SFTP 认证 / 主机密钥确认（复用全局弹窗）
+                // SFTP Authentication / Host Key Confirmation (Reuse Global Dialog)
                 sftpAuth?.let { req ->
                     AuthPromptDialog(req.prompt) { answers ->
                         req.deferred.complete(answers)
@@ -1689,7 +1689,7 @@ fun AppRoot(repository: HostRepository) {
                     }
                 }
 
-                // Agent 控制器可在离开页面后保留一分钟；认证请求因此也必须全局渲染。
+                // The Agent controller remains active for one minute after leaving the screen; authentication requests must therefore also be rendered globally.
                 agentAuth?.second?.let { req ->
                     AuthPromptDialog(req.prompt) { answers ->
                         req.deferred.complete(answers)

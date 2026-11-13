@@ -27,10 +27,10 @@ import androidx.compose.ui.unit.dp
 import dev.termish.util.monospaceFontFamily
 
 /**
- * 全局通用紧凑页头（终端页同款风格，约 48dp + 底部分隔线）：
- * 可选返回箭头 + 小标题 + 右侧操作区。
+ * Global, compact header (same style as the terminal screen, approximately 48dp + bottom separator line):
+ * Optional back arrow + subtitle + right-side action area.
  *
- * @param statusBarPadding 是否自行避让状态栏；终端页外层已处理时传 false。
+ * @param statusBarPadding Whether to automatically avoid the status bar; pass `false` if the terminal screen’s outer layer has already handled this.
  */
 @Composable
 fun TermishHeader(
@@ -78,15 +78,15 @@ fun TermishHeader(
 }
 
 /**
- * 大标题页头（iOS 风格）：顶级 tab 页使用。
- * 28sp 加粗大标题 + 充足留白，无下边框，视觉上更通透。
+ * Main Header (iOS Style): For use on top-level tab pages.
+ * 28sp bolded main heading + ample white space, no bottom border, for a cleaner visual appearance.
  */
 @Composable
 fun TermishLargeHeader(
     title: String,
     modifier: Modifier = Modifier,
     contentColor: Color = MaterialTheme.colorScheme.onSurface,
-    /** 非空时标题前渲染返回箭头（二级页统一返回入口）。 */
+    /** When non-null, render a back arrow before the title (unified back affordance across second-level pages). */
     onBack: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {

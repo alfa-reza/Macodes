@@ -16,7 +16,7 @@ import platform.darwin.dispatch_get_main_queue
 
 private val center: UNUserNotificationCenter get() = UNUserNotificationCenter.currentNotificationCenter()
 
-/** iOS：本地通知（APNs 不需要——通知都来自 SSH 连接内事件）。 */
+/** iOS: Local notifications (APNs are not required—notifications are triggered by events within the SSH connection). */
 actual fun showPlatformNotification(
     id: Int,
     title: String,
@@ -35,7 +35,7 @@ actual fun showPlatformNotification(
     center.addNotificationRequest(request, null)
 }
 
-/** 跳系统 App 设置页（iOS 通知设置在系统设置里）。 */
+/** Go to the system app settings page (iOS notification settings are located in System Settings). */
 actual fun openNotificationSettings() {
     val url = NSURL.URLWithString(UIApplicationOpenSettingsURLString)
     url?.let { UIApplication.sharedApplication.openURL(it, emptyMap<Any?, Any?>(), null) }

@@ -15,16 +15,16 @@ actual fun createSftpSession(
 ): SftpSession = SftpSessionSshj(connection, callbacks)
 
 /**
- * sshj SFTP 实现（Android）：复用 [SshSessionSshj] 的认证链路
- * （密码 / 私钥 / 加密私钥 / keyboard-interactive / 主机密钥确认），
- * 在独立 SSH 连接上打开 SFTP 通道。
+ * sshj SFTP Implementation (Android): Reusing the authentication chain from [SshSessionSshj]
+ * (password / private key / encrypted private key / keyboard-interactive / host key confirmation),
+ * Open an SFTP channel over a separate SSH connection.
  */
 class SftpSessionSshj(
     private val connection: SshConnection,
     private val callbacks: SshCallbacks,
 ) : SftpSession {
-    // SFTP 元数据操作仍是请求-响应式；文件传输在下方用有限深度流水线。
-    // 30s 无响应视为断链/异常，限时失败才能被 UI 捕获，避免连接中断后永久等待。
+    // SFTP metadata operations remain request-response-based; file transfers use a finite-depth pipeline as described below.
+    // A 30-second timeout is treated as a broken link or exception; only time-out failures can be caught by the UI to prevent indefinite waiting after a connection is interrupted.
     private val ssh = SshSessionSshj(connection, callbacks, readTimeoutMs = 30_000L)
     private var client: SFTPClient? = null
 
@@ -53,7 +53,7 @@ class SftpSessionSshj(
                         val buffer = ByteArray(minOf(maxBytes.toLong(), TRANSFER_BUFFER_SIZE.toLong(), size - offset).toInt())
                         if (offset != nextOffset) {
                             input?.close()
-                            // 顺序播放复用 16 包流水线（约 512KB 在途），seek 才重新定位。
+                            // Sequential playback reuses the 16-packet pipeline (~512KB in-flight); repositioning only happens on seek.
                             input = remote.ReadAheadRemoteFileInputStream(PIPELINE_DEPTH, offset, size - offset)
                         }
                         val count = input!!.read(buffer, 0, buffer.size)
@@ -137,14 +137,14 @@ class SftpSessionSshj(
         nextChunk: () -> ByteArray?,
     ) {
         val c = clientOrThrow()
-        // RemoteFileOutputStream 维护未确认写请求队列：高延迟网络下不再每 64KB
-        // 等待一次服务端响应。队列深度 16 时在途数据约 1MB，兼顾吞吐和内存。
+        // RemoteFileOutputStream maintains a queue of uncommitted write requests: no longer writes every 64KB on networks with high latency
+        // Wait for a single server response. When the queue depth is 16, the data in transit is approximately 1 MB, balancing throughput and memory usage.
         val remote = c.open(remotePath, setOf(OpenMode.CREAT, OpenMode.WRITE, OpenMode.TRUNC))
         val output = remote.RemoteFileOutputStream(0L, PIPELINE_DEPTH)
         try {
             var sent = 0L
             while (true) {
-                // 防御：声明了 totalSize 的源不得超发（无限 nextChunk 会把远端磁盘灌爆/连接永不停）
+                // Precaution: stop once `sent` reaches the declared `totalSize` (an endless `nextChunk` would fill the remote disk or keep the connection open forever).
                 if (totalSize > 0 && sent >= totalSize) break
                 val chunk = nextChunk() ?: break
                 require(chunk.isNotEmpty()) { "File source returned an empty chunk" }
@@ -181,8 +181,8 @@ class SftpSessionSshj(
                 onProgress(0L, 0L)
                 return
             }
-            // 同时预取多块，隐藏 SFTP 请求往返延迟；total 作为上限，避免越过 EOF
-            // 发出无用请求。
+            // Prefetch multiple blocks simultaneously to hide SFTP round-trip latency; use `total` as the upper limit to prevent exceeding EOF.
+            // Making unnecessary requests.
             val input = remote.ReadAheadRemoteFileInputStream(PIPELINE_DEPTH, 0L, total)
             val buf = ByteArray(TRANSFER_BUFFER_SIZE)
             var offset = 0L

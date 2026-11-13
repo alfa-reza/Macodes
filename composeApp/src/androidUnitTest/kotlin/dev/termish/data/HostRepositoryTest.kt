@@ -7,7 +7,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** HostRepository：CRUD、损坏数据备份、最近会话、设置持久化。 */
+/** HostRepository: CRUD, backup of corrupted data, recent sessions, persistence settings. */
 class HostRepositoryTest {
     private fun repo() = HostRepository(MapSettings())
 
@@ -30,7 +30,7 @@ class HostRepositoryTest {
         r.upsertHost(host("b"))
         assertEquals(listOf("a", "b"), r.listHosts().map { it.id })
 
-        // 同 id 覆盖更新
+        // Overwrite updates with the same ID
         r.upsertHost(host("a", name = "renamed"))
         assertEquals("renamed", r.getHost("a")!!.name)
         assertEquals(2, r.listHosts().size)
@@ -51,7 +51,7 @@ class HostRepositoryTest {
         assertTrue(after.lastConnectedAt >= before)
         assertEquals("SHA256:f", after.knownHostFingerprint)
 
-        // null 指纹不覆盖已有值
+        // A null fingerprint does not overwrite existing values
         r.touchConnected("a", null)
         assertEquals("SHA256:f", r.getHost("a")!!.knownHostFingerprint)
     }
@@ -67,7 +67,7 @@ class HostRepositoryTest {
         assertTrue(corruptKeys.isNotEmpty())
         assertTrue(corruptKeys.map { settings.getStringOrNull(it) }.contains("{not-json"))
 
-        // 后续写入不丢原始损坏串（每次失败解码追加一份备份，上限 3 份）
+        // Subsequent writes must not lose the original corrupted string (add a backup each time there is a failure to decode, up to a maximum of 3 backups).
         r.upsertHost(host("a"))
         assertEquals(1, r.listHosts().size)
         val values =
@@ -111,7 +111,7 @@ class HostRepositoryTest {
         val provider = AgentProvider(id = "provider-1", name = "test")
 
         r.updateSettings { it.copy(agentProviders = listOf(provider)) }
-        // 模拟设置页随后修改主题：必须基于仓库最新值，而不是 Agent 页打开前的快照。
+        // When mocking the settings page and subsequently modifying the theme: the changes must be based on the repository’s latest values, not a snapshot taken before the Agent page was opened.
         r.updateSettings { it.copy(theme = ThemeMode.LIGHT) }
 
         assertEquals(ThemeMode.LIGHT, r.loadSettings().theme)
@@ -141,11 +141,11 @@ class HostRepositoryTest {
         val r = repo()
         assertTrue(r.loadRecentSftpEntries().isEmpty())
 
-        // 路径随条目持久化：杀 App 重进后恢复到上次浏览目录
+        // Persistence of the path with each entry: Resume the last-viewed directory after killing and restarting the app.
         r.saveRecentSftpEntries(
             listOf(
                 HostRepository.RecentSftpEntry("host-a", "/var/www"),
-                HostRepository.RecentSftpEntry("host-b"), // 默认路径为空
+                HostRepository.RecentSftpEntry("host-b"), // The default path is empty.
             ),
         )
         val loaded = r.loadRecentSftpEntries()
@@ -158,7 +158,7 @@ class HostRepositoryTest {
         assertTrue(r.loadRecentSftpEntries().isEmpty())
     }
 
-// ---------- 命令片段 + 标签组 ----------
+// ---------- Command Snippets + Tag Groups ----------
 
     private fun snippet(
         id: String,
@@ -175,7 +175,7 @@ class HostRepositoryTest {
         r.upsertTagGroup(TagGroup("t2", "git"))
         assertEquals(listOf("t1", "t2"), r.listTagGroups().map { it.id })
 
-        // 同名覆盖（改名）
+        // Overwrite with the same name (rename)
         r.upsertTagGroup(TagGroup("t1", "containers"))
         assertEquals("containers", r.listTagGroups().first { it.id == "t1" }.name)
         assertEquals(2, r.listTagGroups().size)
@@ -207,21 +207,21 @@ class HostRepositoryTest {
         val r = repo()
         r.upsertTagGroup(TagGroup("t1", "docker"))
         r.upsertSnippet(snippet("a", tagIds = listOf("t1")))
-        r.upsertSnippet(snippet("b", tagIds = listOf("t1", "t2"))) // t2 不存在也保留原样？不——只清 t1
-        r.upsertSnippet(snippet("c")) // 无标签不受影响
+        r.upsertSnippet(snippet("b", tagIds = listOf("t1", "t2"))) // Should t2 be left as is even if it doesn’t exist? No—only clear t1.
+        r.upsertSnippet(snippet("c")) // Entries without tags are not affected.
 
         r.deleteTagGroup("t1")
 
         assertEquals(emptyList<String>(), r.getSnippet("a")!!.tagIds, "引用 t1 的片段应被清理")
         assertEquals(listOf("t2"), r.getSnippet("b")!!.tagIds, "其他标签引用保留")
         assertEquals(emptyList<String>(), r.getSnippet("c")!!.tagIds, "无标签片段不受影响")
-        // 片段本身不删除
+        // The snippet itself is not deleted.
         assertEquals(listOf("a", "b", "c"), r.listSnippets().map { it.id })
     }
 
     @Test
     fun deleteTagGroupWithoutReferencesSkipsSnippetWrite() {
-        // 无引用的标签删除不应改写 snippets 存储（避免无谓写入）
+        // Deleting unreferenced tags should not rewrite snippet storage (to avoid unnecessary writes).
         val r = repo()
         r.upsertTagGroup(TagGroup("t1", "docker"))
         r.upsertSnippet(snippet("a"))

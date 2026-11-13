@@ -1,8 +1,8 @@
 package dev.termish.util
 
 /**
- * 轻触感反馈（工具栏按键 / 连接成功等操作反馈）。
- * 由设置页「触感反馈」开关控制（调用方判断）。
- * Android：系统 KEYBOARD_TAP 轻击（无需权限）；iOS：UIImpactFeedbackGenerator；
+ * Light haptic feedback (for toolbar buttons, success with connections, and other actions).
+ * Controlled by the “Haptic Feedback” switch on the Settings page (determined by the caller).
+ * Android: System KEYBOARD_TAP tap (no permissions required); iOS: UIImpactFeedbackGenerator;
  */
 expect fun hapticTick()

@@ -43,10 +43,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
-/** 特殊键。CTRL/ALT 为粘性修饰键，仅影响后续输入。
- *  低频键（F1–F12 / HOME / END / PGUP / PGDN / DEL / ⌃Z 等）收纳在
- *  工具栏「⋯」溢出面板（MoreKeySheet），不再占常驻键位；
- *  转义映射见下方 specialKeyBytes。 */
+/** Special keys. CTRL/ALT are sticky modifier keys that affect only subsequent input.
+ *  Low-frequency keys (F1–F12 / HOME / END / PGUP / PGDN / DEL / ⌃Z, etc.) are grouped under
+ *  The toolbar “⋯” overflow panel (MoreKeySheet) no longer occupies a permanent key position;
+ *  See specialKeyBytes below for the escape mapping. */
 enum class SpecialKey(
     val label: String,
 ) {
@@ -64,14 +64,14 @@ enum class SpecialKey(
     CTRL_E("⌃E"),
     ENTER("ENT"),
 
-    /** Shift+Tab（ESC[Z）：TUI 菜单反选；Claude Code 模式切换刚需（软键盘打不出）。
-     *  常驻 Tab 长按触发。 */
+    /** Shift+Tab (ESC[Z): Invert TUI menu selection; essential for toggling between Claude Code modes (cannot be typed on the on-screen keyboard).
+     *  Long-press the persistent Tab to trigger. */
     SHIFT_TAB("⇧⇥"),
 
-    /** ⌃\（SIGQUIT）：长按 ⌃C/⌃D 触发，杀连 ⌃C 都不响应的顽固进程。 */
+    /** ⌃\ (SIGQUIT): triggered by a long press of ⌃C/⌃D; kills stubborn processes that do not respond even to ⌃C. */
     CTRL_BACKSLASH("⌃\\"),
 
-    // ---- 溢出面板键（⋯ 展开） ----
+    // ---- Overflow panel button (⋯ Expand) ----
     CTRL_R("⌃R"),
     CTRL_Z("⌃Z"),
     DEL("DEL"),
@@ -141,30 +141,30 @@ private fun cursorKeySeq(
     applicationCursorKeys: Boolean,
 ): ByteArray = byteArrayOf(0x1b, if (applicationCursorKeys) 0x4f else 0x5b, final.code.toByte())
 
-/** 按住连发参数（对齐实体键盘手感）：先延迟后连发，越按越快不会失控。 */
+/** Hold-to-rapid-fire parameter (simulates the feel of a physical keyboard): There’s latency before rapid firing begins, and the faster you press, the faster it goes—without getting out of control. */
 private const val REPEAT_INITIAL_DELAY_MS = 400L
 private const val REPEAT_INTERVAL_MS = 60L
 
 /**
- * 终端功能键工具栏：固定两行 + 可展开到四行。
+ * Terminal function key toolbar: Fixed at two rows + expandable to four rows.
  *
- * 行 1（控制）：ESC TAB ⌃C ⌃L {} ↑ ⌨ ▾（ESC 左上、⌨ 右上拇指区；
- * ▾ 展开/收起行 3/4，会话内保持；↑ 第 6 列与行 2 的 ↓ 上下对齐）。
- * 行 2（修饰/编辑）：CTRL ALT ⌃D / ← ↓ → ENT（CTRL/ALT 左下，同实体键盘
- * 底行；↑/↓ 第 6 列上下对齐；/ 由 onChar 直接发送）。
- * 行 3（展开）：PST ⇧⇥ DEL HOME END PGUP PGDN ⌃\\
- * 行 4（展开）：F1–F7 + ⎇（Git 面板；F8–F12 极低频不占位）。
- * 每行均 8 列等宽正方形键。
+ * Row 1 (Control): ESC TAB ⌃C ⌃L {} ↑ ⌨ ▾ (ESC in the upper-left, ⌨ in the upper-right thumb area;
+ * ▾ Expand/collapse rows 3/4; preserve within the session; ↑ Vertical alignment of column 6 with ↓ on row 2).
+ * Row 2 (Modify/Edit): CTRL ALT ⌃D / ← ↓ → ENT (CTRL/ALT bottom left, same as physical keyboard)
+ * Bottom row; ↑/↓ vertically aligned in column 6; / is sent directly by onChar).
+ * Row 3 (expanded): PST ⇧⇥ DEL HOME END PGUP PGDN ⌃\\
+ * Row 4 (expanded): F1–F7 + ⎇ (Git panel; F8–F12 are rarely used and do not occupy keys).
+ * Each row is 8 columns of equal-width square keys.
  *
- * - 方向键/⌫ 类支持**按住连发**（400ms 后 60ms/次）
- * - 长按宏：**ESC 双发**（Claude Code 编辑历史）；**TAB → ⇧⇥**（TUI 反选/模式切换）；
- *   **⌃C/⌃D → ⌃\\**（SIGQUIT 杀顽固进程）
- * - 粘性 CTRL/ALT + 系统键盘字母即可敲出 ⌃A/⌃E/⌃R 等组合（不占键位）
- * - 符号键由系统键盘提供；画布惯性滚动替代 PgUp/PgDn（展开行提供实体键）
+ * - Arrow keys/⌫ support **holding down for rapid fire** (60 ms per press after 400 ms)
+ * - Long press macros: **ESC twice** (Claude Code edit history); **TAB → ⇧⇥** (TUI reverse selection/mode toggling);
+ *   **⌃C/⌃D → ⌃\\** (SIGQUIT: Kill stubborn processes)
+ * - Hold down CTRL/ALT and press a letter on the system keyboard to type compositions such as ⌃A/⌃E/⌃R (without occupying a key).
+ * - Symbol keys are provided by the system keyboard; canvas inertial scrolling replaces PgUp/PgDn (physical keys are provided to expand rows).
  *
- * 展开状态上提至调用方（[expanded]/[onExpandedChange]），常驻两行高度经
- * [onBaseHeightChanged] 回调：画布只按常驻高度布局，展开行 3/4 覆盖画布
- * 而非压缩画布——不触发 PTY resize，TUI 不重排不闪屏。
+ * Hoist the expanded state to the caller ([expanded]/[onExpandedChange]); fixed two-row height via
+ * [onBaseHeightChanged] Callback: canvas laid out by the fixed height only; expanded rows 3/4 overlay the canvas
+ * Rather than resizing the canvas—do not trigger a PTY resize; the TUI should not reflow or cause screen flickering.
  */
 @Composable
 fun KeyToolbar(
@@ -175,16 +175,16 @@ fun KeyToolbar(
     onKey: (SpecialKey) -> Unit,
     onToggleKeyboard: () -> Unit = {},
     onPaste: () -> Unit = {},
-    /** 命令片段插入面板（行 1 的「{}」键位）。 */
+    /** Command snippet insertion panel (the “{}” key on row 1). */
     onSnippets: () -> Unit = {},
-    /** Git 面板入口（行 4 展开的「⎇」键位；画布 FAB 的备用入口）。 */
+    /** Git panel entry point (the “⎇” key that expands on row 4; an alternative entry point via the canvas FAB). */
     onGit: () -> Unit = {},
-    /** 普通字符键（如 /），直接作为终端输入发送。 */
+    /** Ordinary character keys (such as /) are sent directly as terminal input. */
     onChar: (String) -> Unit = {},
-    /** 行 3/4 展开状态（上提：画布按常驻高度布局，展开行覆盖画布不 resize）。 */
+    /** Row 3/4 expanded state (Note: The canvas is laid out at a fixed height; when a row is expanded, it covers the canvas without resizing it). */
     expanded: Boolean = false,
     onExpandedChange: (Boolean) -> Unit = {},
-    /** 常驻两行高度回调（px；展开不改变）——建连门槛（画布尺寸稳定）用。 */
+    /** Fixed two-row height callback (px; stays fixed when expanded) — used for the connect threshold (stable canvas size). */
     onBaseHeightChanged: (Int) -> Unit = {},
     theme: TerminalTheme,
     modifier: Modifier = Modifier,
@@ -193,10 +193,10 @@ fun KeyToolbar(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        // 行 3/4（▾ 展开）：低频键一步直达；每行保持 8 键等宽。
-        // 必须放在常驻块【上方】：常驻块贴工具栏底边（位置固定），展开行从
-        // 画布底边向上覆盖画布（不压缩画布、不 resize、TUI 不重排）——放下方
-        // 会让工具栏整体变高、常驻两行被顶进画布区域盖住终端内容（v1.1.7 回归）
+        // Row 3/4 (▾ Expand): Direct access to low-frequency keys; maintain 8-key width per row.
+        // Must be placed above the persistent block: rows expand from the bottom edge of the persistent block and extend
+        // upward over the canvas (without compressing, resizing or reflowing the TUI) — placed below, they would make the
+        // whole toolbar taller and push the fixed two rows into the canvas area, covering the terminal content (v1.1.7 regression).
         if (expanded) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 4.dp).padding(top = 2.dp),
@@ -222,11 +222,11 @@ fun KeyToolbar(
                 KeyButton("F5", false, theme) { onKey(SpecialKey.F5) }
                 KeyButton("F6", false, theme) { onKey(SpecialKey.F6) }
                 KeyButton("F7", false, theme) { onKey(SpecialKey.F7) }
-                // Git 面板入口（画布 FAB 的备用入口；F8–F12 极低频不占位）
+                // Git panel entry (alternative entry for the canvas FAB; F8–F12 are rarely used and do not occupy space)
                 KeyButton("⎇", false, theme) { onGit() }
             }
         }
-        // 常驻块：行 1/2 贴工具栏底边（位置固定，展开不改变）
+        // Fixed block: Rows 1–2, aligned with the bottom edge of the toolbar (position fixed; does not change when expanded)
         Column(
             Modifier
                 .onSizeChanged { onBaseHeightChanged(it.height) }
@@ -234,8 +234,8 @@ fun KeyToolbar(
                 .padding(top = 2.dp, bottom = 10.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            // 行 1：ESC 左上（实体键盘位置直觉）；TAB 常驻（shell 补全高频，长按 = ⇧⇥）；
-            // {} 片段 / ⌨ / ▾ 展开靠右（拇指区）
+            // Row 1: ESC in the top-left corner (intuitive placement on a physical keyboard); TAB always available (for frequent shell autocompletion; long press = ⇧⇥);
+            // {} snippet / ⌨ / ▾ Expand to the right (thumb area)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally)) {
                 RepeatKeyButton(
                     "ESC",
@@ -260,11 +260,11 @@ fun KeyToolbar(
                 )
                 KeyButton("⌃L", false, theme) { onKey(SpecialKey.CTRL_L) }
                 KeyButton("{}", false, theme) { onSnippets() }
-                // ↑ 保持第 6 列与行 2 的 ↓ 上下对齐（原设计约束）
+                // ↑ Keep column 6 in vertical alignment with row 2 ↓ (original design constraint)
                 KeyButton("↑", false, theme, repeat = true) { onKey(SpecialKey.UP) }
                 KeyButton("⌨", false, theme) { onToggleKeyboard() }
-                // 展开/收起：Material 箭头图标（22dp：48dp 触控目标配 24dp 图标的
-                // 规范内取值，比原文字符号大而清晰、又不像 30dp 那样撑满键）
+                // Expand/Collapse: Material arrow icon (22dp: 48dp touch target paired with a 24dp icon)
+                // Use values within the specification that are larger and clearer than the original text characters, but do not fill the entire key like "30dp" does.
                 KeyButton(
                     "",
                     expanded,
@@ -273,7 +273,7 @@ fun KeyToolbar(
                     iconSize = 22.dp,
                 ) { onExpandedChange(!expanded) }
             }
-            // 行 2：CTRL/ALT 左下（同实体键盘底行）；↑/↓ 第 6 列上下对齐；ENT 右下
+            // Row 2: CTRL/ALT bottom left (same as the bottom row of a physical keyboard); ↑/↓ vertical alignment in column 6; ENT bottom right
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally)) {
                 KeyButton("CTRL", ctrlActive, theme) { onToggleCtrl() }
                 KeyButton("ALT", altActive, theme) { onToggleAlt() }
@@ -289,15 +289,15 @@ fun KeyToolbar(
                 KeyButton("→", false, theme, repeat = true) { onKey(SpecialKey.RIGHT) }
                 KeyButton("ENT", false, theme) { onKey(SpecialKey.ENTER) }
             }
-        } // 常驻块量测结束（行 3/4 在上方，不计入 onBaseHeightChanged）
+        } // Permanent block measurement complete (row 3/4 above, not included in onBaseHeightChanged)
     }
 }
 
 /**
- * 可复用 KeyButton：支持三种手感。
- * - repeat=true：按住连发（方向键等导航键）
- * - onLongPress：长按宏（如 ESC 双发、⌃C→⌃\）
- * - 二者互斥：连发优先；无连发且有 onLongPress 时长按触发宏一次
+ * Reusable KeyButton: Supports three types of tactile feedback.
+ * - repeat=true: Hold down to fire continuously (using arrow keys or other navigation keys)
+ * - onLongPress: long-press macros (e.g., ESC sent twice, ⌃C→⌃\)
+ * - These are mutually exclusive: rapid-fire input takes priority; if there is no rapid-fire input but the onLongPress duration is present, the macro is triggered once upon a long press.
  */
 @Composable
 private fun RowScope.KeyButton(
@@ -305,17 +305,17 @@ private fun RowScope.KeyButton(
     active: Boolean,
     theme: TerminalTheme,
     repeat: Boolean = false,
-    /** 图标键（如展开箭头）：渲染大号 Material 图标而非文字。 */
+    /** Icon keys (such as the expand arrow): Render large Material icons instead of text. */
     icon: ImageVector? = null,
     iconSize: Dp = 24.dp,
-    // 注意参数顺序：onTap 必须是最后一个参数（调用处大量使用尾随 lambda），
-    // 误放 onLongPress 在末尾会让尾随 lambda 绑到长按回调——单击失灵、方向键全废
+    // Note the parameter order: `onTap` must be the last parameter (trailing lambdas are widely used in the calling code),
+    // Placing `onLongPress` at the end by mistake causes the trailing lambda to be bound to the long press callback—resulting in single-tap failure and the directional keys becoming completely unresponsive.
     onLongPress: (() -> Unit)? = null,
     onTap: () -> Unit = {},
 ) {
     val bg = if (active) theme.cursor() else Color.Transparent
     val fg = if (active) theme.background() else theme.foreground()
-    // 按住连发状态机：pressing=true 期间 LaunchedEffect 循环发送
+    // Hold-to-send state machine: During `pressing=true`, `LaunchedEffect` sends repeatedly
     var pressing by remember { mutableStateOf(false) }
     if (repeat) {
         LaunchedEffect(pressing) {
@@ -334,11 +334,11 @@ private fun RowScope.KeyButton(
     Box(
         Modifier
             .weight(1f, fill = false)
-            // 正方形键：高随宽，但宽度上限 48dp（Android 触控目标上限）——
-            // 宽屏/横屏时键保持正方形居中排列，不撑满成扁块（用户反馈：
-            // 工具栏按钮不是正方形了）。⚠️ 不能 weight(fill=true) + aspectRatio：
-            // 宽屏下键宽被强制均分放大，aspectRatio 无视高度约束返回宽×宽，
-            // 内容按超高键居中溢出被裁（v1.5.1 横屏错位根因）
+            // Square buttons: Height follows width, but width is capped at 48dp (Android touch target limit) ——
+            // On wide-screen or landscape displays, keep the keys arranged in a centered square; do not stretch them into a flat block (user feedback:
+            // (The toolbar buttons are no longer square.) ⚠️ Do not use `weight(fill=true)` + `aspectRatio`:
+            // On wide screens, key widths are forced to be evenly scaled up; `aspectRatio` ignores height constraints and returns width × width,
+            // Content is centered and truncated due to overflow caused by an excessively tall key (root cause of landscape mode misalignment in v1.5.1)
             .widthIn(max = 48.dp)
             .aspectRatio(1f)
             .clip(MaterialTheme.shapes.small)
@@ -346,13 +346,13 @@ private fun RowScope.KeyButton(
             .border(1.dp, fg.copy(alpha = 0.45f), MaterialTheme.shapes.small)
             .then(
                 if (repeat) {
-                    // pointerInput 方案：press/release 全自管，才能做按住连发
+                    // pointerInput solution: Fully manage press/release events yourself to enable continuous firing while holding down the button
                     Modifier.pointerInput(Unit) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             pressing = true
                             onTap()
-                            // 等待抬起或取消；连发键无长按语义，不做单击消歧
+                            // Wait for lifting or cancellation; the rapid-fire key has no long press semantics, so no single-click disambiguation is performed.
                             try {
                                 while (true) {
                                     val ev = awaitPointerEvent()
@@ -361,14 +361,14 @@ private fun RowScope.KeyButton(
                                     if (released || consumed) break
                                 }
                             } catch (_: CancellationException) {
-                                // 抬起时 awaitPointerEvent 抛取消属正常路径
+                                // On pointer-up, `awaitPointerEvent` throwing Cancellation is a normal path
                             } finally {
                                 pressing = false
                             }
                         }
                     }
                 } else {
-                    // combinedClickable：单击 + 可选长按宏
+                    // combinedClickable: Click + optional long press macro
                     Modifier.combinedClickable(
                         onClick = onTap,
                         onLongClick = onLongPress,
@@ -383,9 +383,9 @@ private fun RowScope.KeyButton(
             Text(
                 label,
                 color = fg,
-                // 两级字号保持视觉一致：符号键（↑↓←→ ⌨ / ⎇）与 22dp 图标
-                // 同档（≈14sp 视觉）；多字符文字键（ESC/CTRL/F1…）11sp。
-                // 简单按长度分档：单字符=符号，其余=文字标签
+                // Maintain visual consistency across two font sizes: symbol keys (↑↓←→ ⌨ / ⎇) and 22dp icons
+                // Same tier (≈14 sp visually); multi-character keys (ESC/CTRL/F1…) 11 sp.
+                // Simple categorization by length: single character = symbol; all others = text tag
                 style =
                     if (label.length == 1) {
                         MaterialTheme.typography.labelLarge
@@ -398,7 +398,7 @@ private fun RowScope.KeyButton(
     }
 }
 
-/** 长按宏专用别名（无连发）。 */
+/** Long press macro-specific aliases (no rapid-fire). */
 @Composable
 private fun RowScope.RepeatKeyButton(
     label: String,

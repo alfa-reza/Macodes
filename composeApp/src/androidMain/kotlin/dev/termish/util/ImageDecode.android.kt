@@ -14,7 +14,7 @@ actual fun decodeImage(
 ): ImageBitmap? =
     runCatching {
         if (!isSvg) return@runCatching BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
-        // 不解析实体，不注册外部资源解析器：预览只渲染当前文档，不读取其他文件或网络。
+        // Do not parse entities or register external resource resolvers: The preview renders only the current document and does not read other files or access the network.
         SVG.setInternalEntitiesEnabled(false)
         val svg = SVG.getFromString(bytes.decodeToString(throwOnInvalidSequence = true))
         val box = svg.documentViewBox

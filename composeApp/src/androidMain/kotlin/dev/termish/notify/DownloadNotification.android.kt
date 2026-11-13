@@ -15,8 +15,8 @@ import dev.termish.ui.guessMimeType
 private const val CHANNEL_ID = "termish_download"
 
 /**
- * Android：下载完成通知（前台也发）。[openUri] 非空时点击用系统默认应用打开文件。
- * Android 13+ 未授权通知时静默放弃（与应用内进度条/snackbar 不冲突）。
+ * Android: Download complete notification (also sent in the foreground). When [openUri] is not empty, tap to open the file with the system’s default app.
+ * Silently dismiss unauthorized notifications on Android 13+ (does not cause conflict with in-app progress bars or snackbars).
  */
 actual fun showDownloadDoneNotification(
     title: String,
@@ -42,7 +42,7 @@ actual fun showDownloadDoneNotification(
             .setContentTitle(title)
             .setContentText(body)
             .setAutoCancel(true)
-            .setColor(0xFF34D399.toInt()) // 品牌 emerald
+            .setColor(0xFF34D399.toInt()) // Brand: emerald
 
     if (openUri != null) {
         val open =

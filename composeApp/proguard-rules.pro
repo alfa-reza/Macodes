@@ -14,7 +14,7 @@
 # Compose
 -dontwarn androidx.compose.**
 
-# sshj / BouncyCastle（JVM SSH 引擎）
+# sshj / BouncyCastle (JVM SSH engine)
 -dontwarn org.bouncycastle.**
 -dontwarn com.hierynomus.**
 -dontwarn net.schmizz.**

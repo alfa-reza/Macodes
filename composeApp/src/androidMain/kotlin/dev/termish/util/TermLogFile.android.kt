@@ -2,7 +2,7 @@ package dev.termish.util
 
 import java.io.File
 
-/** JVM（Android）：java.io.File 委托。 */
+/** JVM (Android): java.io.File delegation. */
 internal actual class TermLogFile actual constructor(
     private val path: String,
 ) {

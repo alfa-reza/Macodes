@@ -14,13 +14,13 @@ actual fun PlatformStatusBarIcons(lightIcons: Boolean) {
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as? Activity)?.window ?: return@SideEffect
-            // 浅色背景 → 深色图标（isAppearanceLightStatusBars=true）；深色背景 → 浅色图标
+            // Light background → dark icons (isAppearanceLightStatusBars=true); dark background → light icons
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !lightIcons
         }
     }
 }
 
-/** 视频全屏沉浸式：隐藏/恢复系统状态栏（画面铺满整个屏幕）。 */
+/** Fullscreen immersive video: The system status bar is hidden or resumed (video fills the entire screen). */
 @Composable
 actual fun PlatformImmersiveMode(immersive: Boolean) {
     val view = LocalView.current
@@ -38,8 +38,8 @@ actual fun PlatformImmersiveMode(immersive: Boolean) {
                 }
             }
             onDispose {
-                // 页面可能在全屏收起动画结束前直接离开；组合销毁时必须恢复，
-                // 否则后续主机页拿到 0 状态栏 inset，Header 会永久变短。
+                // The screen may be exited directly before the fullscreen collapse animation finishes; it must be resumed when the composition is destroyed,
+                // Otherwise, subsequent host pages will have a 0-pixel status bar inset, and the header will be permanently truncated.
                 if (immersive) {
                     controller?.show(WindowInsetsCompat.Type.statusBars())
                 }

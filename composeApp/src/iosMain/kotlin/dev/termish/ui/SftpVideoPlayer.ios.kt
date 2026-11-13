@@ -52,7 +52,7 @@ import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 import platform.darwin.dispatch_queue_create
 
-/** AVFoundation 请求的 Range 直接映射到 SFTP offset，不创建 HTTP 服务/临时完整文件。 */
+/** The Range requested by AVFoundation maps directly to the SFTP offset; no HTTP service or temporary full file is created. */
 private class SftpVideoLoader(
     private val session: SftpSession,
     private val path: String,
@@ -112,7 +112,7 @@ private class SftpVideoLoader(
             if (offset + bytes.size >= end) {
                 request.finishLoading()
             } else {
-                // 每块让出队列，尾部元数据、seek、取消和 close 都不会被长请求阻塞。
+                // Each block yields the queue, so tail metadata, seek, cancel, and close operations are not subject to blocking due to long-running requests.
                 dispatch_async(queue) { loadChunk(request) }
             }
         } catch (e: Exception) {
@@ -149,7 +149,7 @@ actual fun SftpVideoPlayer(
     val loader = remember(session, remotePath) { SftpVideoLoader(session, remotePath) { failed.value() } }
     val player =
         remember(loader) {
-            // 不把远端地址/凭据嵌入 URL，仅保留扩展名帮助 AVFoundation 识别容器。
+            // Do not embed remote addresses or credentials in URLs; retain only the file extension to help AVFoundation identify the container.
             val extension = remotePath.substringAfterLast('.', "mp4").lowercase()
             val asset = AVURLAsset(NSURL(string = "sftp-video://file/video.$extension"), null)
             asset.resourceLoader.setDelegate(loader, loader.queue)

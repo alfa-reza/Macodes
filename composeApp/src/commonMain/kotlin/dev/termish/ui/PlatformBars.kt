@@ -3,15 +3,15 @@ package dev.termish.ui
 import androidx.compose.runtime.Composable
 
 /**
- * 平台系统栏（状态栏图标）外观：深色背景用浅色图标（lightIcons=true），
- * 浅色背景用深色图标（lightIcons=false）。跟随应用主题实时切换。
+ * Platform system bar (status bar icons) appearance: use light-colored icons on a dark background (lightIcons=true),
+ * Use dark icons on a light background (lightIcons=false). Toggle based on the app’s theme in real-time.
  */
 @Composable
 expect fun PlatformStatusBarIcons(lightIcons: Boolean)
 
 /**
- * 沉浸式模式（视频全屏）：immersive=true 时隐藏系统状态栏，退出时恢复。
- * 非 Android 平台为空实现（内容铺满由 Compose 层处理）。
+ * Immersive mode (fullscreen video): The system status bar is hidden when `immersive=true` is set; it is resumed upon exit.
+ * For non-Android platforms, use a null implementation (the Compose layer handles content padding).
  */
 @Composable
 expect fun PlatformImmersiveMode(immersive: Boolean)

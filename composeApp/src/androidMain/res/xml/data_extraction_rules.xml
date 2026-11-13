@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
-    <!-- 主机清单、会话状态和加密密文都不跨设备迁移；Keystore 密钥本来也不可迁移。 -->
+    <!-- Host lists, session states, and encrypted ciphertext are not migrated across devices; Keystore keys are not migratable by design. -->
     <cloud-backup disableIfNoEncryptionCapabilities="true">
         <exclude domain="root" path="." />
         <exclude domain="file" path="." />

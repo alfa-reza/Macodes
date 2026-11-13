@@ -18,7 +18,7 @@ import dev.termish.app.R
 private const val CHANNEL_ID = "termish_session"
 private const val EXTRA_HOST_ID = "termish_host_id"
 
-/** Android：系统通知（前台服务已保活；通知权限 Android 13+ 需运行时请求）。 */
+/** Android: System notifications (foreground service kept alive; notification permissions require runtime requests on Android 13 and later). */
 actual fun showPlatformNotification(
     id: Int,
     title: String,
@@ -30,7 +30,7 @@ actual fun showPlatformNotification(
     nm.createNotificationChannel(
         NotificationChannel(CHANNEL_ID, "会话事件", NotificationManager.IMPORTANCE_DEFAULT),
     )
-    // Android 13+ 未授权时静默放弃（设置页开关会引导授权）
+    // Android 13+: Silently fall back if authorization is not granted (a switch on the settings page will prompt for authorization)
     if (Build.VERSION.SDK_INT >= 33 &&
         context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
         android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -38,7 +38,7 @@ actual fun showPlatformNotification(
         return
     }
 
-    // 点击通知：打开 App；hostId 携带时带「重新连接」动作
+    // Tap notification: Open the app; when hostId is included, trigger the “Reconnect” action
     val openIntent =
         Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -57,7 +57,7 @@ actual fun showPlatformNotification(
             .setContentTitle(title)
             .setContentText(body)
             .setAutoCancel(true)
-            .setColor(0xFF34D399.toInt()) // 品牌 emerald
+            .setColor(0xFF34D399.toInt()) // Brand: emerald
             .setContentIntent(contentIntent)
     if (hostId != null) {
         val reconnectIntent =
@@ -77,7 +77,7 @@ actual fun showPlatformNotification(
     nm.notify(id, builder.build())
 }
 
-/** 跳系统 App 通知设置页（minSdk 26 全部支持）。 */
+/** Navigate to the system app notification settings page (all supported on minSdk 26 and above). */
 actual fun openNotificationSettings() {
     val context = AppContext.get()
     val intent =
@@ -126,7 +126,7 @@ actual fun rememberNotificationPermissionController(): NotificationPermissionCon
     }
 }
 
-/** 通知动作转发：通知「重新连接」→ MainActivity.onNewIntent → 这里 → NotificationCenter 回调。 */
+/** Notification action forwarding: “Reconnect” notification → MainActivity.onNewIntent → here → NotificationCenter callback. */
 fun handleNotificationIntent(intent: Intent?) {
     val hostId = intent?.getStringExtra(EXTRA_HOST_ID) ?: return
     NotificationCenter.onReconnectRequest?.invoke(hostId)

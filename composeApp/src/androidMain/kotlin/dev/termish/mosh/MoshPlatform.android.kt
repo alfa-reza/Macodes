@@ -15,10 +15,10 @@ internal actual class MoshUdpSocket actual constructor(
     actual val isIpv6: Boolean = remoteAddr is java.net.Inet6Address
     private val socket =
         DatagramSocket().apply {
-            // 屏幕推流 / mosh 都是突发小包：加大接收缓冲避免突发时内核丢包
-            // （默认通常 64~208KB，55×1200B 的分片突发就能打满）。
-            // 屏幕流实测每秒上千包，1MB 仍会被消费慢打满（RcvbufErrors 每秒 +80），
-            // 拉到 4MB 留足消化窗口
+            // Screen streaming / mosh both involve bursty small packets: increase the buffering to prevent packet loss during bursts.
+            // (The default size is typically 64–208 KB; fragmentation of 55×1200 bytes is enough to fill the quota.)
+            // Screen stream tests show thousands of packets per second; 1 MB is still consumed slowly until the buffer is full (RcvbufErrors +80 per second),
+            // Set the limit to 4MB to allow ample window for processing.
             runCatching { receiveBufferSize = 4 shl 20 }
             connect(remoteAddr, port)
         }
@@ -30,7 +30,7 @@ internal actual class MoshUdpSocket actual constructor(
             socket.send(DatagramPacket(data, data.size))
             SendResult.OK
         } catch (e: java.net.SocketException) {
-            // Linux/Android 的 Java 层不暴露 errno；"Message too long" 是 EMSGSIZE 的常见文本
+            // The Java layer on Linux/Android does not expose `errno`; "Message too long" is a common text for `EMSGSIZE`.
             if (e.message?.contains("too long", ignoreCase = true) == true) {
                 SendResult.TOO_LARGE
             } else {
@@ -41,8 +41,8 @@ internal actual class MoshUdpSocket actual constructor(
         }
 
     actual fun receive(timeoutMillis: Int): UdpDatagram? {
-        // 热路径优化：soTimeout 只在变化时设置（每包 setsockopt 是无谓系统调用，
-        // 屏幕流每秒上千包）；DatagramPacket 复用（免每包分配）
+        // Hot-path optimization: Set `soTimeout` only when it changes (calling `setsockopt` for every packet is a redundant system call,
+        // (Thousands of packets per second in the screen stream); DatagramPacket reuse (eliminates the need to allocate a packet for each one)
         if (socket.soTimeout != timeoutMillis.coerceAtLeast(1)) {
             socket.soTimeout = timeoutMillis.coerceAtLeast(1)
         }

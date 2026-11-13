@@ -76,8 +76,8 @@ import dev.termish.util.monospaceFontFamily
 import kotlinx.datetime.Clock
 
 /**
- * 命令片段管理页（设置页二级）：列表 + 搜索 + 标签过滤 + 新建/编辑 + 标签管理入口。
- * 片段为全局库（跨主机复用），标签从标签组多选（不自由输入）。
+ * Command Snippet Management Page (second-level settings page): List + Search + Tag Filtering + Create/Edit + Tag Management Entry.
+ * The snippet is for a global library (that can be reused across hosts), and tags must be selected from a tag group (do not provide them as free input).
  */
 @Composable
 fun SnippetManageScreen(
@@ -126,7 +126,7 @@ fun SnippetManageScreen(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            // 搜索框
+            // Search box
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
@@ -146,7 +146,7 @@ fun SnippetManageScreen(
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
             )
-            // 标签过滤 chips（横向滚动；「全部」+ 每个标签组）
+            // Tag filtering chips (horizontal scrolling; “All” + each tag group)
             if (tags.isNotEmpty()) {
                 Row(
                     Modifier
@@ -211,8 +211,8 @@ fun SnippetManageScreen(
         }
     }
 
-    // 覆盖层系统返回：先关最上层（标签页 > 编辑页），不穿透到 AppRoot 直接退页
-    // （Compose 返回链 LIFO：后注册的 enabled handler 先触发，此处两级均晚于 AppRoot）
+    // Overlay system Back: close the topmost layer first (tag page > edit page); do not fall through to AppRoot and exit the page.
+    // (Compose return chain LIFO: enabled handlers registered later are triggered first; here, both levels occur after AppRoot)
     PlatformBackHandler(enabled = showTagPage) {
         showTagPage = false
         tags = repository.listTagGroups()
@@ -223,7 +223,7 @@ fun SnippetManageScreen(
         tags = repository.listTagGroups()
     }
 
-    // 编辑页（新建/编辑共用）：二级覆盖层
+    // Edit Page (New/Edit): Secondary Overlay
     AnimatedVisibility(
         visible = showEditor,
         enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(animationSpec = tween(240)),
@@ -239,7 +239,7 @@ fun SnippetManageScreen(
             },
         )
     }
-    // 标签管理页
+    // Tag Management Tab
     AnimatedVisibility(
         visible = showTagPage,
         enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(animationSpec = tween(240)),
@@ -255,7 +255,7 @@ fun SnippetManageScreen(
     }
 }
 
-/** 片段列表行：名称 + 内容预览 + 标签 chips。 */
+/** Snippet list rows: Name + Content preview + "chips" tag. */
 @Composable
 private fun SnippetRow(
     snippet: Snippet,
@@ -278,7 +278,7 @@ private fun SnippetRow(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            // 内容预览（等宽字体，灰）
+            // Content preview (monospace font, gray)
             Text(
                 snippet.content.replace("\n", " ").take(24),
                 style = MaterialTheme.typography.labelSmall,
@@ -311,7 +311,7 @@ private fun SnippetRow(
     }
 }
 
-/** 片段新建/编辑表单：名称 / 命令内容 / 标签多选（从标签组选择，不手输）。 */
+/** Snippet new/editing form: Name / Command content / Multiple tag selection (selection from tag groups; do not enter manually). */
 @Composable
 private fun SnippetEditPage(
     repository: HostRepository,
@@ -391,7 +391,7 @@ private fun SnippetEditPage(
                 minLines = 3,
                 textStyle = LocalTextStyle.current.copy(fontFamily = monospaceFontFamily()),
             )
-            // 标签：从标签组多选（chips），无自由输入
+            // Tags: Select multiple tags from the tag group (chips); no free-form input allowed
             Text(
                 s.snippetTags,
                 style = MaterialTheme.typography.labelLarge,
@@ -442,7 +442,7 @@ private fun SnippetEditPage(
     }
 }
 
-/** 标签组管理页：增删改（改名即全库片段跟随；删除级联清理引用）。 */
+/** Tag Group Management Page: Add, delete, and edit (renaming updates all instances across the library; deletion cascades to clean up references). */
 @Composable
 fun TagManagePage(
     repository: HostRepository,
@@ -457,7 +457,7 @@ fun TagManagePage(
     fun addTag() {
         val name = newName.trim()
         if (name.isEmpty()) return
-        // 同名不重复建（大小写不敏感），避免标签组碎片化
+        // Do not create duplicate tags with the same name (case-insensitive), and avoid fragmentation of tag groups.
         if (tags.none { it.name.equals(name, ignoreCase = true) }) {
             repository.upsertTagGroup(TagGroup(newId(), name))
         }
@@ -522,7 +522,7 @@ fun TagManagePage(
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
             }
-            // 新增标签行
+            // New tag row
             Row(
                 Modifier.fillMaxWidth().padding(top = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -568,17 +568,17 @@ fun TagManagePage(
 }
 
 /**
- * 终端内片段插入面板（键盘工具栏「{}」触发）：搜索 + 标签过滤 + 列表。
- * 点按 = 插入当前输入行（不带回车，补参数后手动回车）；长按 = 直接执行/删除。
- * 字节经 sendText 直达远端，天然绕开 IME 组合态管线。
+ * Terminal snippet insertion panel (triggered by “{}” on the keyboard toolbar): Search + tag filtering + list.
+ * Tap = Insert the current input row (without pressing Enter; manually press Enter after filling in parameters); Long press = Execute or delete directly.
+ * Bytes are sent directly to the remote end via `sendText`, naturally bypassing the IME composing state.
  */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun SnippetInsertSheet(
     repository: HostRepository,
-    /** 终端主题：面板浮在终端画布上，配色跟随（与 Git 面板一致，不用应用主题）。 */
+    /** Terminal theme: The panel floats on top of the terminal canvas, and its color scheme follows the terminal’s (matching the Git panel; do not use the app theme). */
     theme: TerminalTheme,
-    /** content = 片段内容，run = true 表示直接执行（带回车）。 */
+    /** content = snippet content; run = true indicates direct execution (with a carriage return). */
     onUse: (content: String, run: Boolean) -> Unit,
     onDismiss: () -> Unit,
     allowRun: Boolean = true,
@@ -591,7 +591,7 @@ fun SnippetInsertSheet(
     var menuFor by remember { mutableStateOf<Snippet?>(null) }
     var pendingDelete by remember { mutableStateOf<Snippet?>(null) }
 
-    /** 空态「新建片段」对话框开关。 */
+    /** Switch for the empty "New Snippet" dialog box. */
     var adding by remember { mutableStateOf(false) }
 
     val q = query.trim()
@@ -610,10 +610,10 @@ fun SnippetInsertSheet(
         Column(
             Modifier
                 .fillMaxWidth()
-                // 上限随屏幕比例（小屏不溢出、平板不侏儒）；内容少时 wrap 不占屏
+                // Adjust the length based on screen ratio (no overflow on small screens, no squashed text on tablets); wrap text when content is sparse to avoid taking up screen space.
                 .fillMaxHeight(0.72f)
-                // 全局 adjustNothing：键盘不缩窗，列表必须自己让位，
-                // 否则搜索结果下半截被 IME 盖住
+                // Global `adjustNothing`: the keyboard does not resize the window; lists must yield space themselves,
+                // Otherwise, the bottom half of the search results is obscured by the IME.
                 .imePadding()
                 .padding(horizontal = Spacing.Lg),
         ) {
@@ -687,7 +687,7 @@ fun SnippetInsertSheet(
                             color = theme.foreground().copy(alpha = 0.35f),
                             modifier = Modifier.padding(top = 4.dp),
                         )
-                        // 空态新增入口：没有命令时也能直接建（不用绕到设置页）
+                        // New entry point for empty state: You can create one directly even without a command (no need to go through the settings page).
                         TextButton(onClick = { adding = true }) {
                             Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.size(4.dp))
@@ -717,7 +717,7 @@ fun SnippetInsertSheet(
                                     onLongClick = { menuFor = snippet },
                                 ).padding(horizontal = Spacing.Xs, vertical = Spacing.Sm),
                         ) {
-                            // 名称小灰在上（助记符是辅信息）；内容等宽拿主宽度——扫读目标是命令本身
+                            // Place the name at the top (mnemonic is supplementary info); use a monospaced font with the main content width—the skimming target is the command itself.
                             Text(
                                 snippet.name,
                                 style = MaterialTheme.typography.labelSmall,
@@ -762,7 +762,7 @@ fun SnippetInsertSheet(
             Spacer(Modifier.height(24.dp))
         }
 
-        // 长按菜单：直接执行 / 删除（必须在 sheet 内渲染，否则被 dialog 层遮挡）
+        // Long press the menu: Execute directly / Delete (must be rendered within the sheet; otherwise, it will be obscured by the dialog layer)
         menuFor?.let { snippet ->
             DropdownMenu(
                 expanded = true,
@@ -809,7 +809,7 @@ fun SnippetInsertSheet(
             )
         }
 
-        // 空态新增：名称 + 内容（轻量表单，保存后列表即时刷新可直接点用）
+        // Empty-state add: Name + Content (lightweight form; list refreshes instantly after saving and can be used right away)
         if (adding) {
             var newName by remember { mutableStateOf("") }
             var newContent by remember { mutableStateOf("") }

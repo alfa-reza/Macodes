@@ -2,7 +2,7 @@ package dev.termish.util
 
 import platform.UIKit.UIImpactFeedbackGenerator
 
-/** iOS：中等强度冲击反馈。实例全局持有（创建有成本，重复创建会丢反馈）。 */
+/*Instance is held globally (creation is costly; re-creating it drops feedback). */
 private val generator = UIImpactFeedbackGenerator()
 
 actual fun hapticTick() {

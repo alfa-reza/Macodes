@@ -3,30 +3,30 @@ package dev.termish.util
 import kotlin.time.TimeSource
 
 /**
- * 轻量 span 追踪：借鉴 OpenTelemetry 的 Span 概念（name / attributes /
- * start-end / status / events），去掉分布式负担（导出、采样、传播）。
+ * Lightweight span trace: Drawing on OpenTelemetry’s span concept (name / attributes /
+ * start-end / status / events), and eliminate the distributed overhead (export, sampling, propagation).
  *
- * 用途：连接/重连等慢操作定位阶段耗时——DNS/TCP/KEX/认证卡在哪一步。
- * 输出走 [TermLog]：span 结束时打一行结构化摘要（total + 各 step 耗时 +
- * 状态），>10s 的慢操作自动升级 w 级。
+ * Purpose: To identify where time is spent during slow operations such as connection and reconnect—specifically, which step is causing delays: DNS, TCP, KEX, or authentication.
+ * Output via [TermLog]: when a span ends, print a one-line structured summary (total + per-step timings +
+ * status), operations taking >10s are automatically upgraded to "w" level.
  *
- * 用法（作用域 DSL，自动 begin/end）：
+ * Usage (Scope DSL, automatic begin/end):
  * ```
  * TermTrace.span("ssh.connect", tag = "ssh", "host" to name) {
- *     onTraceStep("tcp")   // 引擎回调
+ *     onTraceStep("tcp")   // Engine callback
  *     onTraceStep("kex")
- *     throw/标记失败时自动记录 FAILED
+ *     Automatically record FAILED when the block throws or is marked failed
  * }
  * ```
- * 嵌套：span 内可再开子 span（如认证方法级）。
+ * Nesting: Sub-`span` elements may be nested within a `span` (e.g., at the authentication method level).
  */
 object TermTrace {
     const val SLOW_THRESHOLD_MS = 10_000L
 
-    /** Span 状态。 */
+    /** Span status. */
     enum class Status { OK, FAILED }
 
-    /** 单阶段记录：名称 + 该时刻相对 span 开始的耗时。 */
+    /** Single-stage record: Name + elapsed time relative to the start of the span at that moment. */
     class Step(
         val name: String,
         val elapsedMs: Long,
@@ -45,20 +45,20 @@ object TermTrace {
             private set
         private var ended = false
 
-        /** 记录阶段完成点（耗时 = 相对 span 开始）。 */
+        /** Record completion points for each phase (duration = relative to the start of the span). */
         fun step(step: String) {
             if (ended) return
             steps.add(Step(step, startMark.elapsedNow().inWholeMilliseconds))
         }
 
-        /** 标记失败并结束（输出 E 级）。 */
+        /** Mark as failure and exit (output level E). */
         fun fail(msg: String?) {
             status = Status.FAILED
             error = msg
             end()
         }
 
-        /** 结束并输出摘要（不显式调用时由作用域 DSL 自动调用）。 */
+        /** End and output a summary (automatically called by the scope DSL when not explicitly invoked). */
         fun end() {
             if (ended) return
             ended = true
@@ -78,14 +78,14 @@ object TermTrace {
         }
     }
 
-    /** 开启 span（手动模式，配合 [Span.step]/[Span.end]；跨函数场景用）。 */
+    /** Enable span (manual mode, used with [Span.step]/[Span.end]; for scenarios spanning multiple functions). */
     fun begin(
         name: String,
         tag: String = "trace",
         vararg attrs: Pair<String, String>,
     ): Span = Span(name, tag, attrs.toMap(), TimeSource.Monotonic.markNow())
 
-    /** 作用域模式：块结束自动 end；抛异常自动 fail 后重抛。 */
+    /** Scope mode: Automatically use `end` at the end of a block; automatically use `fail` when an exception is thrown, followed by a rethrow. */
     inline fun span(
         name: String,
         tag: String = "trace",

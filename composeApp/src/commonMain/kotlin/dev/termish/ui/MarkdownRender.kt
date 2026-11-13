@@ -12,10 +12,10 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 
 /**
- * 轻量 Markdown 渲染器（纯 Kotlin + AnnotatedString，零第三方依赖）：
- * 覆盖常用语法——标题 / 代码块 / 行内代码 / 粗体 / 斜体 / 链接 / 引用 /
- * 无序·有序列表 / 分隔线。表格与嵌套语法保持源码原样（不做表格渲染）。
- * 供 SFTP 文件管理 Markdown 预览「渲染模式」使用；渲染结果可复制。
+ * Lightweight Markdown renderer (pure Kotlin + AnnotatedString, zero third-party dependencies):
+ * Cover common syntax—headings / code blocks / inline code / bold / italics / links / quotes /
+ * Unordered and ordered lists / separators. Tables and nested syntax should remain exactly as in the source code (do not render tables).
+ * For use with the "Render Mode" Markdown preview in SFTP file management; the rendered result can be copied.
  */
 fun renderMarkdown(
     src: String,
@@ -56,7 +56,7 @@ private fun renderBlockLine(
     linkColor: Color,
 ) {
     when {
-        // 标题：1-6 级（# 数越多字号越小）
+        // Heading: Levels 1–6 (the more # symbols, the smaller the font size)
         trimmed.startsWith("#") -> {
             val level = trimmed.takeWhile { it == '#' }.length.coerceAtMost(6)
             val text = trimmed.drop(level).trimStart()
@@ -74,22 +74,22 @@ private fun renderBlockLine(
                     ),
             )
         }
-        // 引用：前缀色块 + 斜体
+        // Blockquote: Prefix block + italics
         trimmed.startsWith(">") -> {
             val text = trimmed.removePrefix(">").trimStart().ifBlank { " " }
             b.withStyle(SpanStyle(color = linkColor, fontWeight = FontWeight.Bold)) { b.append("▍ ") }
             inline(b, text, base, codeBg, linkColor, baseStyle = SpanStyle(fontStyle = FontStyle.Italic))
         }
-        // 分隔线
+        // Separator
         trimmed == "---" || trimmed == "***" || trimmed == "___" -> {
             b.withStyle(SpanStyle(color = linkColor.copy(alpha = 0.4f))) { b.append("─".repeat(32)) }
         }
-        // 无序列表
+        // Unordered list
         trimmed.startsWith("- ") || trimmed.startsWith("* ") -> {
             b.withStyle(SpanStyle(color = linkColor, fontWeight = FontWeight.Bold)) { b.append("• ") }
             inline(b, trimmed.drop(2), base, codeBg, linkColor)
         }
-        // 有序列表
+        // Ordered list
         trimmed.matches(Regex("\\d+\\.\\s.*")) -> {
             val idx = trimmed.indexOf('.')
             b.withStyle(
@@ -97,12 +97,12 @@ private fun renderBlockLine(
             ) { b.append("${trimmed.substring(0, idx)}. ") }
             inline(b, trimmed.substring(idx + 1).trimStart(), base, codeBg, linkColor)
         }
-        // 普通段落
+        // Regular paragraph
         else -> inline(b, raw, base, codeBg, linkColor)
     }
 }
 
-/** 行内语法：**粗体** / *斜体* / `行内代码` / [文字](链接)。 */
+/** Inline syntax: **bold** / *italics* / `inline code` / [text](link). */
 private fun inline(
     b: AnnotatedString.Builder,
     text: String,

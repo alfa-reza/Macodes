@@ -23,15 +23,15 @@ import androidx.compose.ui.unit.dp
 import dev.termish.ui.theme.StatusColors
 
 /**
- * 「连接中」统一居中指示器（终端页首连/重连、SFTP 首连/重连共用）：
- * spinner + 文案胶囊，出现/退出淡入淡出——完成时平滑消失不残留浮层。
+ * “Connecting” unified centered indicator (shared by terminal-screen initial connect/reconnect and SFTP initial connect/reconnect):
+ * Spinner + text capsule, fade in and out upon appearance/exit—disappear smoothly upon completion without leaving a floating overlay.
  *
- * - [bottomOverlay]：画布底部被悬浮工具栏盖住的高度（含导航条/键盘
- *   padding）。指示器在「可见画布」内居中（上移遮盖高度的一半），
- *   不会因整屏取中而视觉重心下坠；SFTP 页无底栏，保持 0 即整页居中。
- * - 颜色：默认取应用主题表面（SFTP 浅色页）；终端页深色画布必须传
- *   终端主题的背景/前景，否则应用浅色主题时会在画布上浮出亮色胶囊。
- *   spinner/描边统一走语义色 [StatusColors.Warning]。
+ * - [bottomOverlay]: The height at the bottom of the canvas covered by the floating toolbar (including the navigation bar and keyboard
+ *   padding). The indicator is centered within the “visible canvas” (shifted up by half the height of the overlay),
+ *   The visual center of gravity will not shift downward due to full-screen centering; the SFTP page has no bottom bar, so setting it to 0 centers the entire page.
+ * - Color: By default, use the application theme (SFTP light mode); for dark terminal screens, the color must be specified.
+ *   Terminal theme background/foreground; otherwise, a bright capsule will appear on the canvas when the light theme is applied.
+ *   Unify the color of spinners and strokes to use semantic colors [StatusColors.Warning].
  */
 @Composable
 fun ConnectingIndicator(
@@ -70,7 +70,7 @@ fun ConnectingIndicator(
     }
 }
 
-/** 状态点旁的小 spinner（连接页会话行「正在建立」可视化；首页头像同语义）。 */
+/** A small spinner next to the status dot (visualizes “establishing” on the connection session row; same semantics as the avatar on the home page). */
 @Composable
 fun StatusSpinner(
     modifier: Modifier = Modifier,

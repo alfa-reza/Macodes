@@ -56,7 +56,7 @@ actual fun SftpVideoPlayer(
                         .build(),
                 ).build()
                 .apply {
-                    // URI 只给容器识别提供扩展名，实际所有读取由 SFTP 数据源处理。
+                    // The URI only provides an extension for container identification; all actual reading is handled by the SFTP data source.
                     val uri =
                         Uri
                             .Builder()
@@ -89,7 +89,7 @@ actual fun SftpVideoPlayer(
             owner.lifecycle.removeObserver(observer)
             player.removeListener(listener)
             player.release()
-            // 网络收尾可能等待正在执行的读取，绝不占用 UI 线程。
+            // Network operations may wait for a read operation to complete; they never block the UI thread.
             CoroutineScope(Dispatchers.IO).launch {
                 runCatching { source.release() }.onFailure { TermLog.w("sftp-video") { "Reader cleanup failed" } }
             }

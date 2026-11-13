@@ -24,10 +24,10 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
-/** 解码能力探测缓存（分辨率 → 帧率上限），静态复用免每会话重查。 */
+/** Cache decoding capability detection (resolution → maximum frame rate); static reuse eliminates the need for re-checking per session. */
 private val decoderProbeCache = HashMap<String, Int>()
 
-/** H.264 解码 MIME（探测与解码共用）。 */
+/** H.264 decoding MIME (shared for detection and decoding). */
 private const val DECODER_MIME = "video/avc"
 private const val ANDROID_SOFTWARE_AVC_DECODER = "c2.android.avc.decoder"
 private const val ANDROID_EMULATOR_MAX_FPS = 30
@@ -39,17 +39,17 @@ private fun isAndroidEmulator(): Boolean =
         Build.HARDWARE.contains("ranchu", ignoreCase = true)
 
 /**
- * Android 实现：TCP 显式分帧得到的完整 H.264 帧（Annex-B，AUD 开头）直接喂
- * MediaCodec 硬解，解码输出即刻上屏——无 MPEG-TS 容器、无本地 HTTP、
- * 无 ExoPlayer 渐进式缓冲垫（那三者叠加出 ~0.4-1s 延时；ToDesk 式直通
- * 管线把延时压到网络 + 解码 + 一次 vsync）。
+ * Android Implementation: Complete H.264 frames (Annex-B, starting with AUD) obtained through explicit TCP framing are fed directly
+ * MediaCodec hardware decoding, with decoded output displayed immediately on screen—no MPEG-TS container, no local HTTP,
+ * No ExoPlayer progressive buffering (those three combined result in ~0.4–1s delay; ToDesk-style pass-through
+ * The pipeline reduces latency to just network + decoding + one vsync).
  *
- * relay 侧已按 AUD 帧对齐，TCP 长度头保留帧边界；下一个 IDR 可自动
- * 恢复解码同步，不再有 TS 容器缓冲。
+ * The relay side has undergone alignment with AUD frames, and the TCP length header preserves the frame bounds; the next IDR can automatically
+ * Resume decoding sync; there is no longer any TS container buffering.
  *
- * ⚠️ 历史教训：手写 MediaCodec 管线曾在 OPPO/MTK 上吞输入不出帧（当时
- * 从 TS 流切 NAL 喂）。本版规避：CSD 显式 configure（SPS/PPS 从关键帧块
- * 提取）+ 从 IDR 起播 + 独立线程同步模式 + 吞输入 watchdog 打点。
+ * ⚠️ Lesson learned: A hand-coded MediaCodec pipeline once failed to output frames on OPPO/MTK devices (at the time
+ * (From TS stream to NAL feed). This version avoids: explicit CSD configure (SPS/PPS from keyframe blocks
+ * Extract) + Start playback from IDR + Independent thread sync mode + Input-handling watchdog checkpoints.
  */
 actual class ScreenPlayer actual constructor(
     targetFps: Int,
@@ -58,7 +58,7 @@ actual class ScreenPlayer actual constructor(
 ) {
     val decoder = ScreenDecoder(targetFps, onReady, onError)
 
-    /** 视频实际尺寸（解码器上报）：UI 宽高比布局 + 远程操作坐标映射。 */
+    /** Actual video dimensions (reported by the decoder): UI aspect ratio layout + remote operation coordinate mapping. */
     actual val videoDims: MutableState<Pair<Int, Int>?> = decoder.videoDims
 
     actual val lastRenderedAtMillis: Long
@@ -83,16 +83,16 @@ actual class ScreenPlayer actual constructor(
 }
 
 /**
- * MediaCodec H.264 直解器（独立解码线程 + 有界帧队列）。
+ * MediaCodec H.264 Decoder (separate decoding thread + bounded frame queue).
  *
- * 状态机（全部 codec 操作都在解码线程，UI 只读写线程安全字段）：
- * 1. [start] 起线程；等待 surface（[attachSurface]，SurfaceView 回调注入）
- * 2. 丢弃队列里的非关键帧，直到第一个含 SPS/PPS 的关键帧 → configure → 起播
- * 3. 每帧一个 input buffer，输出立即 render（到达即上屏）
- * 4. SPS 变化（分辨率切换）→ 重配；surface 销毁 → 释放，下一个关键帧重建
+ * State Machine (All codec operations occur on the decoding thread; the UI only reads and writes thread-safe fields):
+ * 1. [start] Start a thread; wait for surface ([attachSurface], SurfaceView callback injection)
+ * 2. Discard non-keyframes from the queue until the first keyframe containing SPS/PPS → configure → start playback
+ * 3. One input buffer per frame; output is rendered immediately (displayed as soon as it arrives).
+ * 4. SPS changes (resolution toggling) → reconfigure; surface destruction → release, rebuild next keyframe
  *
- * 队列水位：解码跟不上（120fps 灌 60fps 解码）丢最旧保新——延迟锁死在
- * 2-3 帧；丢参考帧花屏到下一个 IDR（keyint=30 ≤ 0.5s）自动恢复。
+ * Queue level: Decoding can’t keep up (120 fps input, 60 fps decoding) – discard the oldest, keep the newest. Latency is locked at
+ * 2–3 frames; if a reference frame is dropped, the screen flickers until the next IDR (keyint=30 ≤ 0.5s), at which point it automatically resumes.
  */
 class ScreenDecoder(
     targetFps: Int,
@@ -113,10 +113,10 @@ class ScreenDecoder(
     private val droppedFrames = AtomicLong()
     private val decoderBusyFrames = AtomicLong()
 
-    /** 渲染帧计数（每秒诊断打点后清零）。 */
+    /** Render frame count (resets after each diagnostic timestamp). */
     @Volatile private var statRendered = 0
 
-    /** 视频实际尺寸（裁剪后；从解码器输出 format 上报，UI 按 aspectRatio 布局）。 */
+    /** Actual video dimensions (after clipping; reported via the decoder’s output format; UI layout based on aspectRatio). */
     val videoDims: MutableState<Pair<Int, Int>?> = mutableStateOf(null)
 
     @Volatile private var running = false
@@ -128,10 +128,10 @@ class ScreenDecoder(
     private var thread: Thread? = null
 
     /**
-     * 当前存活 surface（小窗 + 全屏是两个独立 SurfaceView，可能同时存在：
-     * 全屏收起动画期间、全屏覆盖在小窗之上等）。用列表管理而不是单值——
-     * 否则全屏 surfaceDestroyed 会把小窗的引用一起清掉，解码器重建后拿
-     * 不到 surface，画面停在最后一帧（用户反馈：小窗画面静止）。
+     * Currently active surfaces (the floating window and fullscreen modes are two independent `SurfaceView` instances that may exist simultaneously):
+     * (e.g., during the fullscreen collapse animation, when fullscreen mode overlays a floating window, etc.). Use lists instead of single values—
+     * Otherwise, a fullscreen `surfaceDestroyed` event would also clear the reference to the floating window; after the decoder is rebuilt, the screen
+     * freezes on the last frame before reaching the surface (user feedback: the floating window is frozen).
      */
     private val surfaces = CopyOnWriteArrayList<Surface>()
 
@@ -139,7 +139,7 @@ class ScreenDecoder(
         if (surface.isValid && !surfaces.contains(surface)) surfaces.add(surface)
     }
 
-    /** 只移除指定 surface（小窗/全屏各自销毁互不影响）。 */
+    /** Remove only the specified surface (floating windows and fullscreen modes are destroyed independently and do not affect each other). */
     fun detachSurface(surface: Surface) {
         surfaces.remove(surface)
     }
@@ -147,8 +147,8 @@ class ScreenDecoder(
     fun hasSurface(): Boolean = surfaces.any { it.isValid }
 
     private fun currentSurface(): Surface? {
-        // Surface 可能已 obsolete，而 surfaceDestroyed 回调还未从 UI 线程到达。
-        // 先剔除失效引用，避免 MediaCodec 继续渲染到已销毁的 SurfaceView。
+        // The `Surface` may be obsolete, and the `surfaceDestroyed` callback has not yet been received from the UI thread.
+        // First, remove invalid references to prevent MediaCodec from continuing to render to a destroyed SurfaceView.
         surfaces.removeAll { !it.isValid }
         return surfaces.lastOrNull()
     }
@@ -180,11 +180,11 @@ class ScreenDecoder(
         thread = null
     }
 
-    /** 喂入一个完整帧（Annex-B 字节；TCP 协议层保证帧对齐）。 */
+    /** Feed in a complete frame (Annex-B bytes; the TCP protocol layer ensures frame alignment). */
     fun feedFrame(frame: ByteArray) {
         if (!running) return
         receivedFrames.incrementAndGet()
-        // 丢旧保新：水位满时丢最旧一帧（不背压发送端——延迟优先于连续性）
+        // Discard the oldest, keep the newest: When the buffer is full, discard the oldest frame (do not backpressure the sender—latency takes precedence over continuity).
         while (!queue.offer(frame)) {
             if (queue.poll() == null) break
             droppedFrames.incrementAndGet()
@@ -203,21 +203,21 @@ class ScreenDecoder(
     private fun decodeLoop() {
         var codec: MediaCodec? = null
         var lastDims: Pair<Int, Int>? = null
-        // 当前 codec 绑定的输出 surface（引用比较：小窗↔全屏切换时变化）
+        // The output surface bound to the current codec (comparison of changes when toggling between a floating window and fullscreen mode)
         var boundSurface: Surface? = null
-        // 最近一次参数集缓存：换面重建时用缓存 CSD 立即 configure，不依赖远端
-        // 在关键帧重复 SPS/PPS（部分远端不重复 → 重建后永久黑屏，切档位重启流
-        // 才恢复——用户反馈）。SPS 变化时以新参数集覆盖
+        // Latest parameter-set cache: use the cached CSD to configure immediately after a surface switch (rebuild), without relying on the
+        // remote repeating SPS/PPS at keyframes (some remotes never repeat → permanent black screen after a rebuild; switch channel and restart
+        // the stream as a workaround — user feedback). Overwrite with the new parameter set when SPS changes.
         var cachedSps: ByteArray? = null
         var cachedPps: ByteArray? = null
         var cachedDims: Pair<Int, Int>? = null
-        // 用缓存参数集重建后只喂 IDR：P 帧依赖前置参考帧，喂给新解码器不产画面
+        // After rebuilding with the cached parameter set, feed only IDR frames: P frames depend on prior reference frames and produce no image for a new decoder
         var needIdr = false
         var pts = 0L
         var fed = 0
-        var dropEvery = 1 // 抽帧：1 = 不抽；n = 每 n 帧丢 1（解码器满时自适应升高）
+        var dropEvery = 1 // Frame skipping: 1 = no skipping; n = skip 1 frame every n frames (automatically increases when the decoder is full)
         var dropCounter = 0
-        // 诊断统计（每秒打点：喂入/渲染/输入满/抽帧——定位解码吞吐瓶颈）
+        // Diagnostics (Sampling per second: input/rendering/input full/frame skipping—identifying decoding throughput bottlenecks)
         var lastStatAt = 0L
         var statFed = 0
         var statFull = 0
@@ -255,13 +255,13 @@ class ScreenDecoder(
                 MediaFormat.createVideoFormat(MIME, dims?.first ?: 1920, dims?.second ?: 1080).apply {
                     if (sps != null) setByteBuffer("csd-0", java.nio.ByteBuffer.wrap(sps))
                     if (pps != null) setByteBuffer("csd-1", java.nio.ByteBuffer.wrap(pps))
-                    // 仅在 codec 明确声明支持时开启，避免部分厂商实现接受键值后
-                    // 进入异常缓冲策略。
+                    // Enable only when the codec explicitly declares support; otherwise some vendor implementations enter an exceptional
+                    // buffering strategy after accepting the key-value pair.
                     if (selection.lowLatency) {
                         runCatching { setInteger(MediaFormat.KEY_LOW_LATENCY, 1) }
                     }
                     runCatching { setInteger(MediaFormat.KEY_FRAME_RATE, configuredFps) }
-                    // 消费速率提示应使用真实推流帧率，而不是解码能力上限。
+                    // KEY_OPERATING_RATE should use the actual streaming frame rate, not the upper limit of decoding capacity.
                     val cap = probeDecoderMaxFps(dims?.first ?: 1920, dims?.second ?: 1080)
                     val operatingRate = if (cap > 0) minOf(configuredFps, cap) else configuredFps
                     runCatching { setInteger(MediaFormat.KEY_OPERATING_RATE, operatingRate) }
@@ -296,15 +296,15 @@ class ScreenDecoder(
 
         try {
             while (running) {
-                // surface 生命周期（2026-08 修订：一律重建，不再无缝换绑）：
-                // setOutputSurface 换绑在真机上不可靠——成功返回但无输出，且
-                // boundSurface 已更新、再无重建机会 → 二次进全屏永久黑屏，切帧率/
-                // 画质触发 SPS 重配才恢复（用户反馈）。重建代价 ≤ 一个关键帧间隔
-                // （keyint≈0.5s），黑窗短暂但确定恢复——正确性优先于无缝。
-                // - 全部销毁（列表空）→ 释放 codec
-                // - 切换（s ≠ boundSurface）→ 释放，下一关键帧以 currentSurface 重建
-                //   （SurfaceView 回调只移除自己的 surface，codec 操作收口在本线程）
-                // 局部快照：codec 在 releaseCodec 闭包中被置空，需在判空前取 val
+                // surface Lifecycle (Revised August 2026: All instances will be rebuilt; seamless rebinding will no longer be supported):
+                // setOutputSurface is unreliable on physical devices—it returns success but produces no output, and boundSurface has already
+                // been updated, so there is no chance to rebuild → entering fullscreen a second time leaves a permanent black screen; switching
+                // frame rate/quality only recovers after an SPS reconfiguration (user feedback). The cost is ≤ one keyframe interval
+                // (keyint ≈ 0.5s): the black screen is brief but it recovers—correctness wins over seamless rebinding.
+                // - Destroy all (list is empty) → Release the codec
+                // - Toggle (s ≠ boundSurface) → Release; rebuild the next keyframe using currentSurface
+                //   (SurfaceView callbacks only remove their own surfaces; codec operations are confined to the current thread.)
+                // Local snapshot: `codec` is set to null within the `releaseCodec` closure; `val` must be retrieved before checking for null.
                 val sc = codec
                 if (sc != null) {
                     val s = currentSurface()
@@ -320,7 +320,7 @@ class ScreenDecoder(
                 val dims = ps.sps?.let { H264Stream.parseSpsDimensions(it) }
 
                 if (ps.sps != null && ps.pps != null) {
-                    // 带完整参数集的关键帧：缓存 + 首次 configure / 分辨率变化重配
+                    // Keyframes with a complete set of parameters: cache + initial configure / reconfiguration due to resolution changes
                     cachedSps = ps.sps
                     cachedPps = ps.pps
                     cachedDims = dims
@@ -329,18 +329,18 @@ class ScreenDecoder(
                         releaseCodec()
                     }
                     if (codec == null) {
-                        val surface = currentSurface() ?: continue // 等 UI surface
+                        val surface = currentSurface() ?: continue // etc. UI surface
                         boundSurface = surface
                         if (!configureCodec(surface, ps.sps, ps.pps, dims)) {
                             if (running) continue else return
                         }
-                        needIdr = false // 当前帧即 IDR，直接可喂
+                        needIdr = false // The current frame is the IDR; it can be fed directly.
                     }
                 } else {
                     if (codec == null && cachedSps != null && cachedPps != null) {
-                        // 换面重建（缓存路径）：不依赖远端在关键帧重复 SPS/PPS，
-                        // 用缓存参数集立即 configure，等下一个 IDR（≤0.5s）出画面
-                        val surface = currentSurface() ?: continue // 等 UI surface
+                        // Surface rebuild (cache path): no dependency on the remote repeating SPS/PPS at keyframes,
+                        // Configure immediately using the cached parameter set; wait for the next IDR (≤0.5s) to display the screen
+                        val surface = currentSurface() ?: continue // etc. UI surface
                         boundSurface = surface
                         TermLog.i("screen") { "surface 变化后用缓存参数集重建解码器" }
                         if (!configureCodec(surface, cachedSps, cachedPps, cachedDims)) {
@@ -350,9 +350,9 @@ class ScreenDecoder(
                     }
                 }
 
-                val c = codec ?: continue // 无解码器（无参数集且无缓存）：等关键帧
+                val c = codec ?: continue // No decoder (no parameter set and no cache): Wait for keyframes
                 if (needIdr && !H264Stream.containsIdr(frame)) {
-                    // 起播前丢弃非 IDR：P 帧不能作为新解码器的起播帧
+                    // Discard non-IDR frames before playback: P frames cannot be used as the start frame for a new decoder.
                     if (!renderOutputs(c, boundSurface)) {
                         releaseCodec()
                         needIdr = true
@@ -361,13 +361,13 @@ class ScreenDecoder(
                 }
                 needIdr = false
                 fed++
-                // 自适应抽帧：输入超解码极限时按比例抽帧（保持节奏均匀）。
-                // 队列丢帧是「丢旧保新」节奏抖动（实测 60fps 流 MTK 解 35fps →
-                // 一快一慢）；抽帧在喂入前均匀丢弃，节奏平滑。
-                // 输入忙（拿不到 buffer）→ 抽帧率升；连续顺畅 → 缓慢回落
+                // Adaptive frame skipping: When the input exceeds the decoding limit, skip frames with a ratio (to maintain a consistent rhythm).
+                // Queue frame drops are caused by “drop-old-keep-new” rhythm jitter (tested: 60 fps stream, MTK decoding at 35 fps →
+                // (one fast, one slow); frames are discarded evenly before feeding in, ensuring a smooth rhythm.
+                // Input is busy (cannot access the buffer) → frame rate increases; continuous and smooth → slowly drops
                 val idx = c.dequeueInputBuffer(TIMEOUT_US)
                 if (idx < 0) {
-                    // 解码器满：本帧丢弃 + 提高抽帧强度（下 n 帧丢 1）
+                    // Decoder full: Discard this frame + increase frame-dropping intensity (drop 1 out of the next n frames)
                     dropEvery = (dropEvery + 1).coerceAtMost(4)
                     dropCounter = 0
                     statFull++
@@ -382,7 +382,7 @@ class ScreenDecoder(
                 if (dropEvery > 1) {
                     dropCounter++
                     if (dropCounter % dropEvery != 0) {
-                        // 被抽掉的帧：占位释放 input buffer（不喂数据）
+                        // Frames skipped: Placeholder release of input buffer (no data provided)
                         c.queueInputBuffer(idx, 0, 0, pts, 0)
                         statSkipped++
                         droppedFrames.incrementAndGet()
@@ -393,7 +393,7 @@ class ScreenDecoder(
                         continue
                     }
                     if (dropCounter >= dropEvery * 8) dropCounter = 0
-                    // 连续 8 组顺畅：抽帧强度回落
+                    // 8 consecutive smooth rounds: lower the frame-dropping rate (dropEvery--)
                     if (dropCounter == 0 && dropEvery > 1) dropEvery--
                 }
                 statFed++
@@ -412,9 +412,9 @@ class ScreenDecoder(
                     continue
                 }
 
-                // 每秒诊断打点：fed/rendered/input-full/skipped——真机定位
-                // 「解码跟不上」是硬件极限还是管线瓶颈（旗舰机 1080p 硬解
-                // 能力远超 30fps，实测只有 25-30 极可能是缓冲/配置问题）
+                // Diagnostics metrics per second: fed/rendered/input-full/skipped—troubleshooting on the physical device
+                // “Decoding can’t keep up” is a hardware limitation or a pipeline bottleneck (a flagship device's 1080p hardware decoding
+                // performance far exceeds 30 fps; actual tests show only 25–30, which is most likely due to buffering or configuration issues).
                 val nowMs = System.currentTimeMillis()
                 if (nowMs - lastStatAt >= 1000) {
                     val rendered = statRendered
@@ -430,7 +430,7 @@ class ScreenDecoder(
                     statSkipped = 0
                 }
 
-                // ⚠️ MTK 吞输入 watchdog：喂了 600 帧仍零输出 → 上报（历史 OPPO/MTK 坑）
+                // ⚠️ MTK input-hungry watchdog: Fed 600 frames but still zero output → Reported (historical OPPO/MTK issue)
                 if (!firstFrameRendered && fed > 600) {
                     TermLog.w("screen") { "解码器吞输入：fed=$fed 无输出" }
                     onError(ScreenPlayerFailure.NoOutput(fed))
@@ -439,7 +439,7 @@ class ScreenDecoder(
                 }
             }
         } catch (e: InterruptedException) {
-            // stop() 中断：正常退出
+            // stop() Interrupt: Exit normally
         } catch (e: Exception) {
             TermLog.w("screen") { "decode loop error: ${e::class.simpleName} ${e.message}" }
             onError(ScreenPlayerFailure.Decoding(e.message ?: e::class.simpleName.orEmpty()))
@@ -508,9 +508,9 @@ class ScreenDecoder(
     }
 
     /**
-     * Android Emulator 的 goldfish H.264 硬件桥接器可能在首帧后永久阻塞
-     * dequeueInputBuffer（即使设置了超时）。模拟器不需要追求硬解功耗，固定使用
-     * Android 自带软件解码器更稳定；真机继续交给系统选择硬件解码器。
+     * The Android Emulator’s goldfish H.264 hardware bridge may cause blocking indefinitely after the first frame
+     * dequeueInputBuffer (even if a timeout is set). The emulator does not need to optimize power consumption; it should always use
+     * Android’s built-in software decoder is more stable; on physical devices, let the system continue with the hardware decoder selection.
      */
     private data class DecoderSelection(
         val codec: MediaCodec,
@@ -551,9 +551,9 @@ actual fun ScreenVideoSurface(
         Box(modifier.background(ComposeColor.Black))
         return
     }
-    // 宽高比适配：解码器上报实际尺寸前铺满（黑底），上报后按比例居中
-    // （替代 ExoPlayer PlayerView 的 RESIZE_MODE_FIT，SurfaceView 不会自己 letterbox）。
-    // 远程键盘弹出时贴底（alignBottom）：视频底部贴工具栏，黑边留顶部
+    // Aspect ratio adjustment: Fill the area (with a black background) before the decoder reports the actual dimensions; after reporting, center the content according to the ratio.
+    // (Replaces RESIZE_MODE_FIT in ExoPlayer’s PlayerView; SurfaceView does not letterbox on its own.)
+    // When the remote keyboard pops up, align it to the bottom (alignBottom): place the toolbar at the bottom of the video and leave a black border at the top.
     val dims = player.decoder.videoDims.value
     Box(
         modifier.background(ComposeColor.Black),
@@ -595,10 +595,10 @@ actual fun ScreenVideoSurface(
 }
 
 /**
- * 探测硬件解码器在指定分辨率下的帧率上限（MediaCodecList 能力查询）。
- * 取所有 avc 硬解器中最大值；无信息/失败返回 0（未知——调用方不钳制）。
- * 旗舰机 1080p H.264 通常 60+；若探测值 < 推流档位，说明解码器真跟不上，
- * 档位菜单据此隐藏超出项（避免推了也白推——带宽浪费 + 解码器满载排队）。
+ * Detect the maximum frame rate of the hardware decoder at a specified resolution (MediaCodecList capability query).
+ * Take the maximum across all AVC hardware decoders; return 0 if no info/on failure (unknown—the caller does not clamp).
+ * Flagship devices typically support 1080p H.264 at 60+; if the detected value is lower than the streaming profile, it indicates that the decoder truly cannot keep up,
+ * The menu will hide items that exceed this limit (to avoid pushing data in vain—which wastes bandwidth and overloads the decoder with a queue).
  */
 actual fun probeDecoderMaxFps(
     width: Int,
@@ -606,10 +606,10 @@ actual fun probeDecoderMaxFps(
 ): Int {
     val key = "$width x $height"
     decoderProbeCache[key]?.let { return it }
-    // 模拟器实际解码固定走 c2.android.avc.decoder；MediaCodecList 里仍会暴露
-    // goldfish/ranchu 的桥接“硬解”能力，常虚报 120fps+。若把这个值用于档位
-    // 菜单和自动恢复，软件解码器会被反复升档后打满。与 createDecoder 保持同源，
-    // 模拟器稳定钳在 30fps；真机仍按硬件能力开放 60/120fps。
+    // The emulator actually decodes using c2.android.avc.decoder; MediaCodecList will still expose the
+    // goldfish/ranchu bridge "hardware decode" capabilities, which are often over-reported (120fps+). If this value is used for the
+    // quality-level menu and auto-resume, the software decoder is driven until it saturates. Maintain the same origin as `createDecoder`;
+    // The emulator is capped at 30 fps; physical devices will still support 60/120 fps based on hardware capabilities.
     if (isAndroidEmulator()) {
         decoderProbeCache[key] = ANDROID_EMULATOR_MAX_FPS
         return ANDROID_EMULATOR_MAX_FPS
@@ -632,7 +632,7 @@ actual fun probeDecoderMaxFps(
             }
         }
     } catch (_: Throwable) {
-        // 探测失败不阻断：返回 0 = 未知
+        // Detection failure does not block: return 0 = unknown
     }
     decoderProbeCache[key] = best
     return best

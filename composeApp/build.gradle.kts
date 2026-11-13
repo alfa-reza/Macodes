@@ -10,7 +10,7 @@ plugins {
     alias(libs.plugins.kotlinSerialization)
 }
 
-// 终端内置等宽字体（composeResources/font）：固定 Res 生成类的包名
+// Built into the terminal: monospaced font (composeResources/font): Set the package name for the Res generation class
 compose.resources {
     packageOfResClass = "dev.termish.generated.resources"
 }
@@ -79,7 +79,7 @@ kotlin {
         val androidMain by getting
         val androidUnitTest by getting
 
-        // iOS 共享源集（gradle.properties 中关闭了默认层级模板）。
+        // iOS Shared Source Set (default hierarchy templates are disabled in `gradle.properties`).
         val iosMain by creating {
             dependsOn(commonMain.get())
         }
@@ -127,8 +127,8 @@ kotlin {
             implementation(libs.multiplatform.settings.test)
             implementation(libs.robolectric)
             implementation(libs.slf4j.nop)
-            // Dispatchers.setMain + StandardTestDispatcher：TerminalController 的
-            // 输出消费循环固定在 Dispatchers.Main，测试需要可控的主调度器
+            // Dispatchers.setMain + StandardTestDispatcher: TerminalController’s
+            // Output consumption loops are pinned to Dispatchers.Main; testing requires a controllable main dispatcher.
             implementation(libs.kotlinx.coroutines.test)
         }
     }
@@ -143,12 +143,12 @@ android {
     }
 
     signingConfigs {
-        // release 签名机密来源（按优先级）：
-        //   1. 进程环境变量（CI：GitHub Secrets 直接注入，云端零文件）
-        //   2. 项目根 .env（gitignore，前端惯例位置）+ 项目根 termish-release.jks（*.jks 已忽略）
-        //   3. keystore.properties（历史兼容）
-        // jks 文件不存在时从 ANDROID_KEYSTORE_BASE64 解码到 build/signing/。
-        // 都没有时跳过签名，不影响 debug 构建。
+        // Release signature source (by priority):
+        //   1. Process environment variables (CI: Direct injection via GitHub Secrets, zero files in the cloud)
+        //   2. Project root .env (gitignore, standard frontend location) + project root termish-release.jks (*.jks files are already ignored)
+        //   3. keystore.properties (backward compatibility)
+        // If the jks file does not exist, decode it from ANDROID_KEYSTORE_BASE64 and place it in build/signing/.
+        // If none of these are present, skip the signature; this does not affect debug builds.
         val fileEnv = mutableMapOf<String, String>()
         val envFile = rootProject.file(".env")
         if (envFile.exists()) {
@@ -197,8 +197,8 @@ android {
             excludes += "/META-INF/*.SF"
             excludes += "/META-INF/*.RSA"
             excludes += "/META-INF/DEPENDENCIES"
-            // SSH 仅使用 BC 的经典密钥/证书算法；Picnic 后量子参数资源约 1.2MB，
-            // R8 不会自动移除 jar resource，显式排除可缩小 APK 且不影响 SSH。
+            // SSH uses only BC’s classic key/certificate algorithms; Picnic’s post-quantum parameter resources are approximately 1.2 MB,
+            // R8 does not automatically remove JAR resources; explicitly excluding them can reduce the APK size without affecting SSH.
             excludes += "/org/bouncycastle/pqc/crypto/picnic/*.properties"
         }
     }

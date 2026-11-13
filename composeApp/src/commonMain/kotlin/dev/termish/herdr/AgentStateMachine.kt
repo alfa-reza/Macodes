@@ -1,15 +1,15 @@
 package dev.termish.herdr
 
 /**
- * agent 状态机：快照 diff → 状态迁移事件。
+ * Agent state machine: snapshot diff → state migration event.
  *
- * 纯函数式、无 IO 无 UI——输入每轮快照的 agents 列表，输出与上一轮相比的
- * 状态迁移事件。blocked 进入/离开是通知与 UI 徽章的源头。
+ * Purely functional, no I/O, no UI—take a list of agents from each round’s snapshot as input, and output the difference compared to the previous round’s
+ * State migration events. Entering or leaving the “blocked” state triggers notifications and UI badges.
  *
- * 判定基准：agents 数组（herdr 已做 agent 检测），按 pane_id 跟踪。
+ * Evaluation criteria: the `agents` array (herdr has already performed agent detection), tracked by `pane_id`.
  */
 sealed interface HerdrAgentEvent {
-    /** agent 进入 blocked（等待用户回答/批准）。 */
+    /** Agent status: Blocked (waits for user response/approval). */
     data class Blocked(
         val paneId: String,
         val agent: String?,
@@ -17,19 +17,19 @@ sealed interface HerdrAgentEvent {
         val cwd: String?,
     ) : HerdrAgentEvent
 
-    /** agent 离开 blocked（用户回复/任务恢复）。 */
+    /** Agent status changed from "blocked" (user replied/task resumed). */
     data class Unblocked(
         val paneId: String,
         val agent: String?,
     ) : HerdrAgentEvent
 
-    /** agent 开始 working。 */
+    /** The agent has started working. */
     data class Working(
         val paneId: String,
         val agent: String?,
     ) : HerdrAgentEvent
 
-    /** agent 变为 idle（含 done 语义的降级显示）。 */
+    /** Change “agent” to “idle” (including fallback displays with “done” semantics). */
     data class Idle(
         val paneId: String,
         val agent: String?,
@@ -37,20 +37,20 @@ sealed interface HerdrAgentEvent {
 }
 
 class HerdrAgentStateMachine {
-    /** pane_id → 上次快照中的状态（跨轮跟踪）。 */
+    /** pane_id → Status in the previous snapshot (cross-round tracking). */
     private val prev = HashMap<String, HerdrAgentStatus>()
 
-    /** 当前各 pane 状态快照（供 UI 读取/测试断言）。 */
+    /** Snapshot of the current state of each pane (for UI reading/testing assertions). */
     fun current(): Map<String, HerdrAgentStatus> = prev.toMap()
 
-    /** 全量重置（监控重启/重连后调用，避免把重启前的状态当迁移）。 */
+    /** Full reset (called after a monitor restart or reconnect to prevent pre-restart states from being treated as migrations). */
     fun reset() {
         prev.clear()
     }
 
     /**
-     * 喂入一轮快照，返回相对上一轮的状态迁移事件。
-     * 同一状态重复出现不产生事件（轮询去抖的天然基础）。
+     * Feed one round of snapshots; returns the state-migration events relative to the previous round.
+     * Repeated occurrences of the same state do not generate events (the natural basis for polling debouncing).
      */
     fun update(snapshot: HerdrSessionSnapshot): List<HerdrAgentEvent> {
         val events = ArrayList<HerdrAgentEvent>()
@@ -71,14 +71,14 @@ class HerdrAgentStateMachine {
                 HerdrAgentStatus.IDLE -> HerdrAgentEvent.Idle(a.paneId, a.agent)
                 else -> null
             } ?: continue
-            // blocked → 非 blocked：离开等待态（approve 完成/超时/关闭）
+            // blocked → not blocked: Exits the waiting state (approve completed/timeout/closed)
             if (before == HerdrAgentStatus.BLOCKED && a.agentStatus != HerdrAgentStatus.BLOCKED) {
                 events += HerdrAgentEvent.Unblocked(a.paneId, a.agent)
             }
         }
 
-        // 从快照消失的 pane（会话/工作区关闭）：若之前 blocked 需补 Unblocked，
-        // 否则通知会悬挂（手机一直以为 agent 在等你）
+        // Pane missing from the snapshot (session/workspace closed): If previously marked as "blocked," add "Unblocked,"
+        // Otherwise, the notification will remain pending (your phone will keep thinking the agent is waiting for you).
         prev.keys.filter { it !in cur }.forEach { gone ->
             if (prev[gone] == HerdrAgentStatus.BLOCKED) {
                 events += HerdrAgentEvent.Unblocked(gone, null)

@@ -1,10 +1,10 @@
 package dev.termish.mosh
 
 /**
- * AES-128 单块加解密（纯 Kotlin，供 OCB 使用）。
+ * AES-128 single-block encryption and decryption (pure Kotlin, for use with OCB).
  *
- * 只实现 ECB 单块原语；模式层见 [Ocb]。标准 FIPS-197 查表实现，
- * 密钥扩展在构造时完成。
+ * Implements only the ECB single-block primitives; see [Ocb] for the mode layer. Standard FIPS-197 table implementation,
+ * Key expansion is performed during construction.
  */
 internal class Aes128(
     key: ByteArray,
@@ -13,7 +13,7 @@ internal class Aes128(
         require(key.size == 16) { "AES-128 key must be 16 bytes" }
     }
 
-    /** 11 个轮密钥 × 16 字节。 */
+    /** 11 round keys × 16 bytes. */
     private val rk = ByteArray(176)
 
     init {
@@ -90,7 +90,7 @@ internal class Aes128(
     }
 
     private fun subBytesShiftRows(s: ByteArray) {
-        // 状态按列主序存放：s[col*4+row]。ShiftRows 等价于按目标下标整体置换。
+        // States are stored in column-major order: s[col*4+row]. ShiftRows is equivalent to a block permutation based on the target index.
         val t = s.copyOf()
         for (r in 0..3) {
             for (c in 0..3) {

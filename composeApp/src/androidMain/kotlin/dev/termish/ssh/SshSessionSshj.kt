@@ -32,15 +32,15 @@ import net.schmizz.sshj.userauth.password.PasswordFinder
 import net.schmizz.sshj.userauth.password.Resource
 
 /**
- * sshj 引擎（Android）。传输层、KEX、认证、加密全部交给
- * 久经考验的 sshj + BouncyCastle；本类只负责会话生命周期与回调。
+ * sshj engine (Android). The transport layer, KEX, authentication, and encryption are all handled by
+ * Tried-and-true sshj + BouncyCastle; this class is responsible only for the session lifecycle and callbacks.
  */
 class SshSessionSshj(
     private val connection: SshConnection,
     private val callbacks: SshCallbacks,
-    /** socket 读超时（毫秒，0 = 不限时）。终端 shell 传 0（交互流不能限时）；
-     *  SFTP 等请求-响应式通道传有限值（如 30s）：单次请求超时必是连接异常，
-     *  否则 write/list 挂在无线等待上，断线后 UI 永远“传输中”。 */
+    /** Socket read timeout (milliseconds; 0 = no timeout). Pass 0 from the terminal shell (interactive streams cannot have a timeout);
+     *  SFTP and other request-response channels have a time limit (e.g., 30 seconds): a timeout on a single request must be due to a connection exception,
+     *  Otherwise write/list can hang indefinitely, leaving the UI stuck on “Transferring…” after a disconnect. */
     private val readTimeoutMs: Long = 0L,
 ) : SshSession {
     private val client = SSHClient()
@@ -49,13 +49,13 @@ class SshSessionSshj(
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    // 单线程写调度器：既避免在主线程做 socket 写（Android 会抛 NetworkOnMainThreadException），又保证输入顺序
+    // Single-threaded write dispatcher: This avoids writing to sockets on the main thread (which would throw a `NetworkOnMainThreadException` on Android) while ensuring the order of input.
     private val writeDispatcher = Dispatchers.IO.limitedParallelism(1)
 
-    // 单线程读调度器：stdout/stderr 两个 reader 若并发回调 onOutput/onStderr，
-    // 会同时进入无锁的 TerminalEmulator 状态机（转义序列被打断、UTF-8 跨块错乱），
-    // 必须串行喂给上层。onOutput/onStderr 是挂起回调（可做背压），在 reader
-    // 协程里调用，挂起时释放本调度器线程
+    // Single-threaded read dispatcher: If the two readers for stdout and stderr callbacks are executed in concurrent fashion,
+    // It will simultaneously enter the lock-free TerminalEmulator state machine (escape sequences get interrupted and UTF-8 characters split across reads are garbled),
+    // Must be fed to the upper layer in a serialized manner. onOutput/onStderr are callbacks that are suspended (can be used for backpressure) in the reader
+    // Called within a coroutine; releases the current dispatcher thread when suspended
     private val readerDispatcher = Dispatchers.IO.limitedParallelism(1)
 
     private val closed =
@@ -127,17 +127,17 @@ class SshSessionSshj(
         )
 
         client.setConnectTimeout(connection.connectTimeoutMillis.toInt())
-        client.setTimeout(readTimeoutMs.toInt()) // 交互 shell=0 不限时；SFTP 请求-响应式限时
+        client.setTimeout(readTimeoutMs.toInt()) // Interactive shell=0: no time limit; SFTP request-response: time-limited
 
         client.connect(connection.host, connection.port)
-        // sshj 的 connect() 阻塞到 KEX 完成：TCP 与 KEX 合并为一个阶段
+        // sshj’s `connect()` is blocked until KEX completes: TCP and KEX are merged into a single phase
         callbacks.onTraceStep("tcp+kex")
         serverVersion = client.transport.serverVersion
         authenticate()
         callbacks.onTraceStep("auth")
 
-        // 空闲保活（<=0 关闭）：统一放这里，所有连接路径生效
-        // （此前只在终端 shell 路径设置，SFTP 连接无保活、断线完全无感知）
+        // Idle Keep-Alive (<=0 to disable): Place all entries here; this setting applies to all connection paths.
+        // (Previously, the settings were only configured in the terminal shell path; SFTP connections had no keep-alive, and disconnections went completely unnoticed.)
         try {
             if (connection.keepAliveSeconds > 0) {
                 client.connection.keepAlive.setKeepAliveInterval(connection.keepAliveSeconds)
@@ -145,9 +145,9 @@ class SshSessionSshj(
         } catch (_: Exception) {
         }
 
-        // 传输层断开（对端关闭/FIN/RST/keepalive 失败）→ 转发 onClosed：
-        // 终端路径有 startReaders 的通道 join 兜底，SFTP 等无 shell 的会话
-        // 此前没有注册任何监听，断线后 UI 无感知（只能靠下次操作失败暴露）
+        // Transport layer disconnect (remote end closed/FIN/RST/keepalive failure) → forwarding onClosed:
+        // Terminal paths are handled by the `startReaders` channel’s `join` fallback; sessions without a shell, such as SFTP,
+        // No listeners had been registered previously, so the UI was unaware of the disconnection (which could only be detected upon failure of the next operation).
         try {
             client.transport.setDisconnectListener(
                 object : DisconnectListener {
@@ -188,11 +188,11 @@ class SshSessionSshj(
         if (closed.get() || !client.isConnected) return null
         var s: Session? = null
         return try {
-            // 复用已认证连接：新开一个 exec 通道，不重新认证、不打断交互 shell
+            // Reuse an authenticated connection: Open a new exec channel without re-authenticating or interrupting the interactive shell
             s = client.startSession()
             val cmd = s.exec(command)
-            // stdout/stderr 必须并发读：sshj 流是阻塞的，单流满（远端 stderr 大量
-            // 输出）会让另一流阻塞到超时——只读 stdout 还会丢掉诊断信息
+            // stdout/stderr must achieve concurrent reading: sshj streams are blocking, and if a single stream fills up (due to a large volume of output on the remote stderr
+            // (Output) will cause the other stream to enter blocking until a timeout occurs—reading from stdout will also discard diagnostic info
             val out = java.io.ByteArrayOutputStream()
             val err = java.io.ByteArrayOutputStream()
             val outT = Thread { cmd.inputStream.copyTo(out) }.apply { start() }
@@ -223,7 +223,7 @@ class SshSessionSshj(
         if (closed.get() || !client.isConnected) return null
         val s = client.startSession()
         return try {
-            // 带 PTY 的 exec：交互式 CLI（herdr TUI）需要 tty，crossterm 无 tty 会 panic
+            // `exec` with PTY: An interactive CLI (herdr TUI) requires a TTY; `crossterm` will panic if no TTY is available.
             s.allocatePTY(connection.terminalType, columns, rows, 0, 0, emptyMap())
             val cmd = s.exec(command)
             val mutex = Any()
@@ -247,8 +247,8 @@ class SshSessionSshj(
                     }
 
                 override fun write(data: ByteArray) {
-                    // 异步写：调用方可能是主线程（emulator.onResponse 应答 OSC 查询——
-                    // herdr 启动连发 256 个 OSC 4 查询，同步 socket 写会把主线程卡死）
+                    // Async version: The caller may be the main thread (emulator.onResponse provides a response to an OSC query—
+                    // (herdr launches 256 consecutive OSC 4 queries; sync socket writes will cause the main thread to hang)
                     scope.launch(writeDispatcher) {
                         synchronized(mutex) {
                             try {
@@ -281,7 +281,7 @@ class SshSessionSshj(
         if (closed.get() || !client.isConnected) return null
         val s = client.startSession()
         return try {
-            // 无 PTY：二进制输出（屏幕帧流）不能被 pty 改写（\n 转换等）
+            // No PTY: Binary output (screen frame stream) cannot be rewritten by pty (e.g., \n conversion).
             val cmd = s.exec(command)
             val mutex = Any()
             object : SshExecChannel {
@@ -379,13 +379,13 @@ class SshSessionSshj(
         }
     }
 
-    /** 在已认证连接上打开 SFTP 通道（SFTP 会话独立持有本对象；调用方负责 close）。 */
+    /** Open an SFTP channel over an authenticated connection (the SFTP session independently holds this object; the caller is responsible for closing it). */
     fun openSftp(): net.schmizz.sshj.sftp.SFTPClient {
         connectTransport()
         return client.newSFTPClient()
     }
 
-    // ---------- 认证 ----------
+    // ---------- Authentication ----------
 
     private fun authenticate() {
         val methods = ArrayList<AuthMethod>()
@@ -402,14 +402,14 @@ class SshSessionSshj(
                 }
             methods.add(AuthPassword(finder))
         }
-        // keyboard-interactive：作为密码/二次验证的兜底
+        // keyboard-interactive: as a fallback for passwords/two-factor authentication
         methods.add(AuthKeyboardInteractive(kbiProvider))
 
         try {
             client.auth(connection.username, methods)
         } catch (e: Exception) {
-            // 私钥若加载失败（格式不支持/口令错误/已取消输入），把原因拼进错误，
-            // 避免用户只看到「认证失败」却不知道私钥根本没参与认证
+            // If there is a failure during private key loading (unsupported format/incorrect password/input canceled), include the reason in the error message,
+            // Avoid situations where users see only “Failure in authentication” without realizing that the private key was never used in the authentication process.
             val hint = privateKeyError?.let { "（私钥加载失败：$it）" } ?: ""
             throw SshException("SSH 认证失败$hint：${e.message}", e)
         }
@@ -426,8 +426,8 @@ class SshSessionSshj(
                 PKCS8KeyFile()
             }
 
-        // 加密私钥：sshj 的 init 对加密 key 不会抛异常（解密延迟到认证时），
-        // 必须先静态判断并提示用户输入口令
+        // Encryption of private keys: sshj’s `init` does not throw an exception for encrypted keys (decryption is deferred until authentication),
+        // Must first perform a static check and display a prompt asking the user to enter the passphrase
         if (isEncryptedPem(pem)) {
             val passphrase =
                 runBlocking {
@@ -463,7 +463,7 @@ class SshSessionSshj(
             }
         }
 
-        // 明文私钥
+        // Private key in plain text
         return try {
             val kp = newProvider()
             kp.init(StringReader(pem), null, null)
@@ -519,7 +519,7 @@ class SshSessionSshj(
             override fun shouldRetry(): Boolean = !cancelled
         }
 
-    // ---------- 数据收发 ----------
+    // ---------- Data Transmission and Reception ----------
 
     private fun startReaders(sh: Session.Shell) {
         scope.launch(readerDispatcher) {
@@ -547,11 +547,11 @@ class SshSessionSshj(
             }
         }
         scope.launch(readerDispatcher) {
-            // 等待通道关闭，报告退出状态
+            // Wait for the channel to close and report the exit status
             try {
                 (sh as? AbstractChannel)?.join()
             } catch (_: Exception) {
-                // 通道可能以断开结束
+                // A channel may end with a disconnect
                 while ((sh as? AbstractChannel)?.isOpen == true) delay(50)
             }
             handleClosed()
@@ -563,7 +563,7 @@ class SshSessionSshj(
         try {
             val sc = shell as? SessionChannel
             if (sc != null) {
-                // 通道关闭后退出状态可能稍后到达，短暂轮询
+                // The exit state may be reached shortly after the channel is closed; poll briefly.
                 var status: Int? = null
                 val deadline = System.currentTimeMillis() + 2000
                 while (status == null && System.currentTimeMillis() < deadline) {
@@ -625,17 +625,17 @@ class SshSessionSshj(
     override fun checkAlive(timeoutMillis: Long): Boolean {
         if (!isActive()) return false
         return try {
-            // SSH_MSG_IGNORE 只能证明本地 write 没立即失败；带 want-reply 的全局请求
-            // 必须等服务器返回 REQUEST_SUCCESS/FAILURE，才能识别休眠后半开的 TCP。
-            // OpenSSH 不识别该请求时会返回 FAILURE，同样是有效的存活确认。
+            // SSH_MSG_IGNORE only proves that the local write did not experience any failure immediately; global requests with `want-reply`
+            // The system must wait for the server to return REQUEST_SUCCESS or REQUEST_FAILURE before it can identify a TCP connection that remains half-open after entering sleep mode.
+            // When OpenSSH does not recognize this request, it returns FAILURE, which also serves as a valid way to confirm liveness.
             client.connection
                 .sendGlobalRequest("keepalive@openssh.com", true, byteArrayOf())
                 .retrieve(timeoutMillis.coerceAtLeast(1L), TimeUnit.MILLISECONDS)
             isActive()
         } catch (e: ConnectionException) {
-            // OpenSSH 对未知全局请求返回 REQUEST_FAILURE；sshj 将它包装成异常，
-            // 但收到这条响应本身已经证明双向 SSH 链路存活。超时/传输异常的
-            // 文案不同，仍按失败处理。
+            // OpenSSH returns REQUEST_FAILURE for unknown global requests; sshj wraps it as an exception,
+            // However, receiving this response itself proves that the bidirectional SSH connection is alive. Timeouts or transmission exceptions
+            // If the message text differs, treat it as a failure.
             val serverRejectedRequest =
                 e.message?.contains("Global request [global req for keepalive@openssh.com] failed") == true
             if (serverRejectedRequest && isActive()) return true
@@ -654,7 +654,7 @@ class SshSessionSshj(
             client.transport.isRunning &&
             shell?.isOpen == true
 
-    // ---------- 指纹 ----------
+    // ---------- fingerprint ----------
 
     private fun keyTypeName(key: PublicKey): String =
         try {

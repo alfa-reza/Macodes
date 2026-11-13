@@ -2,7 +2,7 @@ package dev.termish.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-/** 远程画面悬浮控制器视觉与交互 token。 */
+/** Visual and interactive tokens for the remote screen hover controller. */
 object ScreenControlTokens {
     val PermissionBackground = Color(0xD9B45309)
     val PermissionText = Color(0xE6FFFFFF)

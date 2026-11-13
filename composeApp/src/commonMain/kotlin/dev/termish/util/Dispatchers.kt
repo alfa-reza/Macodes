@@ -2,5 +2,5 @@ package dev.termish.util
 
 import kotlinx.coroutines.CoroutineDispatcher
 
-/** 阻塞 socket/SSH 工作的调度器。 */
+/** A blocking dispatcher for socket/SSH work. */
 expect fun ioDispatcher(): CoroutineDispatcher

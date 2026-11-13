@@ -10,15 +10,15 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalView
 
-/** Android：把本区域从窗口的系统手势排除列表中声明（随布局位置实时更新）。 */
+/** Android: Declare this region as excluded from the window’s system gesture list (updated in real-time based on layout position). */
 @Composable
 actual fun Modifier.excludeSystemBackGesture(): Modifier =
     composed {
         val view = LocalView.current
         this.onGloballyPositioned { coords ->
             val window = (view.context as? Activity)?.window ?: return@onGloballyPositioned
-            // setSystemGestureExclusionRects 是 API 29+（minSdk 26）：
-            // 低版本无预测性返回手势，无需排除（lint NewApi 要求条件执行）
+            // setSystemGestureExclusionRects is available on API 29+ (minSdk 26):
+            // Earlier versions do not support predictive return gestures; no need to exclude them (lint NewApi requires conditional execution).
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return@onGloballyPositioned
             val b = coords.boundsInWindow()
             window.setSystemGestureExclusionRects(

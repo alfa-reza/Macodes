@@ -5,7 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** [isEncryptedPem] 的格式识别：PKCS#8 头 / 传统 PEM 头 / openssh-key-v1 ciphername。 */
+/** Format recognition for [isEncryptedPem]: PKCS#8 header / traditional PEM header / openssh-key-v1 ciphername. */
 class EncryptedPemTest {
     private fun opensshBlob(cipher: String): ByteArray {
         val marker = "openssh-key-v1\u0000".encodeToByteArray()

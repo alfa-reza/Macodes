@@ -12,9 +12,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 /**
- * 全局统一 Snackbar 宿主：**品牌视觉**（深锌灰圆角卡片 + 白字 + 品牌绿 action），
- * 暗/亮主题下一致，不随页面背景漂移。全项目提示（连接失败 / 上传下载完成 /
- * 语音输入反馈 / 复制粘贴等）统一走这里，避免各处默认样式不齐。
+ * Global standardization of Snackbar hosts: **Brand Visual Identity** (dark zinc-gray card with corner radius + white text + brand green action button),
+ * Consistent across dark and light themes; does not shift with the screen background. Project-wide tooltips (connection failure / upload/download complete /
+ * (Voice input feedback, copy-paste, etc.) should all follow this style to avoid inconsistencies in default formatting across different sections.
  */
 @Composable
 fun TermishSnackbarHost(

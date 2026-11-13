@@ -112,14 +112,14 @@ import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
-/** 首页卡片与连接页展示的会话能力。 */
+/** Session capabilities displayed on the home page cards and connection pages. */
 sealed interface HostSessionItem {
     val hostId: String
     val createdAt: Long
     val isActive: Boolean
     val isConnecting: Boolean
 
-    /** 真正已连上（CONNECTED）：连接中不算，首页统计与标签据此三态显示。 */
+    /** Truly connected (CONNECTED): Connections in progress do not count; the home page statistics and tags show these three states accordingly. */
     val isConnected: Boolean
 
     data class Terminal(
@@ -140,7 +140,7 @@ sealed interface HostSessionItem {
     ) : HostSessionItem {
         override val hostId: String get() = host.id
 
-        /** session=null 是进程重启后恢复的未连接条目：灰色断开态。 */
+        /** `session=null` refers to unconnected entries that are resumed after a process restart: gray disconnected state. */
         override val isActive: Boolean get() = session != null
         override val isConnecting: Boolean get() = false
         override val isConnected: Boolean get() = session != null
@@ -174,7 +174,7 @@ sealed interface HostSessionItem {
     }
 }
 
-/** 活跃会话判定：连接中/认证中/已连接都算（与连接页状态点同源）。 */
+/** Active session determination: "Connection," "Authentication," and "Connected" are all counted (same as the connection page status). */
 internal fun isActiveStatus(status: ConnStatus): Boolean = status == ConnStatus.CONNECTED || status == ConnStatus.CONNECTING || status == ConnStatus.AUTH
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -201,7 +201,7 @@ fun HostListScreen(
     var query by remember { mutableStateOf("") }
     var searchExpanded by remember { mutableStateOf(false) }
     val searchFocusRequester = remember { FocusRequester() }
-    // 搜索展开后等入场动画开始再聚焦，键盘随之弹出
+    // Wait until the search results expand and the entrance animation begins before refocusing; the keyboard should then pop up.
     LaunchedEffect(searchExpanded) {
         if (searchExpanded) {
             delay(150)
@@ -218,11 +218,11 @@ fun HostListScreen(
                     h.system.contains(query, ignoreCase = true) ||
                     h.tags.any { it.contains(query, ignoreCase = true) }
             }
-            // 稳定顺序：按创建时间排（新主机追加在尾），不随最近连接重排——
-            // 连接后回列表卡片位置不变，肌肉记忆可依赖（旧数据 createdAt=0 按名称兜底）
+            // Sorting order: Sort by creation time (new hosts are appended to the end); do not reorder based on the most recent connection—
+            // After linking, the position of the list cards remains unchanged; you can rely on muscle memory (old data with `createdAt=0` is used as a fallback based on its name).
             .sortedWith(compareBy<Host> { it.createdAt }.thenBy { it.name.lowercase() })
 
-    // 批处理（多选）模式：头像点击 / 长按卡片进入
+    // Batch (multiple selections) mode: Tap the avatar / Long press a card to enter
     var selectionMode by remember { mutableStateOf(false) }
     val selected = remember { mutableStateMapOf<String, Host>() }
 
@@ -237,7 +237,7 @@ fun HostListScreen(
         selected.clear()
     }
 
-    // 多选模式下系统返回键先退出批处理，而不是退到桌面
+    // In multi-select mode the system Back key exits batch mode first, not to the home screen
     PlatformBackHandler(enabled = selectionMode, onBack = { exitSelection() })
 
     Scaffold(
@@ -347,8 +347,8 @@ fun HostListScreen(
                                 if (selectionMode) {
                                     if (isSelected) selected.remove(host.id) else selected[host.id] = host
                                 } else {
-                                    // 有活跃会话进第一个活跃；全部断开则恢复第一个断开的
-                                    // （进入终端页后自动重连）；没有会话才新建
+                                    // If there is an active session, use the first active one; if all connections are disconnected, resume using the first disconnected one.
+                                    // (Automatically reconnect after entering the terminal screen); create a new session only if none exists
                                     when (val target = sessions.firstOrNull { it.isActive } ?: sessions.firstOrNull()) {
                                         is HostSessionItem.Terminal -> onOpenSession(target.controller)
                                         is HostSessionItem.Sftp -> onOpenSftp(target.host, target.session)
@@ -399,7 +399,7 @@ fun HostListScreen(
     }
 }
 
-/** 批处理模式页头：左侧关闭，中间「x selected」，右侧编辑 + 三点菜单。 */
+/** Batch mode header: Close on the left, “x selected” in the middle, and Edit + three-dot menu on the right. */
 @Composable
 private fun SelectionHeader(
     count: Int,
@@ -430,7 +430,7 @@ private fun SelectionHeader(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.weight(1f))
-            // 编辑：仅单选时可用（编辑当前选中的主机）
+            // Edit: Available only when a single host is selected (edit the currently selected host)
             IconButton(onClick = onEdit, enabled = count == 1) {
                 Icon(
                     Icons.Default.Edit,
@@ -488,10 +488,10 @@ private fun SelectionHeader(
 }
 
 /**
- * 主机卡片（Termius 风格）：系统头像 + 两行信息。
- * - 行 1：主机 IP/地址；行 2：Active 或「协议, 用户名, 系统」
- * - 点击卡片连接；长按卡片或点击头像进入批处理模式
- * - 批处理模式下点击切换选中，选中卡片高亮主色边框
+ * Host card (Termius style): System avatar + two rows of info.
+ * - Row 1: Host IP/address; Row 2: Active or “protocol, username, system”
+ * - Tap the card to establish the connection; long press the card or tap the avatar to enter batch mode
+ * - In batch mode, tap to toggle selection; selected cards are highlighted with a border in the primary color.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -516,10 +516,10 @@ private fun HostCard(
     val s = LocalAppStrings.current
     val sys = host.system.ifBlank { host.hostname }
     val connecting = sessions.any { it.isConnecting }
-    // 第一行：alias（名称）优先，为空时回退主机地址
+    // First line: Alias (name) takes precedence; if empty, fall back to the host address.
     val title = host.name.ifBlank { host.hostname }
-    // 卡片副标题始终表达主机本身；会话状态统一交给右侧徽章和更多菜单，
-    // 避免“2 Disconnected”与徽章“2”重复占用同一张卡片。
+    // Card subtitles should always refer to the host itself; session status is consistently handled by the badge on the right and the “More” menu,
+    // Avoid having “2 Disconnected” and the “2” badge occupy the same card.
     val detail =
         buildString {
             append(if (host.connectionMode == ConnectionMode.MOSH) s.hostsModeMosh else s.hostsModeSsh)
@@ -541,7 +541,7 @@ private fun HostCard(
                     onLongClick = onLongClick,
                 ),
         shape = RoundedCornerShape(14.dp),
-        // 跟随主题：浅色=白、暗黑=深色；批处理选中项用主色边框高亮
+        // Follow the theme: light mode = white, dark mode = dark; highlight batch-selected items with a border in the primary color.
         colors =
             CardDefaults.cardColors(
                 containerColor =
@@ -569,7 +569,7 @@ private fun HostCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                // 系统头像（圆角正方形 + 白色图标）：点击进入/切换批处理选择
+                // System Avatar (Rounded Square + White Icon): Tap to enter/toggle batch selection
                 Box(
                     Modifier
                         .size(42.dp)
@@ -579,7 +579,7 @@ private fun HostCard(
                     contentAlignment = Alignment.Center,
                 ) {
                     if (connecting) {
-                        // 连接中：头像显示转圈，连接完成自动跳转终端页
+                        // Connection: The avatar shows a spinning icon; once the connection is complete, you will be automatically redirected to the terminal screen.
                         CircularProgressIndicator(
                             modifier = Modifier.size(22.dp),
                             color = Color.White,
@@ -607,7 +607,7 @@ private fun HostCard(
                     )
                 }
                 if (selectionMode) {
-                    // 选中状态标记：勾选圆
+                    // Selection indicator: checkmark circle
                     Box(
                         Modifier
                             .size(22.dp)
@@ -648,7 +648,7 @@ private fun HostCard(
     }
 }
 
-/** 卡片唯一操作入口：更多图标 + 单一会话徽章；连接能力与已有会话统一收进菜单。 */
+/** Single point of entry for cards: “More” icon + single session badge; integrate connection capabilities and existing sessions into a unified menu. */
 @Composable
 private fun HostMoreMenu(
     sessions: List<HostSessionItem>,
@@ -749,7 +749,7 @@ private fun HostMoreMenu(
                 )
             }
             sessions.forEach { item ->
-                // 三态标签：已连接绿 / 连接中橙 / 已断开灰（Sftp 会话恒为活跃）
+                // Three-state labels: connected green / connecting orange / disconnected gray (SFTP sessions are always active)
                 val statusLabel =
                     when (item) {
                         is HostSessionItem.Terminal ->
@@ -758,7 +758,7 @@ private fun HostMoreMenu(
                                 ConnStatus.CONNECTING, ConnStatus.AUTH -> s.connStatusConnecting
                                 else -> s.connStatusClosed
                             }
-                        // SFTP：有连接=活跃；断开保留（session=null）=已断开，可进 tab 重连
+                        // SFTP: has connection = active; disconnected retained (session=null) = disconnected; enter the tab to reconnect
                         is HostSessionItem.Sftp -> if (item.session != null) s.hostsActive else s.connStatusClosed
                         is HostSessionItem.Screen ->
                             if (item.isConnecting) s.connStatusConnecting else s.hostsActive
@@ -905,7 +905,7 @@ private fun HostMoreMenu(
     }
 }
 
-/** 同日只显示时分；跨日补月日，紧凑且足以区分会话。 */
+/** For entries on the same day, show only the hour and minute; for entries spanning multiple days, show the month and day to ensure the notation is compact yet sufficient to distinguish between sessions. */
 private fun formatSessionCreatedAt(millis: Long): String {
     if (millis <= 0L) return "--:--"
     val timeZone = TimeZone.currentSystemDefault()
@@ -921,7 +921,7 @@ private fun formatSessionCreatedAt(millis: Long): String {
     return if (created.date == today) time else "${pad(created.monthNumber)}-${pad(created.dayOfMonth)} $time"
 }
 
-/** 系统关键词 → 白色图标资源（有品牌图标的系统；其余回退 [systemIcon]）。 */
+/** System keywords → White icon resources (for systems with branded icons; otherwise, fall back to [systemIcon]). */
 internal fun systemSvg(system: String): DrawableResource? {
     val s = system.lowercase()
     return when {
@@ -954,7 +954,7 @@ internal fun systemSvg(system: String): DrawableResource? {
     }
 }
 
-/** 系统关键词 → 头像图标（Material 矢量：android/ios/bsd；未知系统返回 null 走云主机默认图）。 */
+/** System keywords → Avatar icons (Material vector: android/ios/bsd; return null for unknown systems and use the cloud host’s default icon). */
 internal fun systemIcon(system: String): ImageVector? {
     val s = system.lowercase()
     return when {
@@ -978,8 +978,8 @@ internal fun systemIcon(system: String): ImageVector? {
 }
 
 /**
- * 系统头像图标（恒白色）：品牌 SVG 优先 → Material 矢量（android/ios/bsd）→
- * 云主机默认图标兜底。首页卡片 / 终端 tab / SFTP 选主机统一走这里，保证渲染一致。
+ * System Avatar Icons (Constant White): Brand SVG preferred → Material vector (Android/iOS/BSD) →
+ * Use the default icon for cloud hosts as a fallback. This applies uniformly to the home page cards, the terminal tab, and the SFTP host selection—ensuring consistent rendering.
  */
 @Composable
 internal fun SystemAvatarIcon(
@@ -996,7 +996,7 @@ internal fun SystemAvatarIcon(
         Icon(vec, contentDescription = null, tint = Color.White, modifier = Modifier.size(size))
         return
     }
-    // 未知系统：默认云主机图标（白色）
+    // Unknown system: Default cloud host icon (white)
     Icon(
         painterResource(Res.drawable.host_cloud),
         contentDescription = null,
@@ -1006,9 +1006,9 @@ internal fun SystemAvatarIcon(
 }
 
 /**
- * 系统关键词 → 头像背景色（纯色，尽量贴近各系统官方品牌色）。识别顺序：
- * 先看主机「系统」字段，为空时用主机名兜底（如 mac.example.com → macOS）。
- * ubuntu 橙、debian 红、mac 黑……未知系统用品牌翠绿。
+ * System keywords → Avatar background color (solid color, as close as possible to each system’s official brand color). Recognition order:
+ * First, check the host’s “system” field; if it is empty, fallback to the hostname (e.g., mac.example.com → macOS).
+ * Ubuntu: orange; Debian: red; Mac: black… Use brand-specific emerald green for unknown systems.
  */
 internal fun systemColor(system: String): Color {
     val s = system.lowercase()
@@ -1041,7 +1041,7 @@ internal fun systemColor(system: String): Color {
             s.contains("nixos") ||
             s.contains("pop") ||
             s.contains("elementary") -> Color(0xFF475569)
-        // 未知系统：品牌翠绿（浅色主题 primary 同源），白色云主机图标在上面更醒目
+        // Unknown system: brand emerald green (same hue as light-theme primary); white cloud-host icon pops on it
         else -> Color(0xFF059669)
     }
 }

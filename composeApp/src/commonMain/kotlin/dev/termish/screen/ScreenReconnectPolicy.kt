@@ -8,11 +8,11 @@ internal const val SCREEN_VIDEO_STALL_TIMEOUT_MS = 6_000L
 internal const val SCREEN_RENDER_STALL_TIMEOUT_MS = 6_000L
 
 /**
- * TCP/SSH 本身可能保持 ESTABLISHED，但 direct-tcpip 的消费协程或中间链路已经
- * 停止推进。此时 EOF 永远不会到达，不能只靠 socket close 判定断线。
+ * TCP/SSH itself may remain in the ESTABLISHED state, but the consuming coroutine or intermediate link of `direct-tcpip` has already
+ * Stop advancing. At this point, EOF will never be reached, so you cannot rely solely on `socket.close` to detect a connection failure.
  *
- * 首帧给远端编码器更长的启动时间；一旦收到过视频，30fps 的正常帧间隔远小于
- * 1 秒，连续 6 秒无完整帧即可确定是假连接。
+ * Allow the remote encoder more time to launch for the first frame; once video is received, the normal frame interval of 30 fps is much shorter than
+ * 1 second; if there are no complete frames for 6 consecutive seconds, the connection can be determined to be spurious.
  */
 internal fun isScreenVideoStalled(
     nowMillis: Long,
@@ -26,7 +26,7 @@ internal fun isScreenVideoStalled(
     return baseline > 0L && nowMillis - baseline >= timeout
 }
 
-/** 网络持续收到视频但播放器没有再提交画面时，不能把 TCP 活跃误判为可用。 */
+/** When the network continues to receive video but the player is no longer committing frames, do not mistakenly classify TCP activity as available. */
 internal fun isScreenRenderingStalled(
     nowMillis: Long,
     lastRenderedAtMillis: Long,

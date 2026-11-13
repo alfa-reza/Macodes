@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.dp
 import dev.termish.ui.theme.StatusColors
 import kotlinx.coroutines.delay
 
-/** 连接页：活跃/历史会话列表（主机页同款卡片 + 搜索），点击重入终端，右侧断开。 */
+/** Connection page: List of active/historical sessions (same card layout as the host page + search); tap to re-enter the terminal; tap on the right to disconnect. */
 @Composable
 fun ConnectionsScreen(
     sessions: List<HostSessionItem>,
@@ -58,7 +58,7 @@ fun ConnectionsScreen(
     var query by remember { mutableStateOf("") }
     var searchExpanded by remember { mutableStateOf(false) }
     val searchFocusRequester = remember { FocusRequester() }
-    // 搜索展开后等入场动画开始再聚焦，键盘随之弹出
+    // Wait until the search results expand and the entrance animation begins before refocusing; the keyboard should then pop up.
     LaunchedEffect(searchExpanded) {
         if (searchExpanded) {
             delay(150)
@@ -85,7 +85,7 @@ fun ConnectionsScreen(
             TermishLargeHeader(
                 title = s.appTabConnections,
                 actions = {
-                    // 无会话时搜索无意义，图标不显示（与原有「有会话才显示搜索框」一致）
+                    // Search is meaningless when there is no session; the icon is not shown (consistent with the original behavior of “showing the search box only when a session is active”).
                     if (sessions.isNotEmpty()) {
                         IconButton(
                             onClick = {
@@ -223,7 +223,7 @@ fun ConnectionsScreen(
                                                     item.controller.status == ConnStatus.AUTH
                                             )
                                     if (isConnecting) {
-                                        // 连接中：状态点位置换小 spinner（与首页头像转圈同语义）
+                                        // Connection: Replace the status indicator with a small spinner (same meaning as the spinning avatar on the homepage).
                                         Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) {
                                             StatusSpinner(Modifier.size(14.dp))
                                         }
@@ -261,7 +261,7 @@ fun ConnectionsScreen(
                                 },
                                 trailingContent = {
                                     IconButton(onClick = { onClose(item) }) {
-                                        // 活跃 → 断开/关闭（断链图标）；已断开终端 → 从列表移除
+                                        // Active → Disconnect/Turn Off (broken chain icon); Disconnected Terminal → Remove from list
                                         if (active) {
                                             Icon(Icons.Default.LinkOff, contentDescription = s.connDisconnect)
                                         } else {
@@ -283,7 +283,7 @@ internal fun statusColor(
     linkLostSeconds: Int = 0,
 ): Color =
     when {
-        // 链路失联（会话保持中）：琥珀色，与终端页状态点/banner 同源
+        // Link lost (session retained): amber, same source as the terminal-screen status dot/banner
         status == ConnStatus.CONNECTED && linkLostSeconds >= LINK_LOST_THRESHOLD_SECONDS -> StatusColors.Warning
         status == ConnStatus.CONNECTED -> StatusColors.Connected
         status == ConnStatus.CONNECTING || status == ConnStatus.AUTH -> StatusColors.Warning

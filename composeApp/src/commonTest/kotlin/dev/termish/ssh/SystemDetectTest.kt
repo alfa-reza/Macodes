@@ -4,7 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/** 自动探测输出解析（Termius 式系统识别）。 */
+/** Automatic output detection and parsing (Termius-style system recognition). */
 class SystemDetectTest {
     @Test
     fun parsesOsReleaseId() {
@@ -53,7 +53,7 @@ class SystemDetectTest {
 
     @Test
     fun fallsBackToUnameLinux() {
-        // 无 /etc/os-release 的最小系统（alpine 容器、busybox 等）
+        // Minimal systems without /etc/os-release (Alpine containers, BusyBox, etc.)
         assertEquals("linux", detectSystemFromOutput("Linux"))
     }
 

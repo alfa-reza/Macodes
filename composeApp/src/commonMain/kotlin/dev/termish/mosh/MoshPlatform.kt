@@ -1,15 +1,15 @@
 package dev.termish.mosh
 
 /**
- * 阻塞式 UDP 套接字抽象（在 IO 线程/协程里使用）。
- * receive 返回 null 表示超时（用于驱动 SSP tick）。
+ * Blocking UDP socket abstraction (for use in I/O threads/coroutines).
+ * returns `null` to indicate a timeout (used as the SSP driver).
  *
- * 平台 send 结果：TOO_LARGE（EMSGSIZE）用于 MTU 降级反馈。
+ * Platform send result: TOO_LARGE (EMSGSIZE) is used for MTU fallback feedback.
  */
 
 internal enum class SendResult { OK, TOO_LARGE, FAILED }
 
-/** 收到的数据报。[congestionExperienced] 是 ECN CE 位标记（平台暂不提供，恒 false）。 */
+/** Received datagram. [congestionExperienced] is the ECN CE bit flag (not currently supported by the platform; always false). */
 internal class UdpDatagram(
     val data: ByteArray,
     val congestionExperienced: Boolean = false,
@@ -19,13 +19,13 @@ internal expect class MoshUdpSocket(
     ip: String,
     port: Int,
 ) {
-    /** 解析后的远端地址族是否为 IPv6：传输层据此选 MTU（mosh 按 sa_family 取值，
-     *  不能用未解析的 hostname 判断）。 */
+    /** Is the parsed remote address family IPv6? The transport layer selects the MTU based on this (mosh uses the value of `sa_family`,
+     *  (Do not rely on hostnames that have not been parsed for this determination.) */
     val isIpv6: Boolean
 
     fun send(data: ByteArray): SendResult
 
-    /** timeoutMillis 内未收到数据返回 null。 */
+    /** Returns null if no data is received within the timeoutMillis period. */
     fun receive(timeoutMillis: Int): UdpDatagram?
 
     fun close()

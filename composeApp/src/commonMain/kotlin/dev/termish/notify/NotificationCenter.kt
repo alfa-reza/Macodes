@@ -6,47 +6,47 @@ import dev.termish.util.TermLog
 import kotlin.concurrent.Volatile
 
 /**
- * 通知事件清单。每个事件有独立开关（设置页「通知」二级页可关），
- * 统一由 [NotificationCenter] 分发——业务方只调 post，不碰平台 API。
+ * List of notification events. Each event has its own switch (can be turned off on the “Notifications” subpage of the Settings page),
+ * Distributed uniformly via [NotificationCenter]—business teams only call `post` and do not interact with the platform API.
  */
 enum class NotificationEvent(
     val id: String,
 ) {
-    /** 连接意外断开（后台时）。 */
+    /** Unexpected disconnection (in the background). */
     CONNECTION_LOST("connection_lost"),
 
-    /** 自动重连耗尽仍失败。 */
+    /** Automatic reconnection still leads to failure after exhaustion. */
     RECONNECT_FAILED("reconnect_failed"),
 
-    /** SFTP 传输完成（预留）。 */
+    /** SFTP transfer complete (reserved). */
     TRANSFER_DONE("transfer_done"),
 
-    /** Agent 任务完成（预留：herdr 任务通知）。 */
+    /** Agent task completed (reserved: herdr task notification). */
     AGENT_TASK("agent_task"),
 }
 
 /**
- * 统一通知中心：总开关 + 事件开关 + 前后台过滤 + 平台分发。
- * App 启动时由 AppRoot 注入设置读取器与前后台状态。
+ * Unified Notification Center: master switch + event switches + foreground/background filtering + platform dispatch.
+ * When the app launches, AppRoot performs injection of the settings reader and the foreground and background states.
  */
 object NotificationCenter {
-    /** App 启动时注入（读取最新 AppSettings）。 */
+    /** Injection during launch (reads the latest AppSettings). */
     var settingsProvider: (() -> AppSettings)? = null
 
-    /** 前后台状态（AppRoot 经 observeAppLifecycle 维护）：前台不弹通知（有 UI banner）。 */
+    /** Foreground and background state (AppRoot maintained via `observeAppLifecycle`): Do not display notifications on the foreground (UI banner is present). */
     @Volatile
     var foreground: Boolean = true
 
-    /** 通知动作回调（AppRoot 注册）：「重新连接」动作触发时按 hostId 重连会话。 */
+    /** Notification action callback (registered in AppRoot): When the “Reconnect” action is triggered, reconnect the session based on the hostId. */
     var onReconnectRequest: ((hostId: String) -> Unit)? = null
 
-    /** 发通知：总开关/事件开关/前台过滤通过后交平台实现。 */
+    /** Send notifications: after the master switch/event switches/foreground filtering pass, hand off to the platform implementation. */
     fun post(
         event: NotificationEvent,
         title: String,
         body: String,
         id: Int = event.ordinal,
-        /** 动作按钮：非空时平台通知带「重新连接」动作（点击按 hostId 重连）。 */
+        /** Action button: When not empty, the platform notification includes a “Reconnect” action (tapping it reconnects based on the hostId). */
         hostId: String? = null,
     ) {
         if (foreground) {
@@ -67,7 +67,7 @@ object NotificationCenter {
     }
 }
 
-/** 平台实现：Android NotificationManager / iOS UNUserNotificationCenter。 */
+/** Platform implementation: Android NotificationManager / iOS UNUserNotificationCenter. */
 expect fun showPlatformNotification(
     id: Int,
     title: String,
@@ -75,7 +75,7 @@ expect fun showPlatformNotification(
     hostId: String?,
 )
 
-/** 打开系统通知设置页（设置页「通知」入口）。 */
+/** Open the system notification settings page (accessible via the “Notifications” entry in the Settings page). */
 expect fun openNotificationSettings()
 
 enum class NotificationPermissionState {
@@ -84,7 +84,7 @@ enum class NotificationPermissionState {
     DENIED,
 }
 
-/** 通知权限控制器：支持异步查询、申请以及系统设置返回后的状态刷新。 */
+/** Notification permission controller: supports async query, request, and status refresh after returning from system settings. */
 interface NotificationPermissionController {
     fun refresh(onResult: (NotificationPermissionState) -> Unit)
 

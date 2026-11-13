@@ -12,15 +12,15 @@ plugins {
 }
 
 // ---------------------------------------------------------------------------
-// ktlint：mavenCentral 的 CLI jar（JavaExec），不依赖插件门户（网络不稳）；
-// 规则读 .editorconfig，检查 composeApp 全部 Kotlin 源集
+// ktlint: a CLI JAR (JavaExec) from Maven Central that does not have any dependencies on the plugin portal (in case of unstable network connections);
+// The rule reads .editorconfig and checks all Kotlin source files in the composeApp directory.
 // ---------------------------------------------------------------------------
 val ktlintVersion = "1.5.0"
 val ktlintConfig = configurations.create("ktlint") {
     isCanBeConsumed = false
     isCanBeResolved = true
-    // ktlint-cli 发布 external/shadowed 两个 variant：选 shadowed（fat jar，
-    // 含全部依赖，JavaExec 可直接运行）
+    // ktlint-cli releases two variants: external and shadowed. Choose "shadowed" (for fat JARs,
+    // (Includes all dependencies; JavaExec can run it directly.)
     attributes {
         attribute(Attribute.of("org.gradle.dependency.bundling", String::class.java), "shadowed")
     }
@@ -30,10 +30,10 @@ dependencies {
 }
 
 // ---------------------------------------------------------------------------
-// 本地工作流统一入口（CI 与 Makefile 复用同一组任务，避免流程知识三处散落）
+// Unified entry point for local workflows (CI and Makefile reuse the same set of tasks, avoiding the fragmentation of workflow knowledge across three locations)
 // ---------------------------------------------------------------------------
 
-/** 支持 configuration cache 的多命令任务基类：通过注入的 ExecOperations 执行外部命令。 */
+/** A multi-command task base class that supports a configuration cache: executes external commands via injection of `ExecOperations`. */
 abstract class ExecTask @Inject constructor() : DefaultTask() {
     @get:Inject
     abstract val execOps: ExecOperations
@@ -46,12 +46,12 @@ abstract class ExecTask @Inject constructor() : DefaultTask() {
     }
 }
 
-/** 启动本地测试 sshd（幂等：已在监听则跳过）。集成测试按 22222 端口可用性自动跳过。 */
+/** Launch the local sshd test (idempotent: skip if there is a listener). Integration tests automatically skip based on port 22222 availability. */
 abstract class StartTestSshdTask @Inject constructor() : ExecTask() {
     @TaskAction
     fun start() {
-        // 与 scripts/test-sshd.sh 及集成测试保持一致（Termish_TEST_PORT 默认 22222）；
-        // 不可写死 2222——本机/CI 可能有其他服务占用（gitlab 等）导致误判已在监听
+        // Maintain consistency with scripts/test-sshd.sh and integration tests (Termish_TEST_PORT defaults to 22222);
+        // Do not hardcode the port—other services on the local machine or in CI (such as GitLab) may be using it, leading to a false positive that the port is already a listener.
         val port = System.getenv("Termish_TEST_PORT")?.toIntOrNull() ?: 22222
         val up = runCatching {
             java.net.Socket().use { it.connect(java.net.InetSocketAddress("127.0.0.1", port), 500) }
@@ -68,7 +68,7 @@ tasks.register<StartTestSshdTask>("startTestSshd") {
     description = "启动本地测试 sshd（127.0.0.1:22222），已在运行则跳过"
 }
 
-/** 传输层集成测试：自动启动 sshd 后跑 Android 本地 JVM 测试（按 sshd/mosh 可用性自我探测）。 */
+/** Transport layer integration test: Automatically launch sshd and then run Android local JVM tests (based on self-detection of sshd/mosh availability). */
 tasks.register("testIntegration") {
     group = "verification"
     description = "SSH/Mosh 集成测试（自动起 sshd；单测一拼跑）"
@@ -78,13 +78,13 @@ tasks.register("testIntegration") {
 project(":composeApp").tasks.configureEach {
     if (name == "testDebugUnitTest") {
         mustRunAfter(":startTestSshd")
-        // 集成测试依赖外部 sshd 状态，不能复用此前服务缺席时的测试结果。
+        // Integration tests depend on the external sshd status and cannot reuse test results from when the service was previously unavailable.
         outputs.upToDateWhen { false }
         outputs.doNotCacheIf("Tests depend on local SSH and screen servers") { true }
     }
 }
 
-/** 构建 + 安装 debug 到模拟器/设备并启动 App。 */
+/** Build and install the debug version on the emulator or device, then launch the app. */
 abstract class RunDebugTask @Inject constructor() : ExecTask() {
     @TaskAction
     fun launch() {
@@ -98,7 +98,7 @@ tasks.register<RunDebugTask>("runDebug") {
     dependsOn(":composeApp:installDebug")
 }
 
-/** 原生服务构建与资源打包：开发机交叉编译，远端只需运行可执行文件。 */
+/** Native service build and resource packaging: Cross-compile on the development machine; on the remote machine, simply run the executable file. */
 val agentBridgeRustBuild = tasks.register<ExecTask>("agentBridgeRustBuild") {
     group = "build"
     inputs.files(fileTree("agentBridge/rust") { exclude("target/**", ".gitignore") })
@@ -155,7 +155,7 @@ tasks.register<ExecTask>("agentBridgeTest") {
     doLast { run("sh", "scripts/service-test.sh", "agentBridge") }
 }
 
-/** 卸载后重装：解决设备上旧签名/旧版本冲突（INSTALL_FAILED_UPDATE_INCOMPATIBLE）。 */
+/** Uninstall and reinstall: Resolves conflicts with old signatures or versions on the device (INSTALL_FAILED_UPDATE_INCOMPATIBLE). */
 abstract class ReinstallDebugTask @Inject constructor() : ExecTask() {
     @TaskAction
     fun reinstall() {
@@ -170,7 +170,7 @@ tasks.register<ReinstallDebugTask>("reinstallDebug") {
     dependsOn(":composeApp:assembleDebug")
 }
 
-/** 校验签名机密就绪（.env 或进程环境变量），供本地 release 前置检查。 */
+/** Verify that the signature secrets are ready (.env or process environment variables) for pre-release checks on the local machine. */
 abstract class CheckSigningSecretsTask @Inject constructor() : DefaultTask() {
     @get:Internal
     abstract val envFilePath: org.gradle.api.provider.Property<String>
@@ -227,7 +227,7 @@ tasks.register<CheckSigningSecretsTask>("checkSigningSecrets") {
     rootPath.set(layout.projectDirectory.asFile.absolutePath)
 }
 
-/** ktlint 检查/格式化（规则读 .editorconfig，覆盖 composeApp 全部 Kotlin 源集）。 */
+/** ktlint checking/format (rules read from .editorconfig, applied to all Kotlin source files in composeApp). */
 fun ktlintTask(name: String, group: String, format: Boolean) =
     tasks.register<JavaExec>(name) {
         this.group = group
@@ -235,7 +235,7 @@ fun ktlintTask(name: String, group: String, format: Boolean) =
         mainClass.set("com.pinterest.ktlint.Main")
         if (format) args("--format")
         args("--relative", "composeApp/src")
-        // configuration cache：参数固定，无需额外配置
+        // configuration cache: Parameters are fixed; no additional configuration is required.
         outputs.upToDateWhen { false }
     }
 

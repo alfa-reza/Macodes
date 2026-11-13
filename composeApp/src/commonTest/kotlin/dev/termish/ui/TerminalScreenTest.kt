@@ -4,7 +4,7 @@ import dev.termish.data.Host
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** 终端页会话 tab 标题逻辑：优先自定义名称，未起名回退 user@host。 */
+/** Terminal screen session tab title logic: Give priority to custom names; if no name is provided, fall back to `user@host`. */
 class TerminalScreenTest {
     private fun host(
         name: String,
@@ -25,14 +25,14 @@ class TerminalScreenTest {
 
     @Test
     fun unnamedFallsBackToUserAtHost() {
-        // 未起名：保存时 name 回退为 hostname → 显示 user@host（信息量更大）
+        // Unnamed: When saving, "name" reverts to "hostname" → shows "user@host" (provides more info)
         assertEquals("root@192.168.1.10", sessionTabTitle(host("192.168.1.10", "192.168.1.10")))
         assertEquals("alice@nas.local", sessionTabTitle(host("nas.local", "nas.local", username = "alice")))
     }
 
     @Test
     fun nameEqualToHostnameButDifferentUserShowsUserAtHost() {
-        // 名称与主机名相同但用户不同：name 视为未起名，仍显示 user@host
+        // If the name matches the hostname but the user is different: "name" is treated as unnamed and still shows "user@host"
         assertEquals("root@devbox", sessionTabTitle(host("devbox", "devbox")))
     }
 
@@ -41,7 +41,7 @@ class TerminalScreenTest {
         assertEquals("root@server", sessionTabTitle(host("", "server")))
     }
 
-    // ---------- 同主机会话序号（当前 tab 列表位置：1、2、3…删除自动重排） ----------
+    // ---------- Session ID on the same host (current tab list position: 1, 2, 3… Deleting will automatically reorder) ----------
 
     @Test
     fun seqShownWhenMultipleSessions() {
@@ -52,7 +52,7 @@ class TerminalScreenTest {
 
     @Test
     fun seqHiddenForSingleSession() {
-        // 同主机只有一个会话时不显示括号（默认参数）
+        // Do not show parentheses when there is only one session on the host (default parameter)
         assertEquals("我的服务器", sessionTabTitle(host("我的服务器", "192.168.1.10"), seq = 1))
         assertEquals("root@server", sessionTabTitle(host("", "server"), seq = 3))
     }

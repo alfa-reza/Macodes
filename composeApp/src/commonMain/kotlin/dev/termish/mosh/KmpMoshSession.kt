@@ -12,29 +12,29 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** mosh 会话退出原因。协议层不产 UI 文案（保持零 UI 依赖），UI 层据此翻译。 */
+/** Reasons for mosh session termination. The protocol layer does not generate UI text (maintaining zero UI dependencies); the UI layer translates accordingly. */
 enum class MoshExitReason {
-    /** 会话事件循环协程异常退出（底层消息见 TermLog）。 */
+    /** Session event loop coroutine terminated with an exception (see TermLog for underlying messages). */
     SESSION_ERROR,
 
-    /** still_connecting 阶段 15s 未收到对端首包（UDP 端口不可达等）。 */
+    /** "still_connecting" phase: No first packet received from the other end after 15 seconds (e.g., UDP port unreachable). */
     CONNECT_TIMEOUT,
 
-    /** 正常关闭（对端 ack shutdown / 我方确认对端 shutdown / shutdown 超时）。 */
+    /** Normal shutdown (remote ACK shutdown / local confirmation of remote shutdown / shutdown timeout). */
     NORMAL,
 }
 
 /**
- * 纯 Kotlin 实现的 mosh 客户端会话（SSP 协议，不依赖原生 mosh-client）。
+ * The Mosh client session implementation is entirely in Kotlin (SSP protocol, no dependency on the native mosh-client).
  *
- * 线程模型：transport 非线程安全，全部访问限定在事件循环协程内。
- * UI 线程的输入/resize/close 与 socket 收包都经 [events] Channel 汇入，
- * 收包协程只负责阻塞读 socket 并投递，保证输入即时唤醒（不等 receive 超时）。
+ * Thread model: `transport` is not thread-safe; all access must be confined to event-loop coroutines.
+ * Input, resize, and close events on the UI thread, as well as incoming socket packets, are all routed through the [events] channel,
+ * The packet-receiving coroutine is only responsible for blocking on the socket read and delivering the data, ensuring that the input wakes up immediately (without waiting for a `receive` timeout).
  *
- * 渲染模型：直接维护服务端状态的影子终端，状态推进时把影子 buffer
- * 内容同步给 UI buffer（[onStateUpdate]），不走 ANSI 字节流。
+ * Rendering model: A shadow terminal that directly maintains server-side state; when the state advances, the shadow buffer
+ * Sync content to the UI buffer ([onStateUpdate]); do not use the ANSI byte stream.
  */
-@Suppress("ktlint:standard:property-naming") // mosh 端口轮换参数
+@Suppress("ktlint:standard:property-naming") // mosh port rotation parameters
 class KmpMoshSession(
     ip: String,
     port: Int,
@@ -42,25 +42,25 @@ class KmpMoshSession(
     columns: Int,
     rows: Int,
     private val scope: CoroutineScope,
-    /** 最新影子状态（在会话协程里回调；实现方应拷贝后切回主线程渲染）。 */
+    /** Latest shadow state (callback in a session coroutine; the implementation should copy it and then switch back to the main thread to render). */
     private val onStateUpdate: (ShadowTerminalView) -> Unit,
     private val onExit: (MoshExitReason) -> Unit,
-    /** 收到对端第一个有效包（连接建立，对应协议 still_connecting 翻转）时回调一次。 */
+    /** Callback once when the first valid packet is received from the other end (connection established; the `still_connecting` flag in the corresponding protocol is flipped). */
     private val onPeerConnected: () -> Unit = {},
-    /** 链路健康度：距上次收到对端包的秒数，值变化才回调（空闲心跳约 3s 一次）。
-     *  对应协议通知的 "Last contact Ns ago"。 */
+    /** Link health: The number of seconds since the last packet was received from the other end; a callback is triggered only when the value changes (idle heartbeats occur approximately every 3 seconds).
+     *  Corresponds to the protocol notification “Last contact Ns ago.” */
     private val onLinkStatus: (Int) -> Unit = {},
 ) {
-    /** 供 UI 读取的影子状态视图。 */
+    /** A shadow state view for the UI to read. */
     class ShadowTerminalView internal constructor(
         internal val shadow: ShadowTerminal,
     ) {
-        // 全限定名是刻意的：协议层纪律禁止 import dev.termish.term（见 AGENTS.md），
-        // 但视图必须向 UI 暴露影子 buffer 类型——全限定是唯一不违纪律的写法。
+        // The fully qualified names are intentional: protocol-level rules prohibit `import dev.termish.term` (see AGENTS.md),
+        // However, the view must expose the shadow buffer type to the UI—fully qualified notation is the only acceptable way to do this.
         val buffer: dev.termish.term.TerminalBuffer get() = shadow.buffer
         val echoAck: ULong get() = shadow.echoAck
 
-        /** 影子 buffer 读写锁：UI 拷贝前先拿锁，与会话协程写入互斥。 */
+        /** Shadow buffer read/write lock: acquire the lock before the UI copies; mutually excludes with writes from the session coroutine. */
         internal val lock: kotlinx.coroutines.sync.Mutex get() = shadow.lock
     }
 
@@ -82,7 +82,7 @@ class KmpMoshSession(
         object Close : Event()
     }
 
-    // ---- mosh 客户端端口轮换 ----
+    // ---- mosh Client Port Rotation ----
     private val PORT_HOP_INTERVAL = 10_000L
     private val MAX_OLD_SOCKET_AGE = 60_000L
     private val MAX_PORTS_OPEN = 10
@@ -105,8 +105,8 @@ class KmpMoshSession(
 
     private val transport =
         MoshTransport(
-            // MTU 地址族按解析结果取（mosh set_MTU(sa_family)）：域名解析到 AAAA 时
-            // 用 hostname 字符串判断会错选 IPv4 MTU，隧道/PPPoE 路径上可能丢包
+            // The MTU address family is determined based on the parsing result (mosh set_MTU(sa_family)): when a domain resolves to an AAAA record,
+            // Using a hostname string to determine the MTU may result in an incorrect IPv4 MTU selection, and packet loss may occur on the tunnel/PPPoE path.
             ipv6Path = sockets.first().isIpv6,
             initialCols = columns,
             initialRows = rows,
@@ -121,7 +121,7 @@ class KmpMoshSession(
                 }
             },
             onNewState = { shadow ->
-                // 确认态到达：echo_ack 收编已确认输入，存活预测在新确认态上重放
+                // Confirmation state reached: echo_ack has acknowledged the input; survival prediction replays on the new confirmation state
                 prediction.onConfirmed(shadow)
                 pushToUi(prediction.currentForDisplay() ?: shadow)
             },
@@ -137,7 +137,7 @@ class KmpMoshSession(
     private var clipboardCallback: (String) -> Unit = {}
     private var loopJob: Job? = null
 
-    /** 仅事件循环线程读写；close 后由循环线程置 false。跨线程读（close/UI）走 @Volatile。 */
+    /** Read and write operations are performed only by the event thread; after `close`, the event thread sets the value to `false`. Cross-thread reads (`close`/UI) use `@Volatile`. */
     @Volatile
     private var active = true
 
@@ -156,8 +156,8 @@ class KmpMoshSession(
 
     fun start() {
         startedAt = nowMs()
-        transport.setSendDelay(1) // mosh 客户端：击键尽快发出（默认 8ms 是服务端语义）
-        // 初始窗口尺寸随第一帧上报（初始 Resize 入队）
+        transport.setSendDelay(1) // mosh client: Send keystrokes as quickly as possible (the default 8 ms is server-side semantics)
+        // The initial window size is reported with the first frame (initial resize is queued).
         events.trySend(Event.Resize(initialCols, initialRows))
         launchReader(sendSocket)
         loopJob =
@@ -174,20 +174,20 @@ class KmpMoshSession(
             }
     }
 
-    /** 每个 socket 一个收包协程：阻塞读，投递后由事件循环统一处理。 */
+    /** One packet-receiving coroutine per socket: blocking on read; after delivery, the event loop handles it uniformly. */
     private fun launchReader(s: MoshUdpSocket) {
         val job =
             scope.launch(ioDispatcher()) {
                 try {
-                    // 取消检查：iOS 上 close 后 receive 走超时返回 null，不检查的话
-                    // 协程在 session 关闭后永久 60s 空转（coroutineContext.isActive：
-                    // 避开与本类 isActive() 成员函数的命名冲突）
+                    // Cancel check: On iOS, `receive` returns `null` due to a timeout after `close`; if this check is removed,
+                    // the coroutine idles for up to 60 seconds after the session closes (coroutineContext.isActive:
+                    // (Avoid naming conflicts with the isActive() member function in this class.)
                     while (coroutineContext.isActive) {
                         val dg = s.receive(60_000) ?: continue
                         events.send(Event.Packet(dg.data, dg.congestionExperienced))
                     }
                 } catch (_: Exception) {
-                    // socket 关闭或错误：事件循环靠定时器/心跳退出，无需额外通知
+                    // Socket closed or error: The event loop exits via a timer/heartbeat; no additional notification is required.
                 }
             }
         socketJobs.addLast(job)
@@ -198,13 +198,13 @@ class KmpMoshSession(
             val waitMs =
                 transport.waitTime().let {
                     when {
-                        it == Int.MAX_VALUE -> 1000L // 无定时需求时周期醒来驱动心跳
+                        it == Int.MAX_VALUE -> 1000L // Wake up periodically to trigger a heartbeat when no timer is required
                         it <= 0 -> 0L
                         else -> it.coerceAtMost(1000).toLong()
                     }
                 }
-            // 发送/ack 已到期（waitMs==0）时不睡眠：withTimeoutOrNull(1) 在协程
-            // 调度下会被舍入到数 ms，白等（mosh select(0) 是立即返回的）
+            // Do not sleep when send/ack has expired (waitMs==0): withTimeoutOrNull(1) in a coroutine
+            // The next scheduling will be rounded to the nearest few milliseconds; don't wait (mosh select(0) returns immediately).
             val ev =
                 if (waitMs <= 0L) {
                     events.tryReceive().getOrNull()
@@ -218,43 +218,43 @@ class KmpMoshSession(
                         transport.processPacket(pkt, ev.congestionExperienced)
                         if (!peerSeen) {
                             peerSeen = true
-                            // 首个有效包 = 连接建立（此前 UI 停留在「连接中」）
+                            // First valid packet = connection established (prior to this, the UI remained at “Connecting”)
                             onPeerConnected()
                         }
                     }
                 }
                 is Event.Input -> {
                     transport.pushBytes(ev.data)
-                    // 本地预测回显：高 RTT 时按键先在确认态分叉上渲染，
-                    // echo_ack 确认后收编——预测引擎的简化版
+                    // Local prediction echo: When RTT is high, key presses are first rendered on the confirmation state branch,
+                    // echo_ack: incorporated after confirmation—a simplified version of the prediction engine
                     if (prediction.onUserInput(ev.data, transport.sendIntervalMs(), transport.lastSentNum())) {
                         prediction.currentForDisplay()?.let { pushToUi(it) }
                     }
                 }
                 is Event.Resize -> {
                     transport.pushResize(ev.cols, ev.rows)
-                    prediction.reset() // 几何失效，等远端确认态（mosh process_resize → reset）
+                    prediction.reset() // Geometric failure; awaiting remote confirmation (mosh process_resize → reset)
                 }
                 is Event.Close -> transport.startShutdown()
-                null -> {} // 超时，到点 tick
+                null -> {} // Timeout, tick
             }
             transport.tick()
             maybeHopPort()
 
-            // 预测悬挂过久（服务器未确认或期间有输出）：丢弃并回确认态
+            // Prediction indicates that the request will be pending for too long (the server has not confirmed or there was output in the meantime): Discard and return to the confirmed state
             if (prediction.glitchTimedOut()) {
                 prediction.dropPrediction()
                 pushToUi(transport.latestRemote)
             }
 
-            // mosh 漫游核心：已连接后客户端【永不】主动超时退出
-            // 15s shutdown 仅限 still_connecting（从未收到对端状态）。断网期间靠
-            // transport 重发（ACTIVE_RETRY_TIMEOUT 窗口）+ 端口轮换维持，网络恢复
-            // （WiFi↔蜂窝切换、休眠唤醒、过隧道）即无缝续传；服务端同样永不超时
-            // （mosh-server 的 60s 仅限从未有客户端连上）。
+            // mosh Roaming Core: Once there is a connection, the client will [never] actively timeout and exit
+            // 15s shutdown applies only to `still_connecting` (never received a status from the other end). During network outages, rely on
+            // Transport retry (within the ACTIVE_RETRY_TIMEOUT window) + port rotation to maintain connectivity; network resumption
+            // (WiFi ↔ cellular toggling, sleep/wake up, tunneling) means seamless resume; the server also never experiences a timeout.
+            // (The 60s in mosh-server applies only when no client has ever connected.)
 
-            // 链路健康度上报（mosh NotificationEngine "Last contact Ns ago" 的简化版）：
-            // 空闲时循环≤1s 醒一次，秒数变化才回调；双方心跳约 3s，正常值 0~3
+            // Link health reporting (simplified version of mosh NotificationEngine "Last contact Ns ago"):
+            // In idle mode, loop ≤1s and wake up once; callback only triggered when the count changes; both sides’ heartbeats are approximately 3s, with a normal range of 0–3.
             if (peerSeen) {
                 val lostSecs = ((nowMs() - transport.lastHeardMs()) / 1000).toInt()
                 if (lostSecs != lastReportedLostSecs) {
@@ -263,16 +263,16 @@ class KmpMoshSession(
                 }
             }
 
-            // 15s 无对端应答视为连接失败（UDP 端口不通等，仅限未连上时）
+            // If there is no response from the other end within 15 seconds, the connection is considered a failure (e.g., UDP port unreachable; applies only when a connection cannot be established).
             if (!peerSeen && nowMs() - startedAt > 15_000) {
                 active = false
                 cleanup()
                 onExit(MoshExitReason.CONNECT_TIMEOUT)
                 return
             }
-            // 正常关闭路径：对端 ack 了我们的 shutdown，或我们已确认对端 shutdown——
-            // 都算干净退出（SSP 关闭握手语义：shutdown_acknowledged /
-            // counterparty_shutdown_ack_sent）
+            // Normal shutdown path: The other end has acknowledged our shutdown, or we have confirmed the other end’s shutdown—
+            // All are considered clean exits (SSP shutdown handshake semantics: shutdown_acknowledged /
+            // counterparty_shutdown_ack_sent)
             if ((transport.shutdownInProgress && transport.shutdownAcknowledged()) ||
                 transport.counterpartyShutdownAckSent()
             ) {
@@ -291,13 +291,13 @@ class KmpMoshSession(
     }
 
     /**
-     * mosh Connection::send 的客户端端口轮换：
-     * 10s 无对端 ack 且 10s 没换过源端口 → 换新 socket；旧 socket 保留收包，
-     * 新端口稳定 60s 后清掉旧的（prune_sockets），最多同时开 10 个。
+     * Client port rotation for mosh Connection::send:
+     * If no acknowledgment is received from the peer within 10 seconds and the source port has not changed within 10 seconds → create a new socket; the old socket continues to receive packets,
+     * Clear old sockets (prune_sockets) after the new port has been stable for 60 seconds; allow a maximum of 10 open sockets simultaneously.
      */
     private fun maybeHopPort() {
         val now = nowMs()
-        // 先剪除：最后一次 hop 后稳定超过 60s，说明链路已恢复，只留最新端口
+        // First, filter out: If the connection remains stable for more than 60 seconds after the last hop, it indicates that the link has resumed; only keep the latest port.
         if (sockets.size > 1 && now - lastHopAt >= MAX_OLD_SOCKET_AGE) {
             while (sockets.size > 1) {
                 val old = sockets.removeFirst()
@@ -356,7 +356,7 @@ class KmpMoshSession(
     fun close() {
         if (!active) return
         if (!peerSeen) {
-            // 从未收到对端任何数据报：没有握手可言，直接结束
+            // Never received any data packets from the other end: no handshake occurred; the connection terminated immediately.
             active = false
             cleanup()
             onExit(MoshExitReason.NORMAL)

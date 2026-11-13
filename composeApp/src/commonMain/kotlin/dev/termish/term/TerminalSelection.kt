@@ -1,7 +1,7 @@
 package dev.termish.term
 
 /**
- * 文本选择：基于缓冲的绝对行坐标。用于终端内的长按/拖动选择与复制。
+ * Text selection: Absolute row coordinates based on buffering. Used for long press/drag selection and copying within the terminal.
  */
 class TerminalSelection(
     private val buffer: TerminalBuffer,
@@ -82,9 +82,9 @@ class TerminalSelection(
                     }
                     sbRow.toString().trimEnd()
                 }
-            // wrapped 是行尾标记：上一行自动折行时置位。
-            // 续行直接接续上一段，不插入换行；但选区若从续行中间开始，
-            // 则以该行为新段落起始（前面未选中的内容不接进来）。
+            // "wrapped" is an end-of-row marker: set when the previous row is automatically wrapped.
+            // Continuation lines directly continue the previous segment without inserting a line break; but if the selection starts in the middle of a continuation line,
+            // Treat that row as the start of a new segment (unselected preceding content is not included).
             if (r > r1 && buffer.absLine(r - 1).wrapped) {
                 sb.append(rowText)
             } else {

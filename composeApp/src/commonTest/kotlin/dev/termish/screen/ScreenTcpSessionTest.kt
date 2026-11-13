@@ -34,7 +34,7 @@ class ScreenTcpSessionTest {
         val second = ByteArray(130_000) { (it * 31).toByte() }
         val stream = byteArrayOf('T'.code.toByte(), 'H'.code.toByte(), 'S'.code.toByte(), '1'.code.toByte(), 2) + frame(first) + frame(second)
 
-        // 一字节一推覆盖状态头/长度头/载荷全部跨 read；尾部一次推覆盖粘包。
+        // One byte per push covers the status header, length header, and entire payload across a single read; a single push at the end covers packet concatenation.
         stream.copyOfRange(0, 17).forEach { parser.push(byteArrayOf(it)) }
         parser.push(stream.copyOfRange(17, stream.size))
 

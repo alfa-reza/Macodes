@@ -36,8 +36,8 @@ import dev.termish.data.Host
 import dev.termish.util.monospaceFontFamily
 
 /**
- * New SFTP connection 覆盖层：盖在当前页面之上（非压栈导航）。
- * Header = X + 标题；下方 hosts 列表样式与首页一致，仅可点选。
+ * New SFTP connection overlay: appears on top of the current screen (not a stack-based navigation).
+ * Header = X + Title; the "hosts" list below follows the same style as the homepage and is clickable only.
  */
 @Composable
 fun SftpHostPickerOverlay(
@@ -56,8 +56,8 @@ fun SftpHostPickerOverlay(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = onDismiss) {
-                    // 显式 tint：Dialog 窗口的 LocalContentColor 是平台默认（黑），
-                    // 不指定会与 App 深色主题不匹配（用户反馈：深色主题下叉号是黑的）
+                    // Explicit tint: The `LocalContentColor` of the Dialog window is the platform default (black),
+                    // ...(user feedback: in dark theme the ✕ is black)
                     Icon(
                         Icons.Filled.Close,
                         contentDescription = s.navBack,
@@ -72,7 +72,7 @@ fun SftpHostPickerOverlay(
                 )
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            // 分组标题（与首页「我的主机」同款样式，左距对齐卡片 8dp）
+            // Group Headings (same style as “My Hosts” on the homepage; left-aligned cards with 8dp padding)
             Text(
                 s.sftpSectionTitle,
                 style = MaterialTheme.typography.labelLarge,
@@ -88,7 +88,7 @@ fun SftpHostPickerOverlay(
     }
 }
 
-/** 选主机列表行：样式与首页卡片一致（头像 + IP + 连接详情），仅可点选。 */
+/** Host list rows: Style consistent with the home page cards (avatar + IP + connection details); clickable only. */
 @Composable
 private fun SftpHostRow(
     host: Host,
@@ -96,8 +96,8 @@ private fun SftpHostRow(
 ) {
     val s = LocalAppStrings.current
     val sys = host.system.ifBlank { host.hostname }
-    // 第一行：主机名（alias）优先，空则回退地址——与首页主机卡片一致
-    // （用户反馈：选择器显示 IP 而非主机名）
+    // First row: Hostname (alias) takes priority; if empty, fall back to the address—consistent with the host card on the homepage
+    // (User feedback: The selector shows the IP address instead of the host name.)
     val title = host.name.ifBlank { host.hostname }
     val address = if (host.port != 22) "${host.hostname}:${host.port}" else host.hostname
     val detail =
@@ -109,7 +109,7 @@ private fun SftpHostRow(
                 append(", ")
                 append(host.system)
             }
-            // 地址并入详情行：同名主机可区分、确认连的是哪台
+            // Include the address in the details row: Hosts with the same name can be distinguished, confirming which one is connected.
             append(", ")
             append(address)
         }

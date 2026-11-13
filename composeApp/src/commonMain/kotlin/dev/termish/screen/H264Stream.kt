@@ -1,32 +1,32 @@
 package dev.termish.screen
 
 /**
- * H.264 Annex-B 字节流解析（纯 Kotlin，零平台依赖）：
- * - 按 start code（00 00 01 / 00 00 00 01）切分 NAL 单元
- * - 提取 SPS（nal_type=7）/ PPS（nal_type=8）——解码器 CSD 必需
- * - 识别关键帧（IDR，nal_type=5）与帧边界
+ * H.264 Annex-B Byte Stream Parsing (Pure Kotlin, Zero Platform Dependencies):
+ * - Split NAL units based on start code (00 00 01 / 00 00 00 01)
+ * - Extract SPS (nal_type=7) / PPS (nal_type=8) — required for the CSD decoder
+ * - Identify keyframes (IDR, nal_type=5) and frame bounds
  *
- * 远端（ffmpeg -f h264 -）输出裸 Annex-B：SPS/PPS 周期性重发
- * （ffmpeg 默认每个关键帧前携带），解码器可从流中任意点接入。
+ * Remote (ffmpeg -f h264 -) has a raw Annex-B output: SPS/PPS periodic retransmission
+ * (ffmpeg includes this by default before every keyframe), and the decoder can enter the stream at any point.
  */
 object H264Stream {
-    /** 一个 NAL 单元：类型 + 载荷（不含 start code）。 */
+    /** One NAL unit: type + payload (excluding start code). */
     data class Nal(
         val type: Int,
         val data: ByteArray,
     )
 
     /**
-     * 从字节流中切出完整 NAL 单元；返回 null = 需更多数据。
-     * 内部用字节数组缓冲（推流 read 每块 64KB，逐字节装箱的 ArrayList<Byte>
-     * 每秒制造数百万垃圾对象——30fps 推流下 GC 压力会让画面卡顿）。
+     * Extract complete NAL units from the byte stream; returns null if more data is needed.
+     * Internal byte-array buffering (push stream reads 64KB per chunk, byte-by-byte boxing into an `ArrayList<Byte>`
+     * Generates millions of garbage objects per second—GC pressure at 30 fps during streaming can cause frame stuttering).
      */
     class AnnexBParser {
         private var buf = ByteArray(4096)
         private var size = 0
         private var startCodeLen = 0
 
-        /** 追加数据并尝试取出下一个 NAL；空返回 null（剩余留在缓冲，[drain] 继续取）。 */
+        /** Append data and attempt to extract the next NAL; returns null when empty (the remainder stays in the buffer; [drain] continues extracting). */
         fun push(bytes: ByteArray): Nal? {
             ensure(size + bytes.size)
             bytes.copyInto(buf, size)
@@ -34,7 +34,7 @@ object H264Stream {
             return next()
         }
 
-        /** 不追加数据，从现有缓冲继续提取 NAL（提取后剩余缓冲等下次数据）。 */
+        /** Do not append data; continue extracting NALs from the existing buffer (the remaining buffer after extraction is reserved for the next data). */
         fun drain(): Nal? = next()
 
         private fun ensure(need: Int) {
@@ -44,13 +44,13 @@ object H264Stream {
             buf = buf.copyOf(cap)
         }
 
-        /** 从缓冲中尝试提取一个 NAL；数据不足返回 null（保留缓冲）。 */
+        /** Attempt to extract a NAL from the buffer; if insufficient data is available, return null (retain the buffer). */
         private fun next(): Nal? {
-            // 1. 确保缓冲开头是 start code（丢弃杂散字节）
+            // 1. Ensure the buffering begins with "start code" (discard stray bytes)
             while (true) {
                 val idx = findStartCode(0)
                 if (idx < 0) {
-                    // 无完整 start code：保留末尾最多 3 字节（可能是 start code 前缀）
+                    // No complete "start code": Retain up to 3 bytes at the end (which may be a "start code" prefix).
                     trimTail(3)
                     return null
                 }
@@ -58,9 +58,9 @@ object H264Stream {
                     buf.copyInto(buf, 0, idx, size)
                     size -= idx
                 }
-                // 4 字节 start code 判定须看 buf[0..2] 全 0：buf[2]==1 时是 3 字节
-                // start code 后紧跟 NAL 头（头字节恰为 0x01 时 buf[3] 也为 1，
-                // 会被误判成 4 字节、吃掉 NAL 头一字节导致该 NAL 损坏）
+                // To determine a 4-byte start code, check if buf[0..2] is all 0s: if buf[2] == 1, it is a 3-byte start code.
+                // "start code" is immediately followed by an NAL header (when the first byte is exactly 0x01, buf[3] is also 1,
+                // (It may be misinterpreted as 4 bytes, causing the NAL header’s first byte to be dropped and resulting in a corrupted NAL.)
                 startCodeLen =
                     if (size >= 4 &&
                         buf[0].toInt() == 0 &&
@@ -71,14 +71,14 @@ object H264Stream {
                     } else {
                         3
                     }
-                // 2. 找下一个 start code 作为 NAL 结束
+                // 2. Find the next "start code" to end the NAL
                 val nextIdx = findStartCode(startCodeLen)
                 if (nextIdx < 0) {
-                    // 尚未凑齐完整 NAL：保留全部缓冲（含 start code）等更多数据
+                    // The complete NAL has not yet been assembled: retain all buffering (including start code) and other data.
                     return null
                 }
                 if (nextIdx == startCodeLen) {
-                    // 连续 start code（空洞）：跳过前一个，重试
+                    // Consecutive "start code" (empty): Skip the previous one and retry
                     buf.copyInto(buf, 0, startCodeLen, size)
                     size -= startCodeLen
                     continue
@@ -116,18 +116,18 @@ object H264Stream {
         }
     }
 
-    /** SPS/PPS 字节（Annex-B 形式，喂解码器 CSD）。 */
+    /** SPS/PPS bytes (Annex-B format, fed to the CSD decoder). */
     data class ParameterSets(
         val sps: ByteArray?,
         val pps: ByteArray?,
     )
 
-    /** 从完整 Annex-B 流中提取 SPS/PPS（含 start code 前缀，供 MediaCodec CSD）。 */
+    /** Extract SPS/PPS from the complete Annex-B stream (including the “start code” prefix, for MediaCodec CSD). */
     fun extractParameterSets(annexB: ByteArray): ParameterSets {
         var sps: ByteArray? = null
         var pps: ByteArray? = null
         val parser = AnnexBParser()
-        // push 返回值也是 NAL（首个），不能丢；随后 drain 缓冲剩余
+        // The `push` return value is also NAL (the first one); it must not be omitted. Subsequently, `drain` flushes the remaining buffer.
         var nal = parser.push(annexB)
         while (nal != null) {
             when (nal.type) {
@@ -151,11 +151,11 @@ object H264Stream {
     }
 
     /**
-     * 帧内是否含 IDR NAL（nal_type=5）。
+     * Does the frame contain an IDR NAL (nal_type=5)?
      *
-     * 换面重建后用缓存参数集立即 configure，起播必须等 IDR：P 帧依赖前置
-     * 参考帧，喂给新解码器不产生画面（部分设备直接报错）。远端 keyint≈0.5s，
-     * 等到 IDR 的代价可控，且不依赖远端在关键帧重复 SPS/PPS。
+     * After the surface is rebuilt, immediately configure using the cached parameter sets; playback must wait for IDR: P-frames depend on prior reference
+     * Reference frames fed to the new decoder do not produce an image (some devices report an error directly). Remote keyint ≈ 0.5s,
+     * Wait until the cost of IDR is manageable and does not have any dependency on remote servers to repeat SPS/PPS at keyframes.
      */
     fun containsIdr(annexB: ByteArray): Boolean {
         var i = 0
@@ -179,10 +179,10 @@ object H264Stream {
     }
 
     /**
-     * 将一个完整 Annex-B access unit 转成 Apple/AVCC 使用的 length-prefixed sample。
-     * 每个 NAL 前的 00 00 01 / 00 00 00 01 会替换为 4 字节大端长度；空 NAL
-     * 会被忽略。输入不含 start code 或长度溢出时返回 null，避免把损坏帧交给
-     * 平台解码器。
+     * Convert a complete Annex-B access unit into a length-prefixed sample used by Apple/AVCC.
+     * The 00 00 01 / 00 00 00 01 preceding each NAL will be replaced with a 4-byte big-endian length; empty NAL
+     * Will be ignored. Returns null if the input does not contain "start code" or exceeds the length overflow, to avoid passing a corrupted frame to
+     * Platform decoder.
      */
     fun toAvccSample(annexB: ByteArray): ByteArray? {
         if (annexB.size < 4) return null
@@ -217,13 +217,13 @@ object H264Stream {
         return output
     }
 
-    /** 去掉参数集的 Annex-B start code，供 CoreMedia format description 使用。 */
+    /** Remove the Annex-B start code from the parameter set for use in the CoreMedia format description. */
     fun stripStartCode(nal: ByteArray): ByteArray {
         val start = findStartCode(nal, 0)
         return if (start?.first == 0) nal.copyOfRange(start.second, nal.size) else nal.copyOf()
     }
 
-    /** 返回 start code 的位置与长度；优先识别 4 字节形式。 */
+    /** Return the start code's position and length; prioritize recognizing the 4-byte form. */
     private fun findStartCode(
         bytes: ByteArray,
         from: Int,
@@ -242,11 +242,11 @@ object H264Stream {
     }
 
     /**
-     * 从 SPS NAL 解析裁剪后宽高（H.264 exp-golomb；失败返回 null）。
+     * Parses the width and height after clipping from SPS NAL (H.264 exp-golomb; returns null on failure).
      *
-     * 同时接受裸 NAL 和 MediaCodec CSD 使用的 Annex-B 形式；读位前移除
-     * emulation-prevention byte（00 00 03）。部分 OPPO/MTK 解码器在
-     * configure 时要求 MediaFormat 带准确 width/height。
+     * Also accepts the Annex-B format used by raw NAL and MediaCodec CSD; remove leading zeros before reading.
+     * emulation-prevention byte (00 00 03). Some OPPO/MTK decoders in
+     * When configuring, ensure that MediaFormat includes the exact width and height.
      */
     fun parseSpsDimensions(sps: ByteArray): Pair<Int, Int>? {
         val start =
@@ -373,7 +373,7 @@ object H264Stream {
         }
     }
 
-    /** nal_type → 名称（调试/日志）。 */
+    /** nal_type → Name (debug/log). */
     fun typeName(type: Int): String =
         when (type) {
             1 -> "SLICE"

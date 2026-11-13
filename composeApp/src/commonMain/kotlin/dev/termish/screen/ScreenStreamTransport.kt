@@ -5,28 +5,28 @@ import dev.termish.mosh.FragmentAssembly
 import dev.termish.mosh.Fragmenter
 
 /**
- * 屏幕推流的半可靠分片传输（方案 A 传输原型）。
+ * Semi-reliable fragmentation for screen streaming (Solution A streaming prototype).
  *
- * 复用 mosh 的 SSP 分片格式（[Fragment] id/num/final），但负载是视频帧字节而非
- * SSP 指令。与 [dev.termish.mosh.MoshTransport] 的关键差异：视频流**单向、丢帧
- * 可接受**，因此这里只有「分片 + 重组 + 丢包丢弃」，没有状态同步、没有重传、
- * 没有 RTT 估计——比 SSP 传输层简单得多。
+ * Reuse Mosh’s SSP fragment format ([Fragment] id/num/final), but the payload is video frame bytes rather than
+ * SSP directive. Key differences from [dev.termish.mosh.MoshTransport]: Video streams are **unidirectional and may drop frames**.
+ * Acceptable**, so here there is only “fragmentation + reassembly + packet loss,” with no state sync and no retransmission,
+ * No RTT estimate—much simpler than the SSP transport layer.
  *
- * 半可靠语义：
- * - 发端：每个视频包分配新 instruction id，zlib 压缩 + 按 MTU 切片
- * - 收端：乱序 / 重复分片容忍；缺分片时整包丢弃（视频流丢一包没关系，
- *   解码器等下一个 IDR 恢复）
- * - 连续视频流下，丢包后下一包的新 id 会让收端自动重置（不会永久卡住）
+ * Semi-reliable semantics:
+ * - Sender side: allocate a new instruction id for each video packet; zlib compression + slicing by MTU
+ * - Receiving end: Tolerates out-of-order or duplicate fragmentation; discards the entire packet if a fragment is missing (it’s okay if a single packet is lost in a video stream,
+ *   the decoder waits for the next IDR to recover)
+ * - In a continuous video stream, in the event of packet loss, the new ID of the next packet will cause the receiving end to automatically reset (it will not get permanently stuck).
  *
- * 线程模型：两端各一个实例，非线程安全，由各自会话单线程驱动（与 MoshTransport 一致）。
+ * Thread model: One instance at each end; not thread-safe; driven by a single thread per session (consistent with MoshTransport).
  */
 class ScreenStreamSender(
-    /** 底层数据报发送（UDP send；失败静默，视频流不重传）。 */
+    /** Low-level datagram transmission (UDP send; silent on failure, no retransmission of video streams). */
     private val sendDatagram: (ByteArray) -> Unit,
 ) {
     private val fragmenter = Fragmenter()
 
-    /** 发送一个视频包（payload 原始字节，内部 zlib 压缩 + 分片）。 */
+    /** Send a video payload (raw bytes, internally zlib-compressed with fragmentation). */
     fun send(
         payload: ByteArray,
         mtu: Int,
@@ -37,18 +37,18 @@ class ScreenStreamSender(
     }
 }
 
-/** 收端重组：喂入数据报，返回非 null 表示一个完整视频包已重组（解压后字节）。 */
+/** Receive-end reassembly: Feeds in a datagram; a non-null return value indicates that a complete video packet has been reassembled (bytes after decompression). */
 class ScreenStreamReceiver {
     private val assembly = FragmentAssembly()
 
-    /** 调试：最近一次喂入是否顶掉了未完成块（丢包拖垮；上层消费后清位）。 */
+    /** Debugging: did the most recent feed overwrite an unfinished block (unfinished assembly abandoned due to packet loss; the flag is cleared after the upper layer consumes it)? */
     var lastAbandoned = false
 
     /**
-     * 喂入一个数据报。
+     * Feed in a datagram.
      *
-     * @return 完整包的解压后字节；null = 当前包还不完整（等待更多分片，
-     *  或分片损坏 / 丢包——后者会一直 null 直到下一个包的新 id 到来触发重置）。
+     * @return the decompressed bytes of the complete packet; null = the packet is not yet complete (waiting for more fragments,
+     *  or fragmentation corruption / packet loss—the latter will remain null until the next packet’s new ID arrives and triggers a reset).
      */
     fun onDatagram(data: ByteArray): ByteArray? {
         val frag =

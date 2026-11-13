@@ -11,12 +11,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * 火山引擎「大模型流式语音识别」（bigmodel_async）引擎实现（AsrEngine）。
- * 一次「按住说话」的完整识别会话状态机：
- * start() → 建连 + full client request → 流式 sendPcm() → finish() 发负包 →
- * 收最终包回调 [onFinalText]（或 [onError]）。
+ * Volcano Engine “Large Model Streaming Speech Recognition” (bigmodel_async) engine implementation (AsrEngine).
+ * A complete state machine for a “press-and-speak” recognition session:
+ * start() → Establish connection + full client request → Stream-based sendPcm() → finish() Send negative packet →
+ * Receive the final package callback [onFinalText] (or [onError]).
  *
- * 回调来自 WebSocket 平台线程，UI 层需自行切主线程。
+ * The callback originates from a WebSocket platform thread; the UI layer must switch to the main thread on its own.
  */
 class VolcStreamingAsrEngine(
     private val apiKey: String,
@@ -52,14 +52,14 @@ class VolcStreamingAsrEngine(
                 if (state == AsrEngine.State.ERROR || state == AsrEngine.State.DONE) return@connect
                 state = AsrEngine.State.LISTENING
                 onState?.invoke(state)
-                // 建连后第一个包必须是 full client request
+                // The first package after establishing a connection must be a full client request.
                 val payload = VolcAsrProtocol.fullRequestJson(uuid4()).encodeToByteArray()
                 ws.send(VolcAsrProtocol.frame(VolcAsrProtocol.fullRequestHeader(), payload))
             },
             onMessage = { bytes -> handleMessage(bytes) },
             onError = { msg -> fail(msg) },
             onClosed = {
-                // 正常收尾后（DONE/ERROR）静默；意外关闭（如网络中断）报错
+                // Remain silent after normal termination (DONE/ERROR); report an error upon unexpected termination (e.g., network interruption).
                 if (state != AsrEngine.State.DONE && state != AsrEngine.State.ERROR) fail("连接已关闭")
             },
         )
@@ -105,8 +105,8 @@ class VolcStreamingAsrEngine(
                     fail(resp.payloadMsg?.message ?: "服务错误 code=${resp.code}")
                     return
                 }
-                // 最终包标记来自帧 flags=3（实测 bigmodel_async 响应体没有
-                // is_last_package 字段）；响应体字段仅作老接口兼容兜底
+                // The final package tag comes from frame flags=3 (as tested, the bigmodel_async response body does not contain
+                // (`is_last_package` field); response body fields are provided solely as a fallback for legacy interfaces.
                 if (parsed.isLastPackage) {
                     val text = VolcAsrProtocol.finalText(resp)
                     finalTimeout?.cancel()
@@ -119,7 +119,7 @@ class VolcStreamingAsrEngine(
                         fail("未识别到语音")
                     }
                 } else {
-                    // 中间结果：增量全量文本，实时上屏（替换式更新，非追加）
+                    // Intermediate result: Incremental and full-text updates, displayed in real-time (replacement-based updates, not appended)
                     VolcAsrProtocol.finalText(resp)?.let { text ->
                         onPartial?.invoke(text)
                     }
@@ -144,7 +144,7 @@ class VolcStreamingAsrEngine(
     }
 }
 
-/** UUID v4（无平台依赖；协议头 X-Api-Request-Id 与 uid 用）。 */
+/** UUID v4 (without any platform dependencies; used with the X-Api-Request-Id protocol header and uid). */
 internal fun uuid4(): String {
     val bytes = ByteArray(16) { Random.nextBytes(1)[0] }
     bytes[6] = ((bytes[6].toInt() and 0x0f) or 0x40).toByte()

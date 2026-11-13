@@ -224,7 +224,7 @@ object Ed25519 {
 
     // ---------- public API ----------
 
-    @Suppress("ktlint:standard:property-naming") // RFC 8032 数学符号（A）
+    @Suppress("ktlint:standard:property-naming") // RFC 8032 Mathematical Symbols (A)
     fun keyPairFromSeed(seed: ByteArray): Pair<ByteArray, ByteArray> {
         require(seed.size == 32)
         val h = Sha512.digest(seed)
@@ -235,7 +235,7 @@ object Ed25519 {
         return seed to encodePoint(A)
     }
 
-    @Suppress("ktlint:standard:property-naming") // RFC 8032 数学符号（A/R/S/hram）
+    @Suppress("ktlint:standard:property-naming") // RFC 8032 Mathematical Symbols (A/R/S/hram)
     fun sign(
         message: ByteArray,
         privateKey: ByteArray,
@@ -253,7 +253,7 @@ object Ed25519 {
         return R + scalarToBytes(S)
     }
 
-    @Suppress("ktlint:standard:property-naming") // RFC 8032 数学符号（R/A/hram）
+    @Suppress("ktlint:standard:property-naming") // RFC 8032 Mathematical Symbols (R/A/hram)
     fun verify(
         message: ByteArray,
         signature: ByteArray,

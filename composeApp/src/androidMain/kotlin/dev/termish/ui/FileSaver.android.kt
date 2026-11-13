@@ -14,15 +14,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
 /**
- * Android：直接下载到公共 Download 目录（MediaStore.Downloads，Android 10+），
- * 不弹「另存为」对话框——移动端惯例是「下载即进 Download 目录」。同名文件由
- * MediaStore 自动去重（name (1).ext），IS_PENDING 占位直到写完。
- * Android 9 及以下（无 scoped storage）回退到 SAF 另存为。
+ * Android: Download directly to the public Download directory (MediaStore.Downloads, Android 10+),
+ * Do not display the “Save As” dialog box—the mobile convention is “Download directly to the Downloads directory.” Files with the same name are handled by
+ * MediaStore automatic deduplication (name (1).ext); IS_PENDING placeholder until completed.
+ * For Android 9 and earlier (without scoped storage), fall back to SAF’s “Save As” functionality.
  */
 @Composable
 actual fun rememberFileSaver(onReady: (name: String, sink: FileSink) -> Unit): (name: String) -> Unit {
     val context = LocalContext.current
-    // API < 29 回退：SAF CreateDocument 让用户选保存位置
+    // API < 29 Fallback: SAF CreateDocument allows users to select a save location
     val safLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri: Uri? ->
             if (uri != null) {
@@ -52,7 +52,7 @@ actual fun rememberFileSaver(onReady: (name: String, sink: FileSink) -> Unit): (
             if (uri != null) {
                 val out = context.contentResolver.openOutputStream(uri)
                 if (out != null) {
-                    // 取实际文件名（MediaStore 同名自动去重后可能变成 name (1).ext）
+                    // Use the actual file name (for example, “MediaStore” may become “name (1).ext” after automatic deduplication of duplicate files).
                     val actualName = queryName(context, uri) ?: name
                     onReady(
                         actualName,
@@ -66,7 +66,7 @@ actual fun rememberFileSaver(onReady: (name: String, sink: FileSink) -> Unit): (
                                     out.close()
                                 } catch (_: Exception) {
                                 }
-                                // 清除 IS_PENDING，文件转为可见的完成态
+                                // Clear IS_PENDING; mark the file as visible and completed.
                                 val done = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
                                 context.contentResolver.update(uri, done, null, null)
                             }
@@ -80,7 +80,7 @@ actual fun rememberFileSaver(onReady: (name: String, sink: FileSink) -> Unit): (
     }
 }
 
-/** MediaStore.Downloads 插入（IS_PENDING=1 占位）；同名由 MediaStore 自动去重。 */
+/** MediaStore.Downloads insertion (IS_PENDING=1 placeholder); MediaStore automatically removes duplicates with the same name. */
 @RequiresApi(29)
 private fun insertDownload(
     context: Context,
@@ -107,10 +107,10 @@ private fun queryName(
         if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
     }
 
-/** 按文件扩展名推断 MIME；未知回退 application/octet-stream。 */
+/** Infer the MIME type based on the file extension; fall back to `application/octet-stream` for unknown types. */
 internal fun guessMimeType(name: String): String {
     val ext = name.substringAfterLast('.', "").lowercase()
-    // apk 本质是 zip，部分设备 MimeTypeMap 会误判或返回 null：显式指定安装包 MIME
+    // An APK is essentially a ZIP file; on some devices, the `MimeTypeMap` may misidentify it or return `null`: Explicitly specify the APK MIME type
     if (ext == "apk") return "application/vnd.android.package-archive"
     if (ext.isNotEmpty()) {
         MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)?.let { return it }

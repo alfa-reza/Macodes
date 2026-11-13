@@ -1,17 +1,17 @@
 package dev.termish.mosh
 
 /**
- * OCB3（RFC 7253）认证加密，纯 Kotlin 实现，对齐 mosh 的 ae(AES-128-OCB) 参数：
- * 12 字节 nonce、16 字节 tag、无附加数据（AD）。
+ * OCB3 (RFC 7253) certified encryption, pure Kotlin implementation, alignment with mosh’s ae (AES-128-OCB) parameters:
+ * 12-byte nonce, 16-byte tag, no additional data (AD).
  *
- * 仅实现 mosh 需要的 AE_ENCRYPT / AE_DECRYPT 全量消息接口。
+ * Implementation of the full message interfaces AE_ENCRYPT and AE_DECRYPT required by mosh.
  */
 internal class Ocb(
     key: ByteArray,
 ) {
     private val aes = Aes128(key)
 
-    /** L_* = double(double(zero)) = ENC(0) 的两次加倍；L_$ 与 L[0..] 见下。 */
+    /** L_* = double(double(zero)) = ENC(0) doubled twice; see below for L_$ and L[0..]. */
     private val lStar = ByteArray(16)
     private val lDollar = ByteArray(16)
     private val l = Array(64) { ByteArray(16) }
@@ -26,7 +26,7 @@ internal class Ocb(
         }
     }
 
-    /** GF(2^128) 上的乘 2：左移一位，最高位溢出则异或 0x87。 */
+    /** Multiply by 2 in GF(2^128): Shift one bit to the left; if the most significant bit overflows, XOR with 0x87. */
     private fun doubleBlock(
         input: ByteArray,
         output: ByteArray,
@@ -72,22 +72,22 @@ internal class Ocb(
     }
 
     /**
-     * 由 12 字节 nonce 计算 24 位前缀 + Ktop，产出 offset_0。
-     * RFC 7253 §4.2：Nonce = 0^{120-len} || 1 || nonce（len=96 → 24 位头部全 0 || 1 || 96 位 nonce，
-     * 恰好 16 字节），bottom = 低 6 位，Ktop = ENC(Nonce 高 128-6 位 << 6)。
+     * Calculate a 24-bit prefix + Ktop from a 12-byte nonce to produce offset_0.
+     * RFC 7253 §4.2: Nonce = 0^{120-len} || 1 || nonce (len=96 → 24-bit header all zeros || 1 || 96-bit nonce,
+     * exactly 16 bytes), bottom = the lower 6 bits, Ktop = ENC(Nonce high 128–6 bits << 6).
      */
     private fun initialOffset(nonce: ByteArray): ByteArray {
         require(nonce.size == 12)
         val nonceBlock = ByteArray(16)
-        nonceBlock[3] = 1 // 0^23 || 1 落在第 4 字节末尾（len=96 时 stretch 头部 24bit 全 0）
+        nonceBlock[3] = 1 // 0^23 || 1 falls at the end of the 4th byte (when len=96, the first 24 bits of the stretch header are all zeros)
         nonce.copyInto(nonceBlock, 4)
         val bottom = nonceBlock[15].toInt() and 0x3f
-        // Ktop = ENC(Nonce 前 122 位 || 6 个零位)（掩掉低 6 位，非移位）
+        // Ktop = ENC(first 122 bits of the nonce || 6 zeros) (mask the lower 6 bits, no shift)
         val masked = nonceBlock.copyOf()
         masked[15] = (masked[15].toInt() and 0xC0).toByte()
         val ktop = ByteArray(16)
         aes.encryptBlock(masked, 0, ktop, 0)
-        // Offset = (Ktop[0..8] << bottom) | (Ktop[9..15] >> (8-bottom))，取高 128 位
+        // Offset = (Ktop[0..8] << bottom) | (Ktop[9..15] >> (8-bottom)), taking the top 128 bits
         val stretch = ByteArray(24)
         ktop.copyInto(stretch, 0, 0, 16)
         for (i in 0..7) {
@@ -111,7 +111,7 @@ internal class Ocb(
     }
 
     /**
-     * 加密：plaintext → ciphertext || tag(16B)。
+     * Encryption: plaintext → ciphertext || tag (16B).
      */
     fun encrypt(
         nonce: ByteArray,
@@ -124,14 +124,14 @@ internal class Ocb(
         val blockCount = plaintext.size / 16
 
         for (i in 0 until blockCount) {
-            xorInto(offset, l[ntz(i + 1) + 1]) // L 表约定偏移一位（L[0]=double(L_$)）
+            xorInto(offset, l[ntz(i + 1) + 1]) // The L table is offset by one position (L[0] = double(L_$))
             xorBlock(plaintext, i * 16, offset, tmp, 0)
             aes.encryptBlock(tmp, 0, tmp, 0)
             xorBlock(tmp, 0, offset, out, i * 16)
             xorInto(checksum, plaintext, i * 16)
         }
 
-        // 尾部不足一块
+        // Less than one block at the end
         val rem = plaintext.size % 16
         if (rem != 0) {
             xorInto(offset, lStar)
@@ -152,8 +152,8 @@ internal class Ocb(
     }
 
     /**
-     * 解密并校验 tag；失败返回 null（对应 ae_decrypt 的 AE_INVALID）。
-     * 输入为 ciphertext || tag(16B)。
+     * Decryption and validation of the tag; failure returns null (corresponding to AE_INVALID in ae_decrypt).
+     * Input is ciphertext || tag (16B).
      */
     fun decrypt(
         nonce: ByteArray,

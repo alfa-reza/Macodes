@@ -5,13 +5,13 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * herdr（the runtime your coding agents live on）agent 状态模型。
+ * herdr (the runtime on which your coding agents run) agent state model.
  *
- * 本文件只描述 V1 轮询所需的最小字段集（`herdr api snapshot` 输出子集），
- * 解析按 ignoreUnknownKeys 容错——herdr 升级加字段不破坏客户端。
- * 完整协议见 herdr 仓库 docs/socket-api.mdx（session.snapshot / events.subscribe）。
+ * This file describes only the minimum set of fields required for V1 polling (a subset of the `herdr api snapshot` output),
+ * Parsing follows the `ignoreUnknownKeys` fault-tolerance policy—herdr upgrades that add fields do not break client code.
+ * See the complete protocol in the herdr repository at docs/socket-api.mdx (session.snapshot / events.subscribe).
  *
- * herdr agent 语义状态（pane.agent_status）。
+ * herdr agent semantic status (pane.agent_status).
  */
 
 @Serializable
@@ -32,13 +32,13 @@ enum class HerdrAgentStatus {
     UNKNOWN,
 }
 
-/** 会话快照中的单个 pane（终端格子）。 */
+/** A single pane (terminal window) in a session snapshot. */
 @Serializable
 data class HerdrPaneInfo(
     @SerialName("pane_id") val paneId: String,
     @SerialName("workspace_id") val workspaceId: String = "",
     @SerialName("tab_id") val tabId: String = "",
-    /** 检测到的 agent 名（pi / codex / claude …）；非 agent pane 为 null。 */
+    /** Detected agent name (pi / codex / claude …); null for non-agent panes. */
     val agent: String? = null,
     @SerialName("display_agent") val displayAgent: String? = null,
     @SerialName("agent_status") val agentStatus: HerdrAgentStatus = HerdrAgentStatus.UNKNOWN,
@@ -49,7 +49,7 @@ data class HerdrPaneInfo(
     val revision: Long = 0,
 )
 
-/** 会话快照中检测到的 agent（agents 数组项；与 panes 数组并行）。 */
+/** Agents detected in session snapshots (array elements of `agents`; parallel to the `panes` array). */
 @Serializable
 data class HerdrAgentInfo(
     @SerialName("pane_id") val paneId: String,
@@ -66,7 +66,7 @@ data class HerdrAgentInfo(
     val revision: Long = 0,
 )
 
-/** `herdr api snapshot` 的顶层会话快照。 */
+/** Top-level session snapshot of `herdr api snapshot`. */
 @Serializable
 data class HerdrSessionSnapshot(
     val version: String = "",
@@ -93,14 +93,14 @@ data class HerdrTabInfo(
     @SerialName("pane_count") val paneCount: Int = 0,
 )
 
-/** herdr api 错误（CLI 输出兼容）。 */
+/** herdr API errors (CLI output compatible). */
 @Serializable
 data class HerdrApiError(
     val code: String = "",
     val message: String = "",
 )
 
-/** `herdr api snapshot` CLI 输出：`{"id","result":{"snapshot":…}}`（raw socket 响应 result 结构同源）。 */
+/** `herdr api snapshot` CLI output: `{"id","result":{"snapshot":…}}` (the structure of the `result` in the raw socket response is the same). */
 @Serializable
 data class HerdrCliResponse(
     val id: String = "",
@@ -111,20 +111,20 @@ data class HerdrCliResponse(
 @Serializable
 data class HerdrCliResult(
     val snapshot: HerdrSessionSnapshot? = null,
-    /** raw socket 响应的 type 字段（如 session_snapshot）；CLI 输出无此字段。 */
+    /** The `type` field in raw socket responses (e.g., `session_snapshot`); CLI output does not include this field. */
     val type: String? = null,
 )
 
 private val json =
     Json {
-        ignoreUnknownKeys = true // herdr 升级加字段不破坏客户端
-        coerceInputValues = true // 空串/缺失枚举值按默认处理
+        ignoreUnknownKeys = true // herdr upgrade adds fields without breaking client functionality
+        coerceInputValues = true // Empty strings or missing enumeration values are handled as default.
     }
 
 /**
- * 解析 `herdr api snapshot` 输出。CLI 输出与 raw socket 响应的
- * `result` 结构同源（CLI 就是 socket 客户端），统一按
- * `result.snapshot` 提取；解析失败返回 null（不抛）。
+ * Parse the output of `herdr api snapshot`. CLI output and raw socket responses
+ * The `result` structure is similar (CLI is a socket client); consistently follow
+ * `result.snapshot` extraction; returns null on parse failure (no exception thrown).
  */
 fun parseHerdrSnapshot(raw: String): HerdrSessionSnapshot? =
     try {

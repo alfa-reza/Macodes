@@ -54,12 +54,12 @@ private data class PreparedFrame(
 )
 
 /**
- * iOS 实现：完整 H.264 Annex-B 帧转换成 AVCC sample，交给
- * AVSampleBufferDisplayLayer（底层 VideoToolbox 硬解）直接渲染。
+ * iOS Implementation: Implement the conversion of complete H.264 Annex-B frames to AVCC samples, and pass them to
+ * AVSampleBufferDisplayLayer (low-level VideoToolbox hardware decoding) renders directly.
  *
- * 所有 AVFoundation/CoreMedia 操作都收口到主线程；网络线程只写容量为 4 的
- * 丢旧保新队列，避免解码跟不上时延迟持续增长。每个 Compose surface 拥有独立
- * display layer，小窗与全屏过渡期可同时工作，销毁其中一个不会影响另一个。
+ * All AVFoundation/CoreMedia operations are confined to the main thread; the network thread only writes to a buffer with a capacity of 4.
+ * Discard old entries and retain new ones in the queue to prevent latency from accumulating when decoding cannot keep up. Each Compose surface has its own queue
+ * The display layer allows the floating window and fullscreen modes to work simultaneously; destroying one will not affect the other.
  */
 @OptIn(ExperimentalForeignApi::class)
 actual class ScreenPlayer actual constructor(
@@ -109,8 +109,8 @@ actual class ScreenPlayer actual constructor(
     }
 
     actual fun feed(data: ByteArray) {
-        // TCP 读取运行在 IO dispatcher：在这里完成 Annex-B 扫描与 AVCC 复制，
-        // 避免 60fps 大帧转换占用 UIKit 主线程。
+        // TCP reads run on the IO dispatcher: Annex-B scanning and AVCC copying are performed here,
+        // Avoid having 60fps frame transitions consume the UIKit main thread.
         val parameterSets = H264Stream.extractParameterSets(data)
         val rawSps = parameterSets.sps?.let(H264Stream::stripStartCode)
         val rawPps = parameterSets.pps?.let(H264Stream::stripStartCode)
@@ -420,7 +420,7 @@ actual fun ScreenVideoSurface(
     }
 }
 
-/** iOS 没有公开逐分辨率 FPS 查询；硬解可用时按当前档位上限开放 60fps。 */
+/** iOS does not provide a public API for resolution-specific FPS queries; when hardware decoding is available, it allows up to 60 fps based on the current resolution’s upper limit. */
 @OptIn(ExperimentalForeignApi::class)
 actual fun probeDecoderMaxFps(
     width: Int,

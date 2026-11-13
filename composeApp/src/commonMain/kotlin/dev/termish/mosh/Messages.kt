@@ -1,13 +1,13 @@
 package dev.termish.mosh
 
 /**
- * mosh 1.4.0 线上消息的编解码（transportinstruction.proto / userinput.proto /
- * hostinput.proto 的手工对应物，见 proto 文件注释）。
+ * mosh 1.4.0 encoding and decoding of wire messages (transportinstruction.proto / userinput.proto /
+ * (See the comments in the `hostinput.proto` file for the manual equivalents.)
  */
 
 internal const val MOSH_PROTOCOL_VERSION = 2
 
-/** TransportBuffers.Instruction：一个 SSP 指令（加密数据报的载荷单元）。 */
+/** TransportBuffers.Instruction: An SSP instruction (the payload unit of a datagram with encryption). */
 internal class TransportInstruction(
     var protocolVersion: Int = MOSH_PROTOCOL_VERSION,
     var oldNum: ULong = 0u,
@@ -29,7 +29,7 @@ internal class TransportInstruction(
         return w.toByteArray()
     }
 
-    /** 与协议 id 递增判定保持一致：比较除 diff 外的全部字段。 */
+    /** Maintain consistency with the protocol’s incrementing ID determination: Compare all fields except “diff.” */
     fun sameHeaderAs(other: TransportInstruction): Boolean =
         oldNum == other.oldNum &&
             newNum == other.newNum &&
@@ -60,7 +60,7 @@ internal class TransportInstruction(
     }
 }
 
-/** ClientBuffers.UserMessage 里的一条指令。 */
+/** An instruction in ClientBuffers.UserMessage. */
 internal sealed class UserEventOut {
     class Keystrokes(
         val keys: ByteArray,
@@ -72,7 +72,7 @@ internal sealed class UserEventOut {
     ) : UserEventOut()
 }
 
-/** 编码 ClientBuffers.UserMessage（keystroke 扩展相邻合并，与 mosh 一致）。 */
+/** Encoding ClientBuffers.UserMessage (extend keystroke to merge adjacent characters, consistent with mosh). */
 internal fun encodeUserMessage(events: List<UserEventOut>): ByteArray {
     val outer = ProtoWriter()
     var pendingKeys: ByteArray? = null
@@ -83,7 +83,7 @@ internal fun encodeUserMessage(events: List<UserEventOut>): ByteArray {
         val stroke = ProtoWriter()
         stroke.bytes(4, keys) // Keystroke.keys = 4
         val inst = ProtoWriter()
-        inst.message(2, stroke) // Instruction.keystroke 扩展 = 2
+        inst.message(2, stroke) // Instruction.keystroke extension = 2
         outer.message(1, inst) // UserMessage.instruction = 1
     }
 
@@ -98,7 +98,7 @@ internal fun encodeUserMessage(events: List<UserEventOut>): ByteArray {
                 resize.varint(5, e.width.toULong()) // ResizeMessage.width = 5
                 resize.varint(6, e.height.toULong()) // ResizeMessage.height = 6
                 val inst = ProtoWriter()
-                inst.message(3, resize) // Instruction.resize 扩展 = 3
+                inst.message(3, resize) // Instruction.resize extension = 3
                 outer.message(1, inst)
             }
         }
@@ -107,7 +107,7 @@ internal fun encodeUserMessage(events: List<UserEventOut>): ByteArray {
     return outer.toByteArray()
 }
 
-/** HostBuffers.HostMessage 解析后的一条指令。 */
+/** A single instruction after parsing HostBuffers.HostMessage. */
 internal sealed class HostEventIn {
     class HostBytes(
         val bytes: ByteArray,
@@ -137,14 +137,14 @@ internal fun decodeHostMessage(data: ByteArray): List<HostEventIn> {
         while (true) {
             val (f, w) = ir.nextTag() ?: break
             when (f) {
-                2 -> { // HostBytes 扩展
+                2 -> { // HostBytes Extension
                     val hb = ProtoReader(ir.readBytes())
                     while (true) {
                         val (hf, hw) = hb.nextTag() ?: break
                         if (hf == 4) out.add(HostEventIn.HostBytes(hb.readBytes())) else hb.skip(hw)
                     }
                 }
-                3 -> { // Resize 扩展
+                3 -> { // Resize Extension
                     var width = 0
                     var height = 0
                     val rs = ProtoReader(ir.readBytes())
@@ -158,7 +158,7 @@ internal fun decodeHostMessage(data: ByteArray): List<HostEventIn> {
                     }
                     out.add(HostEventIn.Resize(width, height))
                 }
-                7 -> { // EchoAck 扩展
+                7 -> { // EchoAck Extension
                     val ea = ProtoReader(ir.readBytes())
                     while (true) {
                         val (ef, ew) = ea.nextTag() ?: break

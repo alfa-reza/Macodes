@@ -11,7 +11,7 @@ import platform.posix.fclose
 import platform.posix.fopen
 import platform.posix.fwrite
 
-/** iOS：NSFileManager + POSIX 追加写（commonMain 不可用 java.io.File）。 */
+/** iOS: NSFileManager + POSIX append (java.io.File is not available in commonMain). */
 internal actual class TermLogFile actual constructor(
     private val path: String,
 ) {
@@ -31,7 +31,7 @@ internal actual class TermLogFile actual constructor(
     actual fun renameTo(target: String): Boolean = NSFileManager.defaultManager.moveItemAtPath(path, toPath = target, error = null)
 
     actual fun appendText(text: String) {
-        // "ab"：追加 + 不存在时创建；fwrite 一次性写（日志行小，无需分块）
+        // "ab": Append + create if does not exist; fwrite writes in one go (log rows are short, so no blocking is needed)
         val fd = fopen(path, "ab") ?: return
         try {
             val bytes = text.encodeToByteArray()

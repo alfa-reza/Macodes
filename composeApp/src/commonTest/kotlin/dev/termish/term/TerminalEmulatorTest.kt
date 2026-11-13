@@ -138,7 +138,7 @@ class TerminalEmulatorTest {
         e.writeText("\u001b[2;1H")
         repeat(20) { e.writeText("x\n") } // scroll within region
         assertEquals("HEADER", b.lineText(0))
-        // 回看不因区域滚动而增长
+        // The scrollback must not grow due to region scrolling
         assertEquals(0, b.scrollbackSize())
     }
 
@@ -275,9 +275,9 @@ class TerminalEmulatorTest {
         assertEquals(6, b.cursorStyle)
         e.writeText("\u001b[0 q")
         assertEquals(0, b.cursorStyle)
-        e.writeText("\u001b[ q") // 无参数 → 默认
+        e.writeText("\u001b[ q") // No parameters → Default
         assertEquals(0, b.cursorStyle)
-        e.writeText("\u001b[9 q") // 非法值 → 默认
+        e.writeText("\u001b[9 q") // Invalid value → Default
         assertEquals(0, b.cursorStyle)
     }
 
@@ -293,10 +293,10 @@ class TerminalEmulatorTest {
     @Test
     fun osc8HyperlinkParamsIgnoredAndWideTailInherits() {
         val (e, b) = emu()
-        // params 段（id=...）应忽略，URI 取第二个分号后
+        // The `params` section (id=...) should be ignored; for the URI, take the part after the second semicolon
         e.writeText("\u001b]8;id=42;https://x.dev\u0007中文\u001b]8;;\u0007")
         assertEquals("https://x.dev", b.lineAt(0).cells[0].link)
-        assertEquals("https://x.dev", b.lineAt(0).cells[1].link) // 宽字符尾巴继承链接
+        assertEquals("https://x.dev", b.lineAt(0).cells[1].link) // Wide-character tail inheritance link
     }
 
     @Test
@@ -322,11 +322,11 @@ class TerminalEmulatorTest {
         e.writeText("\u001b[?2004l\u001b[?2004\$p")
         assertEquals("\u001b[?2004;2\$y", responses.toString())
         responses.clear()
-        // 未知模式不应答
+        // Unknown mode—no response
         e.writeText("\u001b[?9999\$p")
         assertEquals("", responses.toString())
         responses.clear()
-        // 标准模式：插入模式
+        // Standard mode: Insert mode
         e.writeText("\u001b[4h\u001b[4\$p")
         assertEquals("\u001b[4;1\$y", responses.toString())
     }
@@ -339,13 +339,13 @@ class TerminalEmulatorTest {
         e.writeText("\u001bP\$qr\u001b\\") // DECSTBM
         assertEquals("\u001bP1\$r1;5r\u001b\\", responses.toString())
         responses.clear()
-        e.writeText("\u001bP\$qm\u001b\\") // SGR（应答默认态）
+        e.writeText("\u001bP\$qm\u001b\\") // SGR (Default Response State)
         assertEquals("\u001bP1\$r0m\u001b\\", responses.toString())
         responses.clear()
         e.writeText("\u001b[2 q\u001bP\$qq\u001b\\") // DECSCUSR
         assertEquals("\u001bP1\$r2 q\u001b\\", responses.toString())
         responses.clear()
-        e.writeText("\u001bP\$qz\u001b\\") // 未知查询 → 无效
+        e.writeText("\u001bP\$qz\u001b\\") // Unknown query → Invalid
         assertEquals("\u001bP0\$r\u001b\\", responses.toString())
     }
 
@@ -366,7 +366,7 @@ class TerminalEmulatorTest {
         assertTrue(b.alternateScroll)
         assertTrue(b.mouseUrxvt)
         assertFalse(b.mouseSgr)
-        // 1006 与 1015 互斥
+        // 1006 and 1015 are mutually exclusive
         e.writeText("\u001b[?1006h")
         assertTrue(b.mouseSgr)
         assertFalse(b.mouseUrxvt)
@@ -400,11 +400,11 @@ class TerminalEmulatorTest {
         val b = TerminalBuffer(10, 3)
         val e = TerminalEmulator(b)
         e.writeText("ab")
-        // DEL 不产生任何字形：'b' 紧挨 'a'
+        // DEL does not produce any glyphs: 'b' is adjacent to 'a'
         assertEquals('a'.code, b.lineAt(0).cells[0].codePoint)
         assertEquals('b'.code, b.lineAt(0).cells[1].codePoint)
         assertEquals(' '.code, b.lineAt(0).cells[2].codePoint)
-        // C1 控制字符（如 0x85 NEL 的 UTF-8 编码 0xC2 0x85）也不应画出来
+        // C1 control characters (such as 0x85, the UTF-8 encoding of NEL, which is 0xC2 0x85) should not be rendered either.
         e.write(byteArrayOf(0xC2.toByte(), 0x85.toByte()))
         assertEquals(' '.code, b.lineAt(0).cells[2].codePoint)
     }
@@ -424,7 +424,7 @@ class TerminalEmulatorTest {
         val (e, b) = emu(10, 3)
         e.writeText("hello")
         e.writeText("\u001b[2J")
-        // ED 2 清屏但不移动光标（xterm 语义）
+        // ED 2 Clear the screen without moving the cursor (xterm semantics)
         assertEquals(0, b.cursorRow)
         assertEquals(5, b.cursorCol)
         assertEquals(' '.code, b.lineAt(0).cells[0].codePoint)
@@ -433,7 +433,7 @@ class TerminalEmulatorTest {
     @Test
     fun eraseDisplay3ClearsScrollback() {
         val (e, b) = emu(10, 3)
-        e.writeText("1\n2\n3\n4\n5\n6") // 制造滚动回看
+        e.writeText("1\n2\n3\n4\n5\n6") // Create a scrollback
         assertTrue(b.scrollbackSize() > 0)
         e.writeText("\u001b[3J")
         assertEquals(0, b.scrollbackSize())
@@ -441,28 +441,28 @@ class TerminalEmulatorTest {
 
     @Test
     fun ctrlLClearScreenFlow() {
-        // 工具栏 ⌃L 端到端语义：发 0x0C → 远端 readline 回 clear 序列
-        // （xterm-256color/xterm: ESC[H ESC[2J；vt100/linux: ESC[H ESC[J）→
-        // 可视屏全清 + 光标归顶 + 滚动回看保留。锁定整条链路契约，防回归。
+        // Toolbar ⌃L End-to-End Semantics: Send 0x0C → Remote readline returns a clear sequence
+        // (xterm-256color/xterm: ESC[H ESC[2J; vt100/linux: ESC[H ESC[J) →
+        // Clear the entire screen + return cursor to top + preserve scrollback. Lock the entire chain contract to prevent regression.
         for (clearSeq in listOf("\u001b[H\u001b[2J", "\u001b[H\u001b[J")) {
             val (e, b) = emu(10, 3)
-            e.writeText("1\n2\n3\n4\n5\n6") // 制造滚动回看（回看非空是真实 ^L 场景）
+            e.writeText("1\n2\n3\n4\n5\n6") // Create a scrollback feature (where "scrollback" is not empty—a real ^L scenario).
             val before = b.scrollbackSize()
             assertTrue(before > 0)
             e.writeText(clearSeq)
             assertEquals(0, b.cursorRow)
             assertEquals(0, b.cursorCol)
             for (r in 0 until 3) assertEquals("", b.lineText(r))
-            assertEquals(before, b.scrollbackSize()) // 清屏不丢回看
+            assertEquals(before, b.scrollbackSize()) // Clearing the screen must not lose the scrollback
         }
     }
 
     @Test
     fun csiZeroParamTreatedAsOne() {
         val (e, b) = emu(10, 5)
-        e.writeText("\u001b[3;1H") // 光标到第 3 行
+        e.writeText("\u001b[3;1H") // Place the cursor on row 3
         assertEquals(2, b.cursorRow)
-        e.writeText("\u001b[0A") // 显式 0：xterm 按 1 处理
+        e.writeText("\u001b[0A") // Explicit 0: xterm handles this as 1
         assertEquals(1, b.cursorRow)
     }
 
@@ -472,7 +472,7 @@ class TerminalEmulatorTest {
         e.writeText("\u001b[?1049h")
         e.writeText("vim-content")
         e.writeText("\u001b[?1049l")
-        // 再次进入 1049：备用屏应为空白，不闪上次残留
+        // Back to 1049: The backup screen should be blank, with no flickering or residual images from the previous display.
         e.writeText("\u001b[?1049h")
         assertEquals(' '.code, b.lineAt(0).cells[0].codePoint)
     }
@@ -480,11 +480,11 @@ class TerminalEmulatorTest {
     @Test
     fun lineFeedClampsAtBottomOutsideScrollRegion() {
         val (e, b) = emu(10, 3)
-        e.writeText("\u001b[1;2r") // 滚动区域 1-2 行
-        e.writeText("\u001b[3;1H") // 光标移到区域外的最后一行
-        e.writeText("\n") // LF：钳在最后一行，不越界
+        e.writeText("\u001b[1;2r") // Scroll region: 1–2 rows
+        e.writeText("\u001b[3;1H") // Move the cursor to the last row outside the highlighted region
+        e.writeText("\n") // LF: Place the line break at the very end of the row, without being out of bounds.
         assertEquals(2, b.cursorRow)
-        e.writeText("x") // 随后写入不得崩溃
+        e.writeText("x") // Subsequent writing must not cause a crash
         assertEquals('x'.code, b.lineAt(2).cells[0].codePoint)
     }
 }

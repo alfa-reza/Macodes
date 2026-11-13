@@ -3,39 +3,39 @@ package dev.termish.herdr
 import dev.termish.util.TermLog
 
 /**
- * herdr 探测（连接级控制面操作）：在已认证连接上按候选路径逐个试
- * `<bin> --version`，第一个返回合法版本输出的即命中。
+ * herdr probe (connection-level control plane operation): Test each candidate path one by one on an authenticated connection
+ * `<bin> --version`—the first candidate that returns a valid version output is the hit.
  *
- * 探测用 `--version` 而非 `api snapshot`：snapshot 需要 herdr daemon 已在
- * 运行（server_not_running 时 exit 1 + error JSON），而探测发生在注入 herdr
- * 之前——刚装完/从未启动过的主机 daemon 必然不在，探测会把「已安装」误判
- * 成「未安装」（引导安装卡片打转、装完仍报失败）。`--version` 不依赖
- * daemon，语义就是「二进制存在且可执行」。
- * （运行期的「daemon 是否在跑」由 HerdrMonitor 用 snapshot 轮询 + 失败退避
- * 表达，两条路径各司其职。）
+ * Detect using `--version` instead of `api snapshot`: snapshot requires the herdr daemon to be running
+ * running (exit 1 + error JSON when `server_not_running`), and the probe happens before herdr is injected
+ * before—a host that was just installed or never started will inevitably not have the daemon, and the probe will misjudge “installed”
+ * as “not installed” (the install-guide card spins indefinitely, and it still reports failure after install). `--version` does not depend on
+ * daemon—the meaning is “the binary exists and is executable.”
+ * (During runtime, whether the "daemon is running" is determined by HerdrMonitor using snapshot polling + failure backoff)
+ * (Each of the two paths serves its own purpose.)
  *
- * 探测结果是连接级知识——命中路径必须贯穿下游（mosh 引导 `-- <bin>`、
- * exec 降级 startExec），否则非默认 PATH（~/.local/bin、/opt/homebrew）
- * 场景探测能过但启动必败。
+ * The detection result represents connection-level knowledge—the hit path must extend downstream (mosh boots with `-- <BIN>`),
+ * exec (fallback to startExec), otherwise non-default PATH (~/.local/bin, /opt/homebrew)
+ * Scenario detection passes, but launch always fails.
  */
 object HerdrProbe {
-    /** 探测结果：命中的二进制路径。 */
+    /** Detection result: path of the matching binary. */
     data class Result(
         val bin: String,
     )
 
     /**
-     * 探测 herdr 是否已安装。
+     * Check if herdr is installed.
      *
-     * @param runCommand 在已认证连接上执行一次性命令（SshSession.runCommand 的适配，
-     *   传入即固定超时；返回 null 视为该候选失败）
-     * @return 命中结果；全部候选失败（未安装/输出非法）返回 null
+     * @param runCommand Executes a one-time command on an authenticated connection (an adaptation of SshSession.runCommand,
+     *   (A fixed timeout is applied upon input; a return value of null is treated as a failure for that candidate.)
+     * @return Match result; if all candidates fail (not installed or invalid output), return null
      */
     fun probe(runCommand: (String) -> String?): Result? {
         for (bin in HerdrApi.BIN_CANDIDATES) {
-            // Ubuntu snap 版 herdr（/snap/bin）：沙箱受限（home/权限），与
-            // Termish 工作台不兼容（herdr 官方提示「you are using a snap
-            // version」）——探测跳过，引导用官方脚本版（~/.local/bin）
+            // Ubuntu Snap version of herdr (/snap/bin): sandboxed (restricted to home directory permissions), and
+            // Termish Workbench is incompatible (herdr notice "you are using a snap
+            // "version") — skip detection; use the official script version (~/.local/bin)
             if (isSnapHerdr(bin, runCommand)) {
                 TermLog.w("herdr") { "skip snap-packaged herdr (bin=$bin)" }
                 continue
@@ -49,10 +49,10 @@ object HerdrProbe {
     }
 
     /**
-     * 判定 PATH 候选是否解析到 snap 版（/snap/ 前缀）。
-     * snap 安装的命令在 /snap/bin（Ubuntu 默认 PATH 含该目录），沙箱限制
-     * 使其无法读写用户 home 之外、daemon 工作台行为受限——探测命中它
-     * 会在后续启动阶段失败（用户反馈：连接 Ubuntu 提示 snap version）。
+     * Determine whether PATH candidates resolve to a snap version (prefixed with `/snap/`).
+     * Commands installed via snap live in /snap/bin (Ubuntu’s default PATH includes it); the snap sandbox
+     * prevents reading or writing outside the user’s home directory and restricts the daemon—detecting a snap Herdr means it will
+     * fail on the next launch (user feedback: shows a “snap version” notice when connecting to Ubuntu).
      */
     private fun isSnapHerdr(
         bin: String,
@@ -64,8 +64,8 @@ object HerdrProbe {
     }
 
     /**
-     * 版本输出校验：`herdr 0.8.0` 形态（首行以 herdr 开头且带版本 token）。
-     * 防 PATH 里同名异物/只打印 usage 的 shim 误判命中。
+     * Version output validation: `herdr 0.8.0` format (first line starts with “herdr” and includes a version token).
+     * Prevents false positives caused by shims with the same name but different functionality in the PATH or those that only print usage information.
      */
     internal fun isVersionOutput(raw: String): Boolean =
         raw
@@ -74,17 +74,17 @@ object HerdrProbe {
             ?.matches(Regex("herdr\\s+\\S+.*")) == true
 
     /**
-     * `$HOME` 前缀候选 → 绝对路径。
+     * Candidates for the `$HOME` prefix → absolute path.
      *
-     * 探测命令经远端 shell 执行（runCommand → sshd → 用户 shell），$HOME 会被
-     * 展开，所以字面候选能命中；但下游拿到字面路径必失败——mosh 引导
-     * `-- '<bin>'` 的单引号阻止 shell 展开，而 mosh-server 子进程对 `--` 后的
-     * 参数是直接 execvp（不过 shell，见 mosh-server.cc run_command），字面
-     * `$HOME/...` 会报 `execvp: $HOME/...: No such file or directory`；
-     * 降级 exec 通道（startExec）的单引号同理不展开。命中结果必须先解析成
-     * 绝对路径再贯穿下游。
+     * When a command is executed via a remote shell (runCommand → sshd → user shell), $HOME will be
+     * expands, so the literal candidate can hit; but downstream, receiving the literal path will inevitably fail—mosh bootstrap
+     * The single quotes around `-- '<BIN>'` prevent shell expansion, while the mosh-server child process treats the text following `--` as
+     * the argument is passed directly to `execvp` (not via the shell, see mosh-server.cc run_command), literal
+     * `$HOME/...` will result in the error `execvp: $HOME/...: No such file or directory`;
+     * Similarly, single quotes in the `exec` fallback channel (`startExec`) are not expanded. Matching results must first be parsed into
+     * Absolute paths are carried through to downstream.
      *
-     * echo 失败的异常环境退回原样（尽力而为：探测至少证明该路径可用）。
+     * If echo fails (abnormal environment), fall back to returning the literal as-is (best effort: the probe at least proves the path works).
      */
     private fun resolveHome(
         bin: String,

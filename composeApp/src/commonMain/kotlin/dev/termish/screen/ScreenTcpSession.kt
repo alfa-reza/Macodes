@@ -12,13 +12,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.datetime.Clock
 
-/** TCP/SSH 视频协议单帧上限，防损坏长度头触发无界内存分配。 */
+/** TCP/SSH video protocol single-frame limit; prevent corrupted length headers from triggering unbounded memory allocation. */
 internal const val SCREEN_TCP_MAX_FRAME_BYTES = 4 * 1024 * 1024
 
-/** 客户端 → relay 控制消息上限（含 17B 固定头与 UTF-8 文本）。 */
+/** Client → relay message control (including a fixed 17B header and UTF-8 text). */
 internal const val SCREEN_TCP_MAX_CONTROL_BYTES = 64 * 1024
 
-/** relay 安装时生成的 256-bit token，以 64 个十六进制字符传输。 */
+/** A 256-bit token generated during relay installation, transmitted as 64 hexadecimal characters. */
 internal const val SCREEN_AUTH_TOKEN_HEX_LENGTH = 64
 internal const val SCREEN_TCP_HEARTBEAT_INTERVAL_MS = 2_000L
 internal const val SCREEN_TCP_FEEDBACK_INTERVAL_MS = 1_000L
@@ -111,8 +111,8 @@ internal fun parseScreenFeedback(data: ByteArray): ScreenClientFeedback? {
 }
 
 /**
- * 仅在确实需要解码重同步时请求 IDR。启动阶段的软件解码器短暂繁忙、队列主动
- * 丢旧保新都由码率/FPS 闭环处理；每次因此重启编码器反而会延长首帧稳定时间。
+ * Request IDR only when decoding and resync are truly necessary. The software decoder is briefly busy during the launch phase, and the queue is active
+ * Discarding old and keeping new are both handled by the bitrate/FPS closed loop; restarting the encoder each time would actually prolong the time to first-frame stability.
  */
 internal fun shouldRequestScreenKeyframe(
     receivedFrames: Long,
@@ -124,11 +124,11 @@ internal fun shouldRequestScreenKeyframe(
         (receivedFrames >= 10 && renderedFrames == 0L && playerDroppedFrames > 0)
 
 /**
- * TCP 视频字节流解析器。
+ * TCP video byte stream parser.
  *
- * relay → 客户端协议：连接首包固定为 `THS1 + status`，随后重复
- * `[4B 大端长度][THV2 视频包或 THS1 状态更新]`。TCP/SSH read 可在任意位置拆包或粘包，
- * 因此解析器保留跨 read 缓冲，并可一次产出多帧。
+ * relay → Client protocol: The first packet of a connection is always `THS1 + status`, followed by repeated
+ * `[4B big-endian length][THV2 video packet or THS1 status update]`. TCP/SSH read can split or join packets at any position,
+ * Therefore, the parser maintains cross-read buffering and can produce multiple frames at once.
  */
 internal class ScreenTcpFrameParser(
     private val onStatus: (Int) -> Unit,
@@ -193,7 +193,7 @@ internal class ScreenTcpFrameParser(
     }
 }
 
-/** 客户端 → relay 控制协议：`[4B 大端长度][THC1 控制包]`。 */
+/** Client → relay control protocol: `[4B big-endian length][THC1 control packet]`. */
 internal fun frameScreenTcpControl(data: ByteArray): ByteArray {
     require(data.size in 1..SCREEN_TCP_MAX_CONTROL_BYTES)
     val framed = ByteArray(4 + data.size)
@@ -202,7 +202,7 @@ internal fun frameScreenTcpControl(data: ByteArray): ByteArray {
     return framed
 }
 
-/** direct-tcpip 建连首包：`[4B 长度][THA1][64B hex token]`。 */
+/** direct-tcpip connection establishment packet: `[4B length][THA1][64B hex token]`. */
 internal fun frameScreenTcpAuth(token: String): ByteArray {
     require(
         token.length == SCREEN_AUTH_TOKEN_HEX_LENGTH &&
@@ -265,11 +265,11 @@ private fun writeLong(
 private fun ByteArray.startsWith(prefix: ByteArray): Boolean = size >= prefix.size && prefix.indices.all { this[it] == prefix[it] }
 
 /**
- * 复用 SSH `direct-tcpip` 的双向视频会话。
+ * Reuse SSH `direct-tcpip` for bidirectional video sessions.
  *
- * relay 只监听远端 `127.0.0.1`，客户端通过已认证 SSH 连接访问：不依赖额外
- * 公网端口映射，也不会把屏幕画面与远程控制接口暴露在公网。视频方向使用长度
- * 帧；控制方向同样加长度头，避免 TCP 粘包破坏可变长文本消息边界。
+ * relay is a listener that listens on the remote `127.0.0.1`; clients access it via an authenticated SSH connection: no additional dependencies required
+ * Public network port mapping will not expose the screen display or remote control interface to the public network. For video, use the length
+ * Frame; also add a length header to the control direction to prevent TCP packet aggregation from disrupting the bounds of variable-length text messages.
  */
 class ScreenTcpSession(
     private val channel: SshExecChannel,
@@ -278,11 +278,11 @@ class ScreenTcpSession(
     private val onVideoPacket: (ScreenVideoPacket) -> Unit,
     private val onDisconnected: () -> Unit,
     private val playerMetrics: () -> ScreenPlayerMetrics = { ScreenPlayerMetrics() },
-    /** 返回 false 表示 relay 已明确拒绝本次连接，不应按意外断线触发自动重连。 */
+    /** Returning `false` indicates that the relay has explicitly rejected this connection; automatic reconnection should not be triggered as if it were an unexpected disconnection. */
     private val onStatus: (Int) -> Boolean = { true },
-    /** Wayland 首次门户授权需要用户确认，允许调用方延长首包等待时间。 */
+    /** Wayland's first-time portal authorization requires user confirmation; allows the caller to extend the first-packet wait time. */
     private val firstVideoTimeoutMillis: Long = SCREEN_FIRST_VIDEO_TIMEOUT_MS,
-    /** 时间源注入，便于活性判定测试及避免平台时间 API 泄漏到 commonMain。 */
+    /** Time source injection, to facilitate liveness testing and prevent the platform’s time API from leaking into `commonMain`. */
     private val nowMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) {
     private var job: Job? = null
@@ -340,7 +340,7 @@ class ScreenTcpSession(
         lastFeedbackAtMillis = startedAtMillis
         previousFeedbackTransport = ScreenTransportMetrics()
         previousFeedbackPlayer = playerMetrics()
-        // relay 在认证成功前不会发状态/视频，也不会替换旧客户端。
+        // Relay will not send status updates or videos until authentication is successful, nor will it replace the old client.
         channel.write(frameScreenTcpAuth(authToken))
         job =
             scope.launch(ioDispatcher()) {
@@ -495,14 +495,14 @@ class ScreenTcpSession(
         lastFeedbackAtMillis = now
     }
 
-    /** 播放层检测到卡死时复用统一断线出口，避免只显示错误却永久停在旧画面。 */
+    /** When the playback layer detects a freeze, reuse the unified disconnection exit to prevent the screen from permanently freezing on the old view while only showing an error message. */
     fun fail(reason: String) {
         if (!active) return
         channel.close()
         notifyDisconnected(reason)
     }
 
-    /** reader EOF 与 watchdog 可能同时到达；只允许一个来源触发重连。 */
+    /** The reader EOF and the watchdog may arrive simultaneously; only one source is allowed to trigger a reconnect. */
     private fun notifyDisconnected(reason: String) {
         if (!active || !disconnectLock.tryLock()) return
         try {

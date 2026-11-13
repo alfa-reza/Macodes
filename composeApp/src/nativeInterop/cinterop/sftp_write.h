@@ -3,8 +3,8 @@
 
 #include <libssh2_sftp.h>
 
-/* 字节版写入：libssh2 的 const char* 会被 cinterop 映射为 String，
- * 这里用 unsigned char* 让 cinterop 生成指针参数，避免二进制经 UTF-8 损坏。 */
+/* Byte version: When writing to libssh2, `const char*` is written as `String` by cinterop,
+ * Here, we use `unsigned char*` to have CInterop generate a pointer parameter, thereby preventing binary data from being corrupted by UTF-8. */
 static inline long termish_sftp_write(LIBSSH2_SFTP_HANDLE *handle,
                                       const unsigned char *buffer,
                                       size_t count) {

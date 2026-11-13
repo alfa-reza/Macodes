@@ -6,8 +6,8 @@
 #import <VideoToolbox/VideoToolbox.h>
 
 /*
- * CoreMedia 的 sample/format 都是 CF 对象。把创建、附件设置和释放集中在
- * 这个薄桥接层，避免 Kotlin/Native 每帧拼多级 C 指针或误用 ARC 生命周期。
+ * CoreMedia’s `sample/format` are all CF objects. Centralize creation, attachment settings, and release in
+ * This thin bridge layer prevents Kotlin/Native from concatenating multiple levels of C pointers per frame or misusing the ARC lifecycle.
  */
 typedef void *TermishScreenFormatRef;
 
@@ -41,8 +41,8 @@ static inline void termish_screen_format_release(TermishScreenFormatRef format) 
 }
 
 /*
- * 返回 0 表示已提交；非 0 为 CoreMedia OSStatus。
- * avcc_data 必须是 4-byte big-endian NAL length-prefixed access unit。
+ * A return value of 0 indicates a successful commit; a non-zero value is a CoreMedia OSStatus.
+ * avcc_data must be a 4-byte big-endian NAL-length-prefixed access unit.
  */
 static inline int termish_screen_enqueue(
         AVSampleBufferDisplayLayer *layer,
@@ -118,7 +118,7 @@ static inline int termish_screen_enqueue(
     return 0;
 }
 
-/* -1=失败，0=等待首帧，1=正在解码/渲染。 */
+/* -1 = Failure, 0 = Waiting for the first frame, 1 = Decoding/rendering in progress. */
 static inline int termish_screen_layer_state(AVSampleBufferDisplayLayer *layer) {
     if (layer == nil) {
         return -1;

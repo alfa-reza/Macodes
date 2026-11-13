@@ -3,7 +3,7 @@ package dev.termish.util
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-/** 保留文档坐标系，只缩小输出位图，防止超大 SVG 分配无界像素内存。 */
+/** Preserve the document coordinate system and only scale down the output bitmap to prevent excessively large SVGs from allocating unbounded pixel memory. */
 internal data class SvgPreviewSize(
     val viewportWidth: Float,
     val viewportHeight: Float,

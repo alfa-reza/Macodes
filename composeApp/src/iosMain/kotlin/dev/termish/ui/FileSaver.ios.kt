@@ -22,9 +22,9 @@ import platform.posix.open
 import platform.posix.write
 
 /**
- * iOS：下载先写入临时文件，[FileSink.close] 时弹出 UIDocumentPicker
- * （"存储到文件"，用户可转存 Files/其他 App）。min target 15.0，用 iOS 14+ 的
- * forExporting API。
+ * iOS: Write to a temporary file upon download; display a UIDocumentPicker when [FileSink.close] is called.
+ * ("Storage to File"; users can save to Files or other apps). Min target 15.0; requires iOS 14 or later.
+ * forExporting API.
  */
 @OptIn(ExperimentalForeignApi::class)
 @Composable

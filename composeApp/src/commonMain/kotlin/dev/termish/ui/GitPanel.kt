@@ -71,29 +71,29 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** git 命令超时（本地 git 一般毫秒级；大仓库 status/diff 也远小于此）。 */
+/** Git commands timeout (local Git operations typically take milliseconds; even status and diff commands for large repositories take far less time than that). */
 private const val GIT_TIMEOUT_MS = 30_000L
 
-/** diff 输出上限（head 截断，防止超大文件刷爆终端回看）。 */
+/** Upper limit for diff output (truncated via head to prevent extremely large files from flooding the terminal scrollback). */
 private const val DIFF_MAX_LINES = 600
 
-/** bash 默认 PS1（`user@host:~/path$` / `#`）的工作目录提取。 */
+/** Extraction of the work directory from the default bash PS1 (`user@host:~/path$` / `#`). */
 private val PROMPT_CWD_REGEX = Regex("""^[^\s@]+@[^\s:]+:([^\s$#]*)[$#]\s*$""")
 
 /**
- * 工作目录探测脚本（经 exec 通道执行，不碰交互终端；POSIX sh 兼容）：
- * 1. tmux 焦点 pane 路径（tmux 守护进程可查）
- * 2. agent 进程（pi/codex/claude）的 cwd——全屏 TUI 运行时 shell 的
- *    cwd 就是 agent 启动前的项目目录（agent 是 shell 子进程，shell cwd 不变）
- * 3. 交互 shell（bash/zsh/fish）的 cwd
- * 候选 cwd 必须 `git rev-parse` 验证为仓库才返回（多个 shell 会话时取
- * 真正的工作区）；不用 tail -1（进程退出竞态会拿到死 pid）。
- * 4. 免验证兜底：任何交互 shell 的 cwd——无仓库时让面板给出「非 git
- *    仓库 / git 未安装」的准确错误，而不是探测失败回退到注入终端
+ * Working directory detection script (executed via the `exec` channel, does not interact with the terminal; POSIX sh-compatible):
+ * 1. tmux focused-pane path (queryable via the tmux daemon)
+ * 2. CWD of the agent process (pi/codex/claude) — the fullscreen TUI runtime shell’s
+ *    cwd refers to the project directory before the agent is launched (the agent is a shell subprocess; the shell’s cwd remains unchanged).
+ * 3. Current working directory (cwd) in interactive shells (bash/zsh/fish)
+ * The candidate `cwd` must be verified as a repository using `git rev-parse` before being returned (in the case of multiple shell sessions, take
+ * (actual workspace); do not use `tail -1` (a race condition upon process exit may result in a dead PID).
+ * 4. Fallback for no verification: The current working directory (cwd) of any interactive shell—if no repository exists, have the panel display “not git”
+ *    "Repository / Git not installed" as the exact error message, rather than falling back to the terminal upon detection failure.
  *
- * cwd 获取跨平台（cwd_of）：Linux 走 /proc/<pid>/cwd（毫秒级），无 /proc
- * 的 macOS/BSD 退 lsof（`lsof -a -p <pid> -d cwd -Fn` 的 n<path> 行）——
- * 此前只走 /proc，macOS 远端必然探测失败（面板报「无法确定远端工作目录」）。
+ * cwd: Obtain cross-platform (cwd_of): On Linux, use /proc/<PID>/cwd (millisecond-level accuracy); if /proc is unavailable
+ * macOS/BSD lsof output (`lsof -a -p <PID> -d cwd -Fn` for n<PATH> rows) —
+ * Previously, it only used /proc, so there would be a failure in remote detection on macOS (the panel reported “Unable to determine the remote working directory”).
  */
 private const val WORKDIR_PROBE_SCRIPT =
     "cwd_of() { " +
@@ -115,20 +115,20 @@ private const val WORKDIR_PROBE_SCRIPT =
         "[ -n \"\$c\" ] && { echo \"\$c\"; exit 0; }; " +
         "done; done; echo ''"
 
-/** git 命令执行超时。 */
+/** Git command execution timed out. */
 internal class GitTimeoutException : Exception("git command timed out")
 
-/** git 命令执行失败（非超时，如无法获取工作区）。 */
+/** Git command execution failure (not due to a timeout, e.g., unable to access the working directory). */
 internal class GitCommandException(
     message: String,
 ) : Exception(message)
 
-/** 无法确定远端工作目录（无可用独立通道）——命令不执行，由面板映射为本地化文案。 */
+/** Unable to determine the remote working directory (no available independent channel) — the command is not executed; the panel maps it to localized text. */
 internal class GitWorkdirUnknownException : Exception()
 
 /**
- * mosh 控制面连接的辅助回调：输出全部忽略（不污染终端缓冲）、
- * 主机密钥信任沿用主连接（同一主机已确认过）、私钥口令不弹窗（无密码场景返回 null）。
+ * Auxiliary callbacks for mosh control plane connections: Ignore all output (do not pollute the terminal buffer),
+ * Host key trust carries over from the main connection (same host already confirmed); the private-key passphrase is not prompted (returns null when passwordless).
  */
 private object AuxCallbacks : SshCallbacks {
     override suspend fun onOutput(data: ByteArray) {}
@@ -145,20 +145,20 @@ private object AuxCallbacks : SshCallbacks {
 }
 
 /**
- * Git 命令执行器抽象：面板只依赖该契约，不绑定具体会话形态。
- * 两种实现：
- * - [TerminalGitCommandRunner]：终端页（SSH 复用已认证连接 / mosh 控制面连接）
- * - [AgentGitCommandRunner]：Agent 对话页（复用 Agent Bridge 控制连接，
- *   工作目录直接取 Agent 会话 cwd——agent 正在操作的项目目录）
+ * Git Command Executor Abstraction: The panel depends solely on this contract and does not have any binding to a specific session format.
+ * Two implementations:
+ * - [TerminalGitCommandRunner]: Terminal screen (SSH reuses an authenticated connection / mosh control plane connection)
+ * - [AgentGitCommandRunner]: Agent dialog page (reuses the Agent Bridge to control the connection,
+ *   The working directory is taken directly from the Agent session (cwd—the project directory the agent is currently working on).
  */
 internal interface GitCommandRunner {
-    /** 工作目录（执行前 `cd` 定位；refresh 时探测/设置）。 */
+    /** Working directory (navigate to with `cd` before execution; detect/set during refresh). */
     var workdir: String?
 
-    /** 探测工作目录；不可得返回 null（命令不执行，面板内报错）。 */
+    /** Detect the working directory; if unavailable, return null (the command will not execute, and an error will be reported in the panel). */
     suspend fun fetchWorkdir(): String?
 
-    /** 执行 git 命令并返回完整输出（已 strip ANSI）；失败抛 [GitCommandException] / [GitWorkdirUnknownException] / [GitTimeoutException]。 */
+    /** Execute Git commands and return the full output (with ANSI characters stripped); throw [GitCommandException] / [GitWorkdirUnknownException] / [GitTimeoutException] on failure. */
     suspend fun run(
         command: String,
         timeoutMs: Long = GIT_TIMEOUT_MS,
@@ -166,44 +166,44 @@ internal interface GitCommandRunner {
 }
 
 /**
- * 终端 git 命令执行器——**绝不向交互终端注入命令**，按会话模式选独立通道：
+ * Terminal Git Command Executor—**Never performs command injection into the interactive terminal**; selects a separate channel based on session mode:
  *
- * - **SSH/herdr**：`SshSession.runCommand` 独立 exec 通道（复用已认证连接、
- *   无 PTY、不打扰交互 shell / herdr TUI），输出直接捕获；herdr 的 cwd
- *   取焦点 pane 的工作区。
- * - **mosh**：控制面独立 SSH 连接 `connectAndRun`（mosh 官方架构：
- *   交互走 UDP，控制面走 SSH）。
+ * - **SSH/herdr**: `SshSession.runCommand` standalone exec channel (reuses an authenticated connection,
+ *   No PTY, non-interactive shell / herdr TUI), output is caught directly; herdr's cwd
+ *   is the workspace in the active pane.
+ * - **mosh**: Independent SSH connection for the control plane `connectAndRun` (official mosh architecture:
+ *   (Interaction uses UDP; the control plane uses SSH).
  *
- * 工作目录由 [fetchWorkdir] 探测；探测不到时抛 [GitWorkdirUnknownException]
- * （面板内报错，终端画面零污染）。
+ * The working directory is detected by [fetchWorkdir]; if it cannot be detected, a [GitWorkdirUnknownException] is thrown.
+ * (Error messages appear in the panel; the terminal remains uncluttered).
  */
 internal class TerminalGitCommandRunner(
     private val controller: TerminalController,
 ) : GitCommandRunner {
-    /** Herdr 会话：cwd 优先走 herdr snapshot（焦点 pane 的工作区）。
-     *  herdr 是会话启动类型而非主机连接模式，探测路径不变。 */
+    /** Herdr sessions: cwd prioritizes the Herdr snapshot (the workspace in the focus pane).
+     *  herdr is a session-launch type rather than a host-connection mode; the detection path remains unchanged. */
     val herdrMode: Boolean get() = controller.launchHerdr && controller.herdrBin != null
 
-    /** 工作目录（独立 exec 通道先 `cd` 定位；refresh 时探测，见 [fetchWorkdir]）。 */
+    /** Working directory (first use `cd` to set the directory in a standalone exec channel; detected during refresh—see [fetchWorkdir]). */
     override var workdir: String? = null
 
-    /** 复用已认证连接的 exec 通道（SSH/herdr 模式）。 */
+    /** Reuse the exec channel of an already authenticated connection (SSH/herdr mode). */
     private val execSession: SshSession?
         get() = controller.session?.takeIf { it.isActive() }
 
     /**
-     * 探测 Git 工作目录（独立通道执行前 `cd` 定位），按模式分层：
-     * 1. herdr：`herdr api snapshot` 焦点 pane 的 cwd（agent 正在改代码的目录）
-     * 2. tmux：`tmux display-message -p '#{pane_current_path}'`（tmux 守护进程
-     *    可从任意进程查询焦点 pane 路径——agent 工作流标准做法）
-     * 3. /proc 进程探测：`readlink /proc/<pid>/cwd` 拿 agent（pi/codex/claude）或
-     *    交互 shell 进程的工作目录——**全屏程序（TUI 运行中）场景的关键**：
-     *    终端里没有提示符可解析，但 shell 的 cwd 就是 agent 启动前的项目目录
-     *    （agent 是 shell 的子进程，shell cwd 不变）
-     * 4. bash 提示符：解析终端末行提示符里的 \w（裸 shell 场景；PS1 自定义
-     *    格式不匹配则放弃；mosh 下引导通道已关无法解析 ~，仅接受绝对路径）
-     * 拿不到返回 null（调用方报错——**不回退到交互终端注入命令**）。
-     * mosh 模式（SSH 引导通道已关）：探测走控制面连接（connectAndRun）。
+     * Detect the Git working directory (using `cd` to locate it before executing in a separate channel), and organize by mode:
+     * 1. herdr: `herdr api snapshot` — the current working directory (the directory where the agent is modifying code) in the focus pane
+     * 2. tmux: `tmux display-message -p '#{pane_current_path}'` (tmux daemon
+     *    You can query the focus pane path from any process—standard practice for agent workflows)
+     * 3. /proc process detection: `readlink /proc/<PID>/cwd` to retrieve the agent (pi/codex/claude) or
+     *    The working directory of an interactive shell process—**critical in fullscreen program (TUI running) scenarios**:
+     *    There is no prompt to parse in the terminal, but the shell’s current working directory (cwd) is the project directory prior to the agent’s launch.
+     *    (An agent is a subprocess of the shell; the shell’s current working directory remains unchanged.)
+     * 4. Bash prompt: parse \w in the terminal's last prompt line (bare-shell scenario; PS1 customization
+     *    (format mismatch → skip; under mosh the bootstrap channel is closed and `~` can't be parsed, so only absolute paths are accepted)
+     * If no result is returned, return null (the caller will receive an error—**do not revert to the interactive terminal for command injection**).
+     * mosh mode (SSH bootstrap channel closed): probing goes via the control-plane connection (connectAndRun).
      */
     override suspend fun fetchWorkdir(): String? {
         if (herdrMode) {
@@ -233,7 +233,7 @@ internal class TerminalGitCommandRunner(
                     ?: snap.panes.firstOrNull { !it.cwd.isNullOrBlank() }?.cwd
             }
         }
-        // 提示符 \w 解析（当前会话最准；全屏程序/自定义 PS1 时不匹配自动跳过）
+        // Parsing the \w token (most accurate in the current session; automatically skipped if it does not match in fullscreen programs or when using a custom PS1)
         val promptPath = parsePromptCwd(controller.buffer)
         if (promptPath != null) {
             val session = execSession
@@ -253,12 +253,12 @@ internal class TerminalGitCommandRunner(
                     return resolved
                 }
             } else if (promptPath.startsWith("/")) {
-                // mosh（引导通道已关）：无法解析 ~，绝对路径直接可用
+                // mosh (bootstrap channel closed): cannot parse ~; absolute paths usable directly
                 TermLog.d("git") { "workdir via prompt: $promptPath" }
                 return promptPath
             }
         }
-        // tmux → /proc 进程探测（agent 优先，回退交互 shell）
+        // tmux → /proc process monitoring (agent preferred; fallback to interactive shell)
         val session = execSession
         if (session != null) {
             val raw =
@@ -272,7 +272,7 @@ internal class TerminalGitCommandRunner(
                 return probed
             }
         } else if (controller.moshSession != null) {
-            // mosh：SSH 引导通道已关，探测走控制面连接（一次连接）
+            // mosh: SSH bootstrap channel closed; probing goes via the control-plane connection (single connection)
             val raw =
                 withContext(ioDispatcher()) {
                     val aux = newAuxConnection() ?: return@withContext null
@@ -298,10 +298,10 @@ internal class TerminalGitCommandRunner(
         return null
     }
 
-    /** 探测输出取第一个绝对路径行（tmux 与 /proc 可能各输出一行，不能拼接）。 */
+    /** Extract the first row containing an absolute path from the output (tmux and /proc may each output one row; do not concatenate them). */
     private fun firstPathLine(raw: String?): String? = raw?.lineSequence()?.firstOrNull { it.trimStart().startsWith("/") }?.trim()
 
-    /** 新建 mosh 控制面连接（mosh 官方架构：交互走 UDP，控制面走独立 SSH）。 */
+    /** Create a new Mosh control plane connection (official Mosh architecture: interaction via UDP, control plane via a separate SSH connection). */
     private fun newAuxConnection(): SshSession? =
         try {
             val conn =
@@ -320,8 +320,8 @@ internal class TerminalGitCommandRunner(
             null
         }
 
-    /** bash 默认 PS1 `user@host:~/path$`（或 `#` root）的 \w 提取；
-     *  输入中的行（`$` 后还有内容）不匹配，避免把半行命令当提示符。 */
+    /** Extract \w from the default bash PS1 `user@host:~/path$` (or `#` for root);
+     *  Rows in the input (where content follows the `$` symbol) do not match; avoid treating half-lines of commands as prompts. */
     private fun parsePromptCwd(buffer: TerminalBuffer): String? {
         val total = buffer.totalLines()
         for (i in (total - 1) downTo maxOf(0, total - 40)) {
@@ -333,14 +333,14 @@ internal class TerminalGitCommandRunner(
     }
 
     /**
-     * 执行 [command] 并返回完整输出（已 strip ANSI）——**绝不注入交互终端**：
-     * 1. **独立 exec 通道**：复用已认证连接（SSH/herdr）先切到 `<cwd>`——
-     *    命令不进交互终端，画面零污染（业界标准：VS Code Remote-SSH 的 git
-     *    操作同样走独立 exec channel）。
-     * 2. **mosh 控制面连接**（mosh 的 SSH 引导通道已关）：懒建独立 SSH 连接
-     *    `connectAndRun`（mosh 官方架构：交互走 UDP，控制面走 SSH）。
-     * 工作目录未知时抛 [GitWorkdirUnknownException]（面板内报错；herdr 模式
-     * 抛 [GitCommandException]，禁止注入 herdr/pi 输入框）。
+     * Execute [command] and return the full output (ANSI characters stripped) — **do not perform terminal injection**:
+     * 1. **Standalone exec channel**: Reuse an authenticated connection (SSH/herdr) and first switch to `<CWD>`—
+     *    Commands do not enter the interactive terminal, keeping the screen clutter-free (industry standard: VS Code Remote-SSH’s git
+     *    (Operations also go through a separate exec channel.)
+     * 2. **mosh control plane connection** (mosh's SSH bootstrap channel is closed): lazily create an independent SSH connection
+     *    `connectAndRun` (mosh official architecture: interaction via UDP, control plane via SSH).
+     * Throw [GitWorkdirUnknownException] when the working directory is unknown (error reported in the panel; herdr mode)
+     * Throw [GitCommandException] and prevent injection into the herdr/pi input field.
      */
     override suspend fun run(
         command: String,
@@ -348,12 +348,12 @@ internal class TerminalGitCommandRunner(
     ): String {
         val dir =
             workdir ?: run {
-                // herdr 模式报具体原因；其余场景统一「无法确定工作目录」
+                // For the "herdr" mode, report the specific cause; for all other scenarios, uniformly report "Unable to determine working directory."
                 if (herdrMode) throw GitCommandException("无法获取 herdr 工作区（snapshot 失败）")
                 throw GitWorkdirUnknownException()
             }
         val full = gitCommandInDirectory(dir, command)
-        // 1) 独立 exec 通道：复用已认证连接（SSH/herdr）
+        // 1) Independent exec channel: Reuse authenticated connections (SSH/herdr)
         val session = execSession
         if (session != null) {
             TermLog.d("git") { "run exec cwd=$dir cmd=$full" }
@@ -361,7 +361,7 @@ internal class TerminalGitCommandRunner(
                 session.runCommand(full, timeoutMs) ?: throw GitTimeoutException()
             }.let { stripAnsiOutput(it) }
         }
-        // 2) mosh 控制面连接：SSH 引导通道已关，懒建独立连接（mosh 官方架构）
+        // 2) mosh control plane connection: SSH bootstrap channel closed; lazily create an independent connection (mosh official architecture)
         if (controller.moshSession != null) {
             TermLog.d("git") { "run aux-ssh cwd=$dir cmd=$full" }
             return withContext(ioDispatcher()) {
@@ -379,7 +379,7 @@ internal class TerminalGitCommandRunner(
                 }
             }.let { stripAnsiOutput(it) }
         }
-        // 断连竞态等极端情况：exec/mosh 通道都不可用
+        // Extreme cases such as connection failures or race conditions: neither the exec nor mosh channels are available
         throw GitWorkdirUnknownException()
     }
 
@@ -396,9 +396,9 @@ internal class TerminalGitCommandRunner(
 }
 
 /**
- * Agent 对话页的 git 执行器：复用 Agent Bridge 的控制连接跑独立 exec 通道
- * （不注入、不干扰正在运行的 agent），工作目录 = Agent 会话 cwd
- * （agent 正在操作的项目目录，比提示符探测更准）。
+ * Git executor on the Agent dialog page: Reuse the Agent Bridge’s control connection to run a separate exec channel
+ * (Do not perform injection into or interference with a running agent); working directory = Agent session cwd
+ * (the project directory the agent is working on; more accurate than prompt detection.)
  */
 internal class AgentGitCommandRunner(
     private val controller: dev.termish.agent.AgentBridgeController,
@@ -422,58 +422,58 @@ internal class AgentGitCommandRunner(
     }
 }
 
-/** 整条命令链都在仓库目录执行；`git -C` 只能约束第一个 `git`，无法覆盖 `&& git …`。 */
+/** The entire command chain is executed in the repository directory; `git -C` only constrains the first `git` and cannot override `&& git …`. */
 internal fun gitCommandInDirectory(
     directory: String,
     command: String,
 ): String = "cd ${shellQuote(directory)} && $command"
 
-/** 清除输出中残留的 ANSI 转义（git color.ui 已强制关闭，双保险）。 */
+/** Remove any remaining ANSI escape sequences from the output (git color.ui has been forced off as a double precaution). */
 private fun stripAnsiOutput(s: String): String {
     if ('\u001b' !in s) return s
     return ANSI_ESCAPE_REGEX.replace(s, "")
 }
 
-// SGR/CSI 与 OSC 序列（双保险：终端渲染前可能未完全消费的残片）
+// SGR/CSI and OSC sequences (double safeguard: fragments that may not have been fully consumed before terminal rendering)
 private val ANSI_ESCAPE_REGEX = Regex("\u001b\\[[0-9;?]*[a-zA-Z]|\u001b\\][^\u0007]*\u0007")
 
-/** Git 状态徽章配色：贴合终端 ANSI 语义（修改=黄，新增=绿，删除=红…）。 */
+/** Git status badge color scheme: Aligns with terminal ANSI semantics (modify = yellow, add = green, delete = red, etc.). */
 private fun statusColor(
     code: String,
     theme: TerminalTheme,
 ): Color {
     val c = code.firstOrNull() ?: return theme.ansi(7)
     return when {
-        c == '?' || c == '!' -> theme.ansi(6) // 未跟踪/忽略：青
-        c == 'A' -> theme.ansi(2) // 新增：绿
-        c == 'D' -> theme.ansi(1) // 删除：红
-        c == 'R' || c == 'C' -> theme.ansi(5) // 重命名/复制：紫
-        c == 'U' || code.contains('U') -> theme.ansi(1) // 冲突：红
-        else -> theme.ansi(3) // 修改：黄
+        c == '?' || c == '!' -> theme.ansi(6) // Not tracked/ignored: cyan
+        c == 'A' -> theme.ansi(2) // New: Green
+        c == 'D' -> theme.ansi(1) // Delete: red
+        c == 'R' || c == 'C' -> theme.ansi(5) // Rename/Copy: purple
+        c == 'U' || code.contains('U') -> theme.ansi(1) // Conflict: Red
+        else -> theme.ansi(3) // Modified: yellow
     }
 }
 
 /**
- * Git 悬浮面板：终端画布右侧悬浮按钮（可拖动）+ 状态/diff 面板 + 提交对话框。
+ * Git Floating Panel: Floating buttons on the right side of the terminal canvas (draggable) + status/diff panel + commit dialog.
  *
- * 仅 SSH/mosh 已连接时显示。git 命令只走独立通道（SSH 复用已认证连接的
- * exec channel / mosh 控制面连接），**绝不注入交互终端**；探测不到工作
- * 目录时面板内报错。herdr 模式命令走独立 exec 通道（不注入 herdr/pi 输入框）。
- * [open]/[onOpenChange] 状态提升：键盘工具栏「⋯」溢出面板也提供入口。
+ * Shows only when SSH/mosh is connected. Git commands travel only through a separate channel (SSH reuses an authenticated connection's
+ * exec channel / mosh (control plane connection), **never perform injection into an interactive terminal**; when it cannot detect the working
+ * directory it reports the error in the panel. herdr-mode commands run on a separate exec channel (not injected into the herdr/pi input box).
+ * [open]/[onOpenChange] state hoisting: an entry also lives in the keyboard toolbar's “⋯” overflow panel.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun GitOverlay(
-    /** 会话是否已连接（终端页：SSH/Mosh CONNECTED；Agent 页：Bridge READY）。 */
+    /** Is the session connected (terminal screen: SSH/Mosh CONNECTED; Agent tab: Bridge READY)? */
     connected: Boolean,
-    /** 终端是否处于全屏程序（vim/tmux）备用屏（面板不注入 TUI）；Agent 页恒为 false。 */
+    /** Whether the terminal is in the alternate screen of a fullscreen app (vim/tmux) (panel never injects into the TUI); always false on the Agent page. */
     inAltScreen: Boolean,
     runner: GitCommandRunner,
     theme: TerminalTheme,
-    /** 面板打开状态（由调用方持有，供 FAB 与工具栏溢出面板共用）。 */
+    /** Panel open state (held by the caller, shared by the FAB and the toolbar overflow panel). */
     open: Boolean,
     onOpenChange: (Boolean) -> Unit,
-    /** 底部让出高度（键盘工具栏 + 间距）：FAB 悬浮在工具栏上方。 */
+    /** Leave height at the bottom (keyboard toolbar + spacing): The FAB hovers above the toolbar. */
     bottomInset: Dp,
     onToast: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -496,12 +496,12 @@ internal fun GitOverlay(
     var commitOpen by remember { mutableStateOf(false) }
     var commitMsg by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    // Git 面板没有“半收起”语义：只允许完整展开或关闭。否则从详情页下滑时
-    // Sheet 已进入 Hidden、外层 open 却仍为 true，会留下无法再次打开的空状态。
+    // The Git panel does not support a “half-collapsed” state: it can only be fully expanded or collapsed. Otherwise, when scrolling down from the details page,
+    // If a sheet is set to "Hidden" but its outer "open" attribute remains true, it will leave an empty state that cannot be reopened.
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // 面板内也保持分层返回：diff → 状态页 → 关闭面板，不依赖顶部按钮。
-    // ModalBottomSheet / 提交对话框会先消费自身的返回事件。
+    // Maintain a hierarchical back path within the panel: diff → status page → close panel, without any dependency on the top button.
+    // ModalBottomSheet / The commit dialog will consume its own return event first.
     PlatformBackHandler(enabled = open) {
         if (selected != null) {
             selected = null
@@ -510,9 +510,9 @@ internal fun GitOverlay(
         }
     }
 
-    // Git 命令走独立 exec 通道（复用已认证连接 / mosh 控制面连接），不注入
-    // 交互终端——vim/tmux 全屏程序下也可用（命令不进 TUI）。探测不到工作
-    // 目录时面板内报错（全屏程序中提示先退出）。
+    // Git commands use a separate exec channel (reusing an authenticated connection / mosh control plane connection) and never inject into the
+    // interactive terminal — this also works in fullscreen apps like vim/tmux (commands never enter the TUI). When the working
+    // directory cannot be detected, the panel reports the error (fullscreen: prompt to exit first).
     fun friendly(raw: String): String =
         when {
             raw.contains("not a git repository") -> s.git.notRepo
@@ -521,7 +521,7 @@ internal fun GitOverlay(
             else -> raw.take(240)
         }
 
-    /** 提取输出中的错误行并转友好文案；无错误返回 null。 */
+    /** Extract error rows from the output and convert them into user-friendly text; return `null` if no errors are found. */
     fun extractError(out: String): String? {
         for (raw in out.lineSequence()) {
             val l = raw.trim()
@@ -536,7 +536,7 @@ internal fun GitOverlay(
         return null
     }
 
-    /** 执行命令（busy 防重入），返回错误文案或 null。 */
+    /** Execute the command (busy to prevent re-entry), and return the error message or null. */
     suspend fun exec(cmd: String): String? {
         if (busy) return null
         busy = true
@@ -558,9 +558,9 @@ internal fun GitOverlay(
     }
 
     /**
-     * 探测 Git 工作目录（独立通道定位）。herdr 走 snapshot；SSH/mosh 走
-     * 提示符解析 / tmux / /proc 进程探测。探测不到时命令不执行、面板内
-     * 报错——绝不回退到交互终端注入命令。
+     * Detect the Git working directory (located over a separate channel). herdr goes via snapshot; SSH/mosh via
+     * prompt parsing / tmux / /proc process probing. If undetectable, the command does not run; the panel reports an
+     * error and never falls back to injecting commands into the interactive terminal.
      */
     suspend fun probeWorkdir() {
         runner.workdir = runner.fetchWorkdir()
@@ -650,11 +650,11 @@ internal fun GitOverlay(
         refresh()
     }
 
-    // 打开面板即刷新状态；关闭时清空视图
+    // Refresh the status when the panel is opened; clear the view when closed.
     LaunchedEffect(open) {
         if (open) refresh() else selected = null
     }
-    // 选中文件：重置 staged 偏好并加载 diff
+    // Selected files: Reset staged preferences and start diff loading
     LaunchedEffect(selected) {
         stagedOverride = null
     }
@@ -666,13 +666,13 @@ internal fun GitOverlay(
         if (e.diffable) loadDiff(e, showStaged)
     }
 
-    // 入口已收进右下角功能菜单（CanvasToolMenu）：Git 使用频次低，不再占画布
-    // 独立悬浮位；面板本体不变。
+    // The entry has been moved to the bottom-right menu (CanvasToolMenu): Since Git is rarely used, it no longer takes up space on the canvas.
+    // Independent floating position; the panel body remains unchanged.
     if (open) {
         ModalBottomSheet(
             onDismissRequest = {
-                // 下滑、点遮罩和 Sheet 自身返回都表示关闭。此时 Material 已把
-                // Sheet 移到 Hidden，必须同步外层 open，不能只清详情层级。
+                // Swiping down, tapping the mask, and the Sheet itself going back all indicate closing. At this point, Material has already
+                // When a sheet is moved to "Hidden," the outer "open" must sync; clearing only the detail level is not sufficient.
                 selected = null
                 onOpenChange(false)
             },
@@ -686,8 +686,8 @@ internal fun GitOverlay(
                     .fillMaxHeight(0.72f)
                     .imePadding(),
             ) {
-                // 全屏程序（vim/tmux）且探测不到工作目录：只提示不执行
-                // （不注入 TUI）；探测成功（独立 exec 通道）则正常使用
+                // Fullscreen programs (vim/tmux) where the working directory cannot be detected: display a tooltip only; do not execute.
+                // (Do not perform TUI injection); if detection is successful (via a separate exec channel), proceed as normal.
                 if (inAltScreen && runner.workdir == null && !loading) {
                     Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -734,7 +734,7 @@ internal fun GitOverlay(
                                 }
                             }
                     }
-                    // 底部操作：暂存 / 取消暂存 / 提交
+                    // Bottom actions: Stage / Unstage / Commit
                     HorizontalDivider(color = theme.foreground().copy(alpha = 0.2f))
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
@@ -773,7 +773,7 @@ internal fun GitOverlay(
                         }
                     }
                 } else {
-                    // ---- Diff 页 ----
+                    // ---- Diff Page ----
                     val entry = selected!!
                     GitDiffHeader(
                         theme = theme,
@@ -818,7 +818,7 @@ internal fun GitOverlay(
         }
     }
 
-    // ---- 提交对话框 ----
+    // ---- Commit Dialog ----
     if (commitOpen) {
         AlertDialog(
             onDismissRequest = { commitOpen = false },
@@ -855,7 +855,7 @@ internal fun GitOverlay(
     }
 }
 
-/** 面板头部：分支 + ahead/behind + 变更数 + 刷新 + 关闭。 */
+/** Panel header: Branch + ahead/behind + number of changes + refresh + Close. */
 @Composable
 private fun GitStatusHeader(
     theme: TerminalTheme,
@@ -915,7 +915,7 @@ private fun GitStatusHeader(
     }
 }
 
-/** Diff 页头部：返回 + 文件路径 + 暂存切换 + 行数统计。 */
+/** Diff page header: Back + file path + stage toggle + row count. */
 @Composable
 private fun GitDiffHeader(
     theme: TerminalTheme,
@@ -958,7 +958,7 @@ private fun GitDiffHeader(
             }
         }
         if (canToggle) {
-            // 已暂存 / 未暂存 切换
+            // Toggle "Stage" / "Unstaged"
             Row(
                 Modifier
                     .clip(RoundedCornerShape(8.dp))
@@ -998,7 +998,7 @@ private fun DiffTab(
     )
 }
 
-/** 文件行：状态徽章 + 路径（重命名显示新路径）。 */
+/** File row: Status badge + path (show the new path after renaming). */
 @Composable
 private fun GitFileRow(
     entry: GitEntry,
@@ -1058,7 +1058,7 @@ private fun GitFileRow(
     }
 }
 
-/** 单行 diff 渲染：+ 绿 / - 红 / @@ 蓝 / 上下文灰，等宽字体。 */
+/** Single-line diff rendering: + green / - red / @@ blue / context gray, monospaced font. */
 @Composable
 private fun GitDiffRow(
     line: GitDiffLine,
@@ -1088,7 +1088,7 @@ private fun GitDiffRow(
     )
 }
 
-/** 面板内居中提示（加载 / 错误 / 空态）。modifier 由调用方提供 weight 撑满剩余空间。 */
+/** Centered tooltips within the panel (loading / error / empty state). The modifier is provided by the caller; “weight” fills the remaining space. */
 @Composable
 private fun GitCenteredHint(
     theme: TerminalTheme,
@@ -1129,7 +1129,7 @@ private fun GitCenteredHint(
     }
 }
 
-/** 手绘 git 分支图标（三节点 + 两段曲线，24 viewport 归一化坐标）。 */
+/** Hand-drawn Git branch icon (three nodes + two curves, 24 viewport normalized coordinates). */
 @Composable
 fun GitBranchIcon(
     tint: Color,
@@ -1146,7 +1146,7 @@ fun GitBranchIcon(
         ) = Offset(w * fx, h * fy)
         val curve =
             Path().apply {
-                // 左上 tip → 右侧分叉点
+                // Top-left tip → Right-side fork
                 moveTo(p(0.333f, 0.292f).x, p(0.333f, 0.292f).y)
                 cubicTo(
                     p(0.333f, 0.45f).x,
@@ -1156,7 +1156,7 @@ fun GitBranchIcon(
                     p(0.708f, 0.5f).x,
                     p(0.708f, 0.5f).y,
                 )
-                // 右侧分叉点 → 左下 main
+                // Fork on the right → main at the bottom left
                 cubicTo(
                     p(0.52f, 0.55f).x,
                     p(0.52f, 0.55f).y,

@@ -7,16 +7,16 @@ import org.jetbrains.skia.FontMgr
 import org.jetbrains.skia.FontStyle
 
 /**
- * iOS：CJK 显式按名取系统 PingFang SC。
+ * iOS: Explicitly use the PingFang SC system font by name for CJK characters.
  *
- * 不能用 FontFamily.Default：CMP 1.8.1 Canvas 绘制路径的缺字回退不可靠
- * （宽字符 run 指到 Default 仍乱码）；资源字体（Noto Sans SC）在 iOS 的
- * 异步加载也有时序问题（曾导致整段中文乱码）。FontMgr 走 CoreText 系统
- * 字体库，同步、确定性；iOS 9+ 必有 PingFang SC。
+ * Do not use FontFamily.Default: CMP 1.8.1’s fallback for missing characters in Canvas path drawing is unreliable
+ * (The wide character "run" still appears as garbled text even when set to "Default"); the font resource (Noto Sans SC) on iOS
+ * Async loading also has timing issues (which once caused an entire section of Chinese text to appear as garbled characters). FontMgr uses the CoreText system
+ * Font library: syncs and is deterministic; PingFang SC is required for iOS 9+.
  *
- * 降级链：legacyMakeTypeface → matchFamilyStyle → Default。
- * 取不到 PingFang（理论上仅极端环境）回退 Default：字体问题不该让
- * app 在组合期崩溃，降级后最多回到乱码，行为不劣于修复前。
+ * Fallback chain: legacyMakeTypeface → matchFamilyStyle → Default.
+ * If PingFang cannot be loaded (theoretically only in extreme environments), fall back to the default: font issues should not cause
+ * The app crashes during the composition phase; after a fallback, it reverts to garbled text at most, and its behavior is no worse than before the fix.
  */
 private val cjkFamily: FontFamily by lazy {
     runCatching {

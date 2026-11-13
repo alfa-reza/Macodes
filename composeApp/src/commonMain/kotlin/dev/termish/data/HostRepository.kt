@@ -11,8 +11,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /**
- * 主机与设置仓库。非秘密数据存 multiplatform-settings（JSON），
- * 秘密数据（密码/私钥）存平台安全存储（[SecretStore]）。
+ * Hosts and settings repository. Non-secret data is stored in `multiplatform-settings` (JSON),
+ * Store sensitive data (passwords/private keys) securely in platform storage ([SecretStore]).
  */
 class HostRepository(
     private val settings: Settings = Settings(),
@@ -29,19 +29,19 @@ class HostRepository(
     private val mutableAppSettings = MutableStateFlow(readSettings())
 
     /**
-     * 进程内设置的单一事实来源。设置页、Agent 页和连接层都从这里读取，避免各自
-     * 长期持有整份 [AppSettings] 快照后互相覆盖字段。
+     * A single source of truth for settings within the process. The Settings page, Agent page, and connection layer all read from here to avoid each having their own
+     * After maintaining the entire [AppSettings] snapshot for an extended period, the fields will overwrite each other.
      */
     val appSettings: StateFlow<AppSettings> = mutableAppSettings.asStateFlow()
 
-    // ---------- 主机 ----------
+    // ---------- host ----------
 
     fun listHosts(): List<Host> {
         val raw = settings.getStringOrNull(hostsKey) ?: return emptyList()
         return try {
             json.decodeFromString<List<Host>>(raw)
         } catch (e: Exception) {
-            // 解析失败不清空数据：备份原始串供恢复/排查，避免后续 upsert 把全部主机覆盖丢失
+            // Do not clear data on parse failure: back up the original string for recovery/troubleshooting to prevent subsequent `upsert` operations from overwriting all hosts and causing data loss.
             backupCorrupt(hostsKey, raw)
             TermLog.w("data") { "corrupt hosts backed up: ${e.message}" }
             emptyList()
@@ -73,7 +73,7 @@ class HostRepository(
         }
     }
 
-    /** 仅记录主机密钥指纹（TOFU 弹窗点信任后立即调用，与后续认证成败解耦）。 */
+    /** Only record the host key fingerprint (called immediately after clicking “Trust” in the TOFU dialog, decoupled from the success or failure of subsequent authentication). */
     fun recordHostKey(
         id: String,
         fingerprint: String,
@@ -82,10 +82,10 @@ class HostRepository(
     }
 
     /**
-     * 部分字段更新：以仓库最新值为基础变换，不整条覆盖——控制器持有的
-     * host 是创建时快照，连接期间其它字段可能已更新（TOFU 指纹、
-     * lastConnectedAt），用快照 upsert 会把它们抹掉（新主机指纹丢失
-     * → 每次重连重复弹确认窗的根因）。
+     * Partial field updates: Transform based on the latest values in the repository; do not overwrite the entire entry—controller-held
+     * `host` is a snapshot taken when it is created; other fields may have been updated during the connection (TOFU fingerprint,
+     * (lastConnectedAt), using a snapshot upsert will wipe them out (new host fingerprints will be lost)
+     * → The root cause of the confirmation dialog repeatedly popping up every time the connection is reconnected).
      */
     fun patchHost(
         id: String,
@@ -99,7 +99,7 @@ class HostRepository(
         settings.putString(hostsKey, json.encodeToString(hosts))
     }
 
-    // ---------- 标签组（全局，片段引用） ----------
+    // ---------- Tag Groups (Global, Snippet References) ----------
 
     fun listTagGroups(): List<TagGroup> {
         val raw = settings.getStringOrNull(tagGroupsKey) ?: return emptyList()
@@ -118,10 +118,10 @@ class HostRepository(
         settings.putString(tagGroupsKey, json.encodeToString(groups))
     }
 
-    /** 删除标签组：级联清理所有片段对该标签的引用（不删片段本身）。 */
+    /** Delete tag group: Cascading cleanup of all references to this tag across all snippets (without deleting the snippets themselves). */
     fun deleteTagGroup(id: String) {
         settings.putString(tagGroupsKey, json.encodeToString(listTagGroups().filter { it.id != id }))
-        // 级联清理片段引用（仅当确有引用被清理时才回写，避免无谓写入）
+        // Cascade cleanup of snippet references (write back only when references are actually cleaned up to avoid unnecessary writes)
         val before = listSnippets()
         val cleaned = before.map { s -> if (id in s.tagIds) s.copy(tagIds = s.tagIds - id) else s }
         if (cleaned != before) {
@@ -129,7 +129,7 @@ class HostRepository(
         }
     }
 
-    // ---------- 命令片段（全局库） ----------
+    // ---------- Command Snippets (Global Library) ----------
 
     fun listSnippets(): List<Snippet> {
         val raw = settings.getStringOrNull(snippetsKey) ?: return emptyList()
@@ -154,7 +154,7 @@ class HostRepository(
         settings.putString(snippetsKey, json.encodeToString(listSnippets().filter { it.id != id }))
     }
 
-    // ---------- 设置 ----------
+    // ---------- settings ----------
 
     private fun readSettings(): AppSettings {
         val raw = settings.getStringOrNull(settingsKey) ?: return AppSettings()
@@ -175,8 +175,8 @@ class HostRepository(
     }
 
     /**
-     * 基于最新值做字段级更新。持久化后若并发更新已经推进状态，会继续写入最新值，
-     * 防止较早调用最后落盘、把较新的字段修改覆盖掉。
+     * Perform field-level updates based on the latest values. If concurrency has advanced the state after persistence, the latest values are still written;
+     * this stops an earlier call from being written to disk last and overwriting newer fields.
      */
     fun updateSettings(transform: (AppSettings) -> AppSettings): AppSettings {
         mutableAppSettings.update(transform)
@@ -200,7 +200,7 @@ class HostRepository(
         settings.putString("termish.agent.preferences.$hostId", json.encodeToString(preferences))
     }
 
-    // ---------- 目录收藏（SFTP 文件管理器，按主机持久化） ----------
+    // ---------- Directory Bookmarks (SFTP File Manager, persisted per host) ----------
 
     fun loadFavorites(hostId: String): List<String> {
         val raw = settings.getStringOrNull("termish.favorites.$hostId") ?: return emptyList()
@@ -218,9 +218,9 @@ class HostRepository(
         settings.putString("termish.favorites.$hostId", json.encodeToString(paths))
     }
 
-    // ---------- 最近会话（连接页列表持久化） ----------
+    // ---------- Recent Sessions (persistence of the connection-page list) ----------
 
-    /** 最近终端会话：主机 + 会话启动类型；Herdr 不再写入主机配置。 */
+    /** Recent terminal sessions: host + session type; Herdr no longer writes to the host configuration. */
     @Serializable
     data class RecentTerminalEntry(
         val hostId: String,
@@ -230,7 +230,7 @@ class HostRepository(
 
     private val recentSessionsKey = "termish.recent_sessions.v2"
 
-    /** 重启后恢复连接页，状态为未连接，点击后按原启动类型重连。 */
+    /** After a restart, the connection page is resumed with the status set to “Not Connected”; tapping it will reconnect using the original launch type. */
     fun loadRecentTerminalEntries(): List<RecentTerminalEntry> {
         val raw = settings.getStringOrNull(recentSessionsKey) ?: return emptyList()
         return try {
@@ -244,7 +244,7 @@ class HostRepository(
         settings.putString(recentSessionsKey, json.encodeToString(entries))
     }
 
-    /** 最近 SFTP 会话：主机 id + 浏览路径（v2 起带路径，进程重启后恢复到上次目录）。 */
+    /** Recent SFTP sessions: host ID + navigation path (paths are included starting with v2; the directory resumes at the previous one after the process restarts). */
     @Serializable
     data class RecentSftpEntry(
         val hostId: String,
@@ -267,14 +267,14 @@ class HostRepository(
         settings.putString(recentSftpKey, json.encodeToString(entries))
     }
 
-    /** 解析失败时把原始内容备份到独立 key（最多保留 3 份），避免静默丢数据。 */
+    /** In case of parsing failure, back up the original content to a separate key (retain up to 3 copies) to prevent silent data loss. */
     private fun backupCorrupt(
         key: String,
         raw: String,
     ) {
         try {
             settings.putString("$key.corrupt.${currentTimeMillis()}", raw)
-            // 超出 3 份时删最旧的（key 含时间戳，字典序即时间序）
+            // If there are more than 3 entries, delete the oldest one (the key contains a timestamp; lexicographical order corresponds to chronological order).
             val corruptKeys = settings.keys.filter { it.startsWith("$key.corrupt.") }.sorted()
             corruptKeys.dropLast(3).forEach { settings.remove(it) }
         } catch (_: Exception) {

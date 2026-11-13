@@ -3,9 +3,9 @@ package dev.termish.data
 import kotlinx.serialization.Serializable
 
 /**
- * 标签组：全局预定义标签（片段创建时从标签组中选择，不自由输入——
- * 自由字符串会碎片化：同一语义多个写法、无法统一管理）。
- * 标签改名后所有引用它的片段自动跟随；删除时级联清理片段引用。
+ * Tag Group: Global predefined tags (selection from the tag group when creating a snippet; cannot be entered freely—
+ * Free-form characters tend to become fragmented: multiple ways to express the same meaning, making it impossible to manage them consistently.
+ * After a tag is renamed, all snippets that reference it are automatically updated; when a tag is deleted, references to it are cascadingly removed from snippets.
  */
 @Serializable
 data class TagGroup(
@@ -14,9 +14,9 @@ data class TagGroup(
 )
 
 /**
- * 命令片段：跨主机复用的常用命令库。
- * 终端键盘工具栏「{}」一键插入当前输入行（不带回车，补参数后手动回车）；
- * 标签通过 [tagIds] 引用 [TagGroup]。
+ * Command snippets: A library of commonly used commands that can be reused across hosts.
+ * Terminal keyboard toolbar: Press “{}” to insert the current input line with a single keystroke (without pressing Enter; manually press Enter after adding parameters);
+ * Tags are passed via [tagIds] in [TagGroup].
  */
 @Serializable
 data class Snippet(
@@ -24,6 +24,6 @@ data class Snippet(
     val name: String,
     val content: String,
     val tagIds: List<String> = emptyList(),
-    /** 创建/更新时间戳（毫秒）：列表按此倒序，最新编辑在前。 */
+    /** Creation/update timestamps (in milliseconds): The list is sorted in reverse chronological order, with the most recent edit at the top. */
     val updatedAt: Long = 0,
 )

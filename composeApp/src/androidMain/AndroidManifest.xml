@@ -10,7 +10,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
 
-    <!-- 语音输入是可选功能；不应让 Google Play 过滤无麦克风设备。 -->
+    <!-- Voice input is an optional feature; Google Play should not filter out devices without a microphone. -->
     <uses-feature
         android:name="android.hardware.microphone"
         android:required="false" />
@@ -47,7 +47,7 @@
             </intent-filter>
         </activity>
 
-        <!-- SSH 会话保活：前台服务防止切后台断连 -->
+        <!-- SSH session keepalive: Preventing connection loss when a foreground service is moved to the background -->
         <service
             android:name="dev.termish.SessionService"
             android:exported="false"

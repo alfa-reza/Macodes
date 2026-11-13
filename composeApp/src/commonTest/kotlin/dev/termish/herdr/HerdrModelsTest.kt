@@ -7,7 +7,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** 简化但结构与真实 `herdr api snapshot` 输出一致的 fixture（见 androidUnitTest resources 里的真实快照）。 */
+/** A simplified fixture that matches the structure of the actual `herdr api snapshot` output (see the actual snapshot in the androidUnitTest resources). */
 private val SNAPSHOT_JSON =
     """
 {"id":"cli:api:snapshot","result":{"snapshot":{
@@ -45,7 +45,7 @@ class HerdrModelsTest {
 
     @Test
     fun parseSnapshotToleratesUnknownFields() {
-        // herdr 升级可能加字段：ignoreUnknownKeys 下不能解析失败
+        // herdr upgrades may add fields: parsing must not fail under ignoreUnknownKeys.
         val withExtra =
             SNAPSHOT_JSON.replace(
                 "\"pane_id\":\"w1:p2\"",
@@ -63,7 +63,7 @@ class HerdrModelsTest {
 
     @Test
     fun parseSnapshotToleratesMissingOptionalFields() {
-        // 只有 pane_id/agent_status 的最小 pane（herdr 输出字段不全时）
+        // Only the smallest pane containing `pane_id` and `agent_status` (when the `herdr` output fields are incomplete)
         val minimal =
             """
             {"id":"cli:api:snapshot","result":{"snapshot":{"version":"0.8.0","protocol":19,
@@ -122,7 +122,7 @@ class HerdrAgentStateMachineTest {
     fun paneDisappearingWhileBlockedEmitsUnblocked() {
         val m = HerdrAgentStateMachine()
         m.update(snapshot("w1:p1" to HerdrAgentStatus.BLOCKED))
-        val events = m.update(snapshot()) // 快照里 pane 消失（会话关闭）
+        val events = m.update(snapshot()) // The pane disappears in the snapshot (session closed)
         assertEquals(1, events.size)
         val u = assertIs<HerdrAgentEvent.Unblocked>(events[0])
         assertEquals("w1:p1", u.paneId)
@@ -134,7 +134,7 @@ class HerdrAgentStateMachineTest {
         val m = HerdrAgentStateMachine()
         m.update(snapshot("w1:p1" to HerdrAgentStatus.BLOCKED))
         m.reset()
-        // 重置后再喂同一状态：视为首次（发 Blocked），不会因旧状态去抖
+        // After resetting, if fed the same state again: treat it as the first time (send "Blocked"); do not use the old state to suppress the event.
         val events = m.update(snapshot("w1:p1" to HerdrAgentStatus.BLOCKED))
         assertIs<HerdrAgentEvent.Blocked>(events.single())
     }

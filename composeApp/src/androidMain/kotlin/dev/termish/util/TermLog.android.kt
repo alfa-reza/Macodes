@@ -6,7 +6,7 @@ import androidx.core.content.FileProvider
 import dev.termish.AppContext
 import java.io.File
 
-/** Android：debuggable 构建才打点（release 自动关闭，无需 BuildConfig）。 */
+/** Android: Only enabled for "debuggable" builds (automatically disabled for "release" builds; no BuildConfig required). */
 actual val termLogEnabled: Boolean =
     runCatching {
         AppContext.get().applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
@@ -25,13 +25,13 @@ actual fun platformLog(
     }
 }
 
-/** 日志目录：files/logs（App 私有，无需权限）。 */
+/** Log directory: files/logs (App-specific; no permissions required). */
 actual fun logFileDirectory(): String? =
     runCatching {
         File(AppContext.get().filesDir, "logs").apply { mkdirs() }.absolutePath
     }.getOrNull()
 
-/** 系统分享日志文件（FileProvider）。 */
+/** System-shared log files (FileProvider). */
 actual fun shareDiagnosticLogs() {
     val context = AppContext.get()
     val dir = logFileDirectory() ?: return

@@ -10,10 +10,10 @@ internal enum class NavigationDirection {
 }
 
 /**
- * 小型、可观察的页面栈。
+ * A small, observable screen stack.
  *
- * AppRoot 只通过这里进入/退出一级页面，避免子页面返回时把目标写死成首页。
- * 连续导航到同一页面会去重，防止异步连接回调重复压栈。
+ * AppRoot enters and exits the top-level screen only through this stack, so backing out of a subpage is not hard-coded to the homepage.
+ * Consecutive navigations to the same screen will be deduplicated to prevent duplicate stacking of async connection callbacks.
  */
 internal class NavigationStack<T>(
     initial: T,

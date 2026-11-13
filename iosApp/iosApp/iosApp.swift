@@ -14,9 +14,9 @@ struct TermishIosApp: App {
     var body: some Scene {
         WindowGroup {
             ComposeView()
-                // 忽略全部安全区：Compose 自己处理状态栏/Home 指示条与键盘 insets，
-                // 否则 SwiftUI 默认把内容框在安全区内，顶部状态栏/底部指示条露出
-                // UIWindow 的白色背景（暗色模式下头部/底部发白）
+                // Ignore all safe areas: Compose handles the status bar / Home indicator bar and keyboard insets itself,
+                // Otherwise, SwiftUI will automatically wrap the content within a safe area by default, exposing the top status bar and bottom indicator bar.
+                // The white background of UIWindow (the header/footer appears white in dark mode)
                 .ignoresSafeArea()
         }
     }

@@ -7,14 +7,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import dev.termish.data.ThemeMode
 
-/** 终端配色主题（ARGB 打包 Long）。 */
+/** Terminal color schemes (ARGB, Long format). */
 data class TerminalTheme(
     val name: String,
     val background: Long,
     val foreground: Long,
     val cursor: Long,
     val selection: Long,
-    /** 16 个 ANSI 基础色。 */
+    /** 16 ANSI basic colors. */
     val ansi: List<Long>,
 ) {
     fun background(): Color = Color(background)
@@ -129,7 +129,7 @@ object TerminalThemes {
             foreground = argb(0xff, 0x1a, 0x1a, 0x1a),
             cursor = argb(0xff, 0x00, 0x00, 0x00),
             selection = argb(0x66, 0x58, 0xa6, 0xff),
-            // 浅色背景专用 ANSI：white/bright 系列改用深色，避免白底看不清
+            // For light-colored backgrounds, replace ANSI: white/bright series with dark colors to ensure readability on white backgrounds.
             ansi =
                 listOf(
                     argb(0xff, 0x00, 0x00, 0x00),
@@ -168,7 +168,7 @@ object TerminalThemes {
         )
 }
 
-// ---------- 开源主题（配色取自 iTerm2-Color-Schemes，MIT） ----------
+// ---------- Open-Source Theme (color scheme based on iTerm2-Color-Schemes, MIT) ----------
 
 private val NORD =
     TerminalTheme(
@@ -395,8 +395,8 @@ private val SOLARIZED_LIGHT =
     )
 
 /**
- * App 品牌色板：中性锌灰（zinc）底色 + 终端翠绿（emerald）点缀。
- * 全槽位覆盖，避免 Material 默认紫/蓝调泄漏（导航条、选中胶囊、卡片等）。
+ * App Brand Color Palette: Neutral Zinc Gray background + Terminal Emerald accents.
+ * Full slot coverage to prevent leakage of Material’s default purple/blue tones (navigation bar, selected capsules, cards, etc.).
  */
 private val DarkColors =
     darkColorScheme(

@@ -25,7 +25,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import dev.termish.ui.theme.Spacing
 import dev.termish.util.monospaceFontFamily
 
-/** 可离线查看的应用隐私政策；在线版本用于 Google Play 商店链接。 */
+/** Offline version of the app’s privacy policy; the online version links to the Google Play Store. */
 @Composable
 fun SettingsPrivacyScreen(onBack: () -> Unit) {
     val s = LocalAppStrings.current

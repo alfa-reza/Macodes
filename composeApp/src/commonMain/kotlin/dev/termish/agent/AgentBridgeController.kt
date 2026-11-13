@@ -51,10 +51,10 @@ private const val MINIMUM_BRIDGE_VERSION = "0.9.0"
 private const val REMOTE_BRIDGE = "\$HOME/.local/share/termish-agent/current/termish-agent"
 
 /**
- * 主机级原生 Agent 控制器。
+ * Host-level native Agent controller.
  *
- * 控制面始终走独立 SSH：先探测/上传 Bridge，再通过无 PTY exec 打开 NDJSON
- * 长连接。远端 daemon 由原生可执行文件自行拉起，手机断开不会终止正在运行的 Agent。
+ * The control plane always uses a separate SSH connection: first detect/upload the Bridge, then pass NDJSON via a PTY-less exec.
+ * Persistent connection. The remote daemon is launched by the native executable itself; the Agent will not terminate if the phone disconnects.
  */
 class AgentBridgeController(
     val host: Host,
@@ -62,10 +62,10 @@ class AgentBridgeController(
     private val callbacks: SshCallbacks,
     private val scope: CoroutineScope,
 ) {
-    /** 控制连接首次创建时间；用于与终端/SFTP/画面一起展示在统一会话中心。 */
+    /** The time the control connection was first created; shown together with the terminal/SFTP/screen in the unified session center. */
     val createdAt: Long = Clock.System.now().toEpochMilliseconds()
 
-    /** 页面可见与否无关的关键事件；AppRoot 据此发送受用户设置控制的后台通知。 */
+    /** Key events unrelated to screen visibility; AppRoot uses these to send background notifications controlled by user settings. */
     var onApprovalRequested: ((AgentApprovalRequest) -> Unit)? = null
     var onTaskSettled: ((AgentBridgeSessionInfo?) -> Unit)? = null
 
@@ -97,10 +97,10 @@ class AgentBridgeController(
         private set
 
     /**
-     * 仅标记由当前页面本次发送启动的 turn。
+     * Mark only the turn launched by the current screen in this session.
      *
-     * 它与 [busy] 分离：历史会话可能仍处于远端运行/恢复状态，但加载已有消息时
-     * 不应重新播放打字机动画。
+     * It is separated from [busy]: historical sessions may still be running or resuming on the remote end, but when loading existing messages,
+     * Do not play the typewriter animation again.
      */
     var activeLocalTurnId by mutableStateOf<String?>(null)
         private set
@@ -137,7 +137,7 @@ class AgentBridgeController(
     private var approvalsBySession by mutableStateOf<Map<String, List<AgentApprovalRequest>>>(emptyMap())
     private var installationStates by mutableStateOf<Map<String, AgentInstallStatus>>(emptyMap())
 
-    /** 主机上所有任务都空闲后才可回收监听连接，与当前打开哪个会话无关。 */
+    /** Listener connections may only be recycled after all tasks on the host are idle, regardless of which session is currently open. */
     val hasActiveWork: Boolean
         get() =
             reconnecting ||
@@ -166,8 +166,8 @@ class AgentBridgeController(
     private val recoveryEventQueues = mutableMapOf<String, MutableList<JsonObject>>()
 
     /**
-     * prompt.send 响应交给发送协程前，reader 仍可能继续消费同一批 NDJSON 事件。
-     * 以 session 为粒度暂存这些事件，等用户消息/快照就位后再按序应用。
+     * Before `prompt.send` returns the response to the sending coroutine, the reader may still continue to consume the same batch of NDJSON events.
+     * Temporarily stage these events at the session level, and apply them in order once user messages and snapshots are in place.
      */
     private val promptEventBuffer = AgentPromptEventBuffer()
     private var loadingSessionId: String? = null
@@ -388,7 +388,7 @@ class AgentBridgeController(
             scope.launch(start = CoroutineStart.LAZY) {
                 try {
                     if (operation.createsSession) {
-                        // 等到创建响应后才能清理取消产生的空会话；等待有请求超时上限。
+                        // The empty session produced by the cancellation can only be cleaned up after the create response is received; waiting has a request timeout limit.
                         val created =
                             withContext(NonCancellable) {
                                 request(
@@ -456,7 +456,7 @@ class AgentBridgeController(
                     if (isVisible(operation)) errorMessage = null
                     refreshSessions()
                 } catch (e: Exception) {
-                    // 请求超时仍显示错误；只有发送任务自身被取消时才走停止流程。
+                    // An error is still shown when the request times out; the termination process is only triggered when the task itself is canceled.
                     if (!currentCoroutineContext().isActive) {
                         if (operation.stopRequested && operation.submitted) {
                             withContext(NonCancellable) { stopRemotePrompt(operation.session!!.id) }
@@ -738,9 +738,9 @@ class AgentBridgeController(
     }
 
     /**
-     * 为 Agent 页面打开一个独立的 SFTP 会话（文件管理 / 上传用）。
-     * 认证 / 主机密钥确认复用本控制器的回调（弹窗由 Agent 页面全局处理）；
-     * 调用方负责在结束时 close（与 [browseDirectories] 同模式）。
+     * Open a separate SFTP session for the Agent screen (for file management and uploads).
+     * Authentication / Host Key Confirmation: Reuse this controller’s callback (dialogs are handled globally on the Agent screen);
+     * The caller is responsible for calling `close` at the end (using the same mode as [browseDirectories]).
      */
     suspend fun openSftp(): SftpSession =
         withContext(ioDispatcher()) {
@@ -748,8 +748,8 @@ class AgentBridgeController(
         }
 
     /**
-     * 在已认证的控制连接上执行一次性远端命令（Agent Git 面板等用）。
-     * 与 Agent 对话互不干扰（独立 exec 通道）；失败/未连接返回 null。
+     * Execute a one-time remote command over an authenticated control connection (for use with the Agent Git panel, etc.).
+     * Does not interfere with the Agent conversation (separate exec channel); returns null on failure or if not connected.
      */
     suspend fun runRemoteCommand(
         command: String,
@@ -776,8 +776,8 @@ class AgentBridgeController(
     }
 
     /**
-     * 拉取供应商模型列表（GET /models）。经远端 Bridge 转发：手机侧无需 CORS，
-     * 也不暴露 key 给第三方服务。结果经 [onResult] 回传（失败含原因）。
+     * Pull the list of vendor models (GET /models). Forwarding via the remote Bridge: no CORS required on the phone side,
+     * Do not expose the key to third-party services. The result is returned via [onResult] (including the reason for failure).
      */
     fun fetchProviderModels(
         baseUrl: String,
