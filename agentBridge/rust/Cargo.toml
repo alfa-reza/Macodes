@@ -1,5 +1,5 @@
 [package]
-name = "termish-agent"
+name = "macodes-agent"
 version = "0.9.0"
 edition = "2021"
 license = "MIT"

@@ -40,7 +40,7 @@ static BOOL nal(const void *data, size_t length) {
     return output(prefix, sizeof(prefix)) && output(data, length);
 }
 
-@interface TermishEncoder : NSObject
+@interface MacodesEncoder : NSObject
 @property(nonatomic) VTCompressionSessionRef encoder;
 @property(nonatomic) CVPixelBufferRef latest;
 @property(nonatomic) dispatch_queue_t queue;
@@ -57,7 +57,7 @@ static BOOL nal(const void *data, size_t length) {
 static void compressed(void *context, void *source, OSStatus status,
                        VTEncodeInfoFlags flags, CMSampleBufferRef sample) {
     (void)source; (void)flags;
-    TermishEncoder *owner = (__bridge TermishEncoder *)context;
+    MacodesEncoder *owner = (__bridge MacodesEncoder *)context;
     if (status || !sample || !CMSampleBufferDataIsReady(sample)) {
         owner.failed = true; return;
     }
@@ -97,9 +97,9 @@ static void compressed(void *context, void *source, OSStatus status,
     } }
 }
 
-@implementation TermishEncoder
+@implementation MacodesEncoder
 - (BOOL)prepareWidth:(int)width height:(int)height bitrate:(int)bitrate {
-    self.queue = dispatch_queue_create("dev.termish.capture.frames", DISPATCH_QUEUE_SERIAL);
+    self.queue = dispatch_queue_create("dev.macodes.capture.frames", DISPATCH_QUEUE_SERIAL);
     VTCompressionSessionRef session = NULL;
     OSStatus status = VTCompressionSessionCreate(NULL, width, height, kCMVideoCodecType_H264,
         NULL, NULL, NULL, compressed, (__bridge void *)self, &session);
@@ -116,9 +116,9 @@ static void compressed(void *context, void *source, OSStatus status,
     dispatch_source_set_timer(self.timer, DISPATCH_TIME_NOW, NSEC_PER_SEC / self.fps, NSEC_PER_MSEC);
     // Repeat the latest frame when an unchanged desktop/lock screen supplies
     // no updates. Transport/render watchdogs must not mistake idle for failure.
-    __weak TermishEncoder *weak = self;
+    __weak MacodesEncoder *weak = self;
     dispatch_source_set_event_handler(self.timer, ^{
-        TermishEncoder *owner = weak;
+        MacodesEncoder *owner = weak;
         if (!owner || !owner.latest || stopped) return;
         OSStatus result = VTCompressionSessionEncodeFrame(owner.encoder, owner.latest,
             CMTimeMake((int64_t)owner.sequence++, owner.fps), CMTimeMake(1, owner.fps), NULL, NULL, NULL);
@@ -146,12 +146,12 @@ static void compressed(void *context, void *source, OSStatus status,
 @end
 
 API_AVAILABLE(macos(12.3))
-@interface TermishStream : NSObject <SCStreamOutput, SCStreamDelegate>
+@interface MacodesStream : NSObject <SCStreamOutput, SCStreamDelegate>
 @property(nonatomic, strong) SCStream *stream;
-@property(nonatomic, strong) TermishEncoder *encoder;
+@property(nonatomic, strong) MacodesEncoder *encoder;
 @property(atomic) BOOL failed;
 @end
-@implementation TermishStream
+@implementation MacodesStream
 - (void)stream:(SCStream *)stream didOutputSampleBuffer:(CMSampleBufferRef)sample ofType:(SCStreamOutputType)type {
     (void)stream;
     if (type != SCStreamOutputTypeScreen || !CMSampleBufferIsValid(sample)) return;
@@ -173,7 +173,7 @@ API_AVAILABLE(macos(12.3))
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-static CGDisplayStreamRef startCoreGraphics(CGDirectDisplayID display, int width, int height, TermishEncoder *encoder) {
+static CGDisplayStreamRef startCoreGraphics(CGDirectDisplayID display, int width, int height, MacodesEncoder *encoder) {
     NSDictionary *properties = @{(__bridge NSString *)kCGDisplayStreamShowCursor: @YES};
     CGDisplayStreamRef stream = CGDisplayStreamCreateWithDispatchQueue(display, width, height,
         kCVPixelFormatType_32BGRA, (__bridge CFDictionaryRef)properties, encoder.queue,
@@ -193,7 +193,7 @@ static CGDisplayStreamRef startCoreGraphics(CGDirectDisplayID display, int width
 
 // Invoked only as the relay's child after THA1 authentication. Exit 75 means
 // display/stream unavailable (retry); 77 means capture consent is missing.
-int termish_capture_main(int fps, int requestedWidth, int bitrate, bool diagnostic) {
+int macodes_capture_main(int fps, int requestedWidth, int bitrate, bool diagnostic) {
     @autoreleasepool {
         signal(SIGTERM, stopCapture); signal(SIGINT, stopCapture); signal(SIGPIPE, SIG_IGN);
         CGDirectDisplayID displays[16]; uint32_t count = 0;
@@ -211,7 +211,7 @@ int termish_capture_main(int fps, int requestedWidth, int bitrate, bool diagnost
         if (!sourceWidth || !sourceHeight) return 75;
         int width = (requestedWidth ? requestedWidth : (int)sourceWidth) & ~1;
         int height = MAX(2, (int)(width * (double)sourceHeight / sourceWidth) & ~1);
-        TermishEncoder *encoder = [TermishEncoder new]; encoder.fps = fps;
+        MacodesEncoder *encoder = [MacodesEncoder new]; encoder.fps = fps;
         if (![encoder prepareWidth:width height:height bitrate:bitrate]) return 70;
         __block id native = nil;
         __block BOOL sckFailed = NO;
@@ -239,7 +239,7 @@ int termish_capture_main(int fps, int requestedWidth, int bitrate, bool diagnost
                 SCStreamConfiguration *config = [SCStreamConfiguration new];
                 config.width = width; config.height = height; config.pixelFormat = kCVPixelFormatType_32BGRA;
                 config.minimumFrameInterval = CMTimeMake(1, fps); config.queueDepth = 3; config.showsCursor = YES;
-                TermishStream *owner = [TermishStream new]; owner.encoder = encoder;
+                MacodesStream *owner = [MacodesStream new]; owner.encoder = encoder;
                 SCContentFilter *filter = [[SCContentFilter alloc] initWithDisplay:selected excludingWindows:@[]];
                 owner.stream = [[SCStream alloc] initWithFilter:filter configuration:config delegate:owner];
                 native = owner;
@@ -261,7 +261,7 @@ int termish_capture_main(int fps, int requestedWidth, int bitrate, bool diagnost
             CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);
             if (diagnostic && now() - started > 2) break;
             if (@available(macOS 12.3, *)) {
-                if (native && ((TermishStream *)native).failed) {
+                if (native && ((MacodesStream *)native).failed) {
                     if (encoder.encoded) break;
                     sckFailed = YES;
                 }
@@ -269,7 +269,7 @@ int termish_capture_main(int fps, int requestedWidth, int bitrate, bool diagnost
             if (!diagnostic && !triedFallback && (sckFailed || (!encoder.encoded && now() - started > 3))) {
                 triedFallback = YES;
                 if (@available(macOS 12.3, *)) {
-                    if (native) [((TermishStream *)native).stream stopCaptureWithCompletionHandler:^(NSError *error) { (void)error; }];
+                    if (native) [((MacodesStream *)native).stream stopCaptureWithCompletionHandler:^(NSError *error) { (void)error; }];
                 }
                 fprintf(stderr, "native capture backend=CoreGraphics\n");
                 fallback = startCoreGraphics(display, width, height, encoder);
@@ -281,7 +281,7 @@ int termish_capture_main(int fps, int requestedWidth, int bitrate, bool diagnost
         stopped = 1;
         if (!diagnostic) CGDisplayRemoveReconfigurationCallback(displayChange, NULL);
         if (@available(macOS 12.3, *)) {
-            if (native) [((TermishStream *)native).stream stopCaptureWithCompletionHandler:^(NSError *error) { (void)error; }];
+            if (native) [((MacodesStream *)native).stream stopCaptureWithCompletionHandler:^(NSError *error) { (void)error; }];
         }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"

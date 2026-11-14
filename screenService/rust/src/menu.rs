@@ -15,11 +15,11 @@ use std::{
 };
 
 extern "C" {
-    fn termish_menu_create(paths: *const c_char, callback: extern "C" fn(u32)) -> bool;
-    fn termish_menu_update(model: *const c_char);
-    fn termish_menu_poll();
-    fn termish_menu_destroy();
-    fn termish_menu_chinese() -> bool;
+    fn macodes_menu_create(paths: *const c_char, callback: extern "C" fn(u32)) -> bool;
+    fn macodes_menu_update(model: *const c_char);
+    fn macodes_menu_poll();
+    fn macodes_menu_destroy();
+    fn macodes_menu_chinese() -> bool;
 }
 static CONTROL: OnceLock<Arc<Management>> = OnceLock::new();
 extern "C" fn requested(raw: u32) {
@@ -64,9 +64,9 @@ fn model(
         strings.control_missing
     };
     json!({
-        "tooltip":format!("Termish Helper · {status}"),"connected":connected,"paused":paused,
+        "tooltip":format!("Macodes Helper · {status}"),"connected":connected,"paused":paused,
         "items":[
-            item(&format!("Termish Helper · {VERSION}"),0,false),
+            item(&format!("Macodes Helper · {VERSION}"),0,false),
             item(status,0,false),
             {"separator":true},
             item(strings.disconnect,Action::Disconnect as u32,ready && connected),
@@ -92,10 +92,10 @@ pub fn run(config: Config, control: Arc<Management>) -> io::Result<Outcome> {
     CONTROL
         .set(control.clone())
         .map_err(|_| io::Error::other("menu already initialized"))?;
-    if !unsafe { termish_menu_create(paths.as_ptr(), requested) } {
+    if !unsafe { macodes_menu_create(paths.as_ptr(), requested) } {
         return Err(io::Error::other("could not create menu bar status item"));
     }
-    let strings = AppStrings::for_chinese(unsafe { termish_menu_chinese() });
+    let strings = AppStrings::for_chinese(unsafe { macodes_menu_chinese() });
     let worker_control = control.clone();
     let worker = thread::spawn(move || service::run(config, worker_control));
     let mut previous = String::new();
@@ -113,17 +113,17 @@ pub fn run(config: Config, control: Arc<Management>) -> io::Result<Outcome> {
         let snapshot = model(&control, &strings, diagnostic, recording, input).to_string();
         if snapshot != previous {
             let encoded = CString::new(snapshot.as_str()).unwrap();
-            unsafe { termish_menu_update(encoded.as_ptr()) };
+            unsafe { macodes_menu_update(encoded.as_ptr()) };
             previous = snapshot;
         }
         platform::poll_events();
-        unsafe { termish_menu_poll() };
+        unsafe { macodes_menu_poll() };
         thread::sleep(Duration::from_millis(15));
     }
     let result = worker
         .join()
         .unwrap_or_else(|_| Err(io::Error::other("screen service thread panicked")));
-    unsafe { termish_menu_destroy() };
+    unsafe { macodes_menu_destroy() };
     result
 }
 

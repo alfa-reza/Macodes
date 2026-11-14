@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: mailto:ttermish@gmail.com
+    url: mailto:research@alfareza.my.id
     about: Report vulnerabilities privately. Please do not include credentials in public issues.
   - name: Usage and setup
-    url: https://github.com/ttermish/termish#readme
+    url: https://github.com/alfa-reza/Macodes#readme
     about: Read the setup guide and known limitations before opening an issue.

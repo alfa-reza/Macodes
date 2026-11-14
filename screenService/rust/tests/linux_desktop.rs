@@ -38,7 +38,7 @@ impl Fixture {
             }
         };
         let directory =
-            std::env::temp_dir().join(format!("termish-desktop-{}-{port}", std::process::id()));
+            std::env::temp_dir().join(format!("macodes-desktop-{}-{port}", std::process::id()));
         fs::create_dir_all(&directory).unwrap();
         fs::write(directory.join("token"), "a".repeat(64)).unwrap();
         fs::write(
@@ -65,7 +65,7 @@ impl Fixture {
             .unwrap();
         let address = address.trim().to_owned();
         let service = Self::command_at(&directory, &address)
-            .env("TERMISH_SYSTEMD_SERVICE", if managed { "1" } else { "0" })
+            .env("MACODES_SYSTEMD_SERVICE", if managed { "1" } else { "0" })
             .stdout(Stdio::null())
             .stderr(fs::File::create(directory.join("stderr")).unwrap())
             .spawn()
@@ -79,7 +79,7 @@ impl Fixture {
         }
     }
     fn command_at(directory: &std::path::Path, address: &str) -> Command {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_termish-screen-service"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_macodes-screen-service"));
         command
             .arg("--config")
             .arg(directory.join("config.json"))
@@ -210,7 +210,7 @@ fn management_window_opens_without_a_tray_host_and_closes_without_stopping_the_s
                 let end = Instant::now() + Duration::from_secs(5);
                 let id = loop {
                     let found = Command::new("xdotool")
-                        .args(["search", "--onlyvisible", "--name", "^Termish Helper$"])
+                        .args(["search", "--onlyvisible", "--name", "^Macodes Helper$"])
                         .output()
                         .unwrap();
                     if found.status.success() {
@@ -229,7 +229,7 @@ fn management_window_opens_without_a_tray_host_and_closes_without_stopping_the_s
                     tokio::time::sleep(Duration::from_millis(30)).await;
                 };
                 // Exportable visual evidence belongs outside the project, if requested.
-                if let Some(directory) = std::env::var_os("TERMISH_UI_SCREENSHOT_DIR") {
+                if let Some(directory) = std::env::var_os("MACODES_UI_SCREENSHOT_DIR") {
                     let path = PathBuf::from(directory).join(if language.starts_with("zh") {
                         "manage-zh.png"
                     } else {
@@ -287,7 +287,7 @@ fn tray_wire_protocol_and_lifecycle_controls_work_without_a_tray_host() {
             assert!(installed.status.success());
             let launcher = fixture
                 .directory
-                .join("data/applications/dev.termish.screen.desktop");
+                .join("data/applications/dev.macodes.screen.desktop");
             assert!(Command::new("desktop-file-validate")
                 .arg(&launcher)
                 .status()
@@ -295,7 +295,7 @@ fn tray_wire_protocol_and_lifecycle_controls_work_without_a_tray_host() {
                 .success());
             assert!(fixture
                 .directory
-                .join("data/icons/hicolor/scalable/apps/termish-helper.svg")
+                .join("data/icons/hicolor/scalable/apps/macodes-helper.svg")
                 .exists());
             // The watcher starts after the service, just as a shell/extension may start late.
             let registrations = Arc::new(Mutex::new(Vec::new()));
@@ -318,7 +318,7 @@ fn tray_wire_protocol_and_lifecycle_controls_work_without_a_tray_host() {
                 assert!(Instant::now() < end, "late tray host was not discovered");
                 tokio::time::sleep(Duration::from_millis(30)).await;
             }
-            let name = format!("dev.termish.ScreenService.p{}", fixture.port);
+            let name = format!("dev.macodes.ScreenService.p{}", fixture.port);
             let notifier = Proxy::new(
                 &connection,
                 name.as_str(),
@@ -329,7 +329,7 @@ fn tray_wire_protocol_and_lifecycle_controls_work_without_a_tray_host() {
             .unwrap();
             assert_eq!(
                 notifier.get_property::<String>("Title").await.unwrap(),
-                "Termish Helper"
+                "Macodes Helper"
             );
             assert!(notifier.get_property::<bool>("ItemIsMenu").await.unwrap());
             let menu = Proxy::new(
@@ -434,7 +434,7 @@ fn systemd_restart_exits_unsuccessfully_and_quit_exits_successfully() {
             assert!(TcpStream::connect(("127.0.0.1", fixture.port)).is_err());
             fixture.service = fixture
                 .command()
-                .env("TERMISH_SYSTEMD_SERVICE", "1")
+                .env("MACODES_SYSTEMD_SERVICE", "1")
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .spawn()

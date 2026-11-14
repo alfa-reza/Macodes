@@ -1,15 +1,18 @@
 # Contributing to Macodes
 
-Macodes is an Apache-2.0-licensed mobile SSH/Mosh client and native Agent workspace,
-based on the MIT-licensed Termish (see NOTICE).
-Bug reports, documentation improvements and pull requests are welcome.
-You can contribute in English.
+Thank you for helping improve Macodes. This independently developed Android
+workspace welcomes focused bug reports, documentation improvements and pull
+requests. Please write contributions and commit messages in English.
+
+New here? Start with an issue, explain what you would like to change, and use
+the checks below to verify your work. Never include credentials or private host
+details in a public issue or pull request.
 
 ## Get started
 
 ```bash
-git clone https://github.com/ttermish/termish.git
-cd termish
+git clone https://github.com/alfa-reza/Macodes.git
+cd Macodes
 ```
 
 | Component | Development requirements |
@@ -55,12 +58,6 @@ Mobile builds now need Rust via rustup and at least one supported service target
 For example, Linux builders use `rustup target add x86_64-unknown-linux-musl`;
 macOS builders can build all four targets as described in the screen service guide.
 
-### iOS
-
-iOS is not built in this repository. The shared KMP code retains platform
-seams that may help contributors add iOS support later, though restoring it
-will require platform implementations, build tooling, and testing.
-
 Run `make help` for other tasks. Release signing is only needed for release
 builds; [`.env.example`](.env.example) documents the optional configuration.
 Maintainers can find Android release mirroring configuration in the
@@ -68,11 +65,11 @@ Maintainers can find Android release mirroring configuration in the
 
 ## Where changes belong
 
-- `composeApp/src/commonMain/kotlin/dev/termish/term/` contains the pure-Kotlin terminal
+- `composeApp/src/commonMain/kotlin/dev/macodes/term/` contains the pure-Kotlin terminal
   emulator. Keep platform and UI dependencies out of this module.
-- `composeApp/src/commonMain/kotlin/dev/termish/mosh/` contains the Mosh protocol
+- `composeApp/src/commonMain/kotlin/dev/macodes/mosh/` contains the Mosh protocol
   and prediction layers. Preserve the boundary documented in [AGENTS.md](AGENTS.md).
-- `composeApp/src/commonMain/kotlin/dev/termish/ui/` contains shared UI. Use the
+- `composeApp/src/commonMain/kotlin/dev/macodes/ui/` contains shared UI. Use the
   existing theme tokens and put user-facing copy in `AppStrings` in both languages.
 - Platform code belongs behind the existing SSH, storage and utility interfaces.
 - `agentBridge/rust/` contains the Rust companion and its tests. Target binaries are
@@ -99,14 +96,14 @@ vulnerability reporting.
 
 ## Documentation
 
-Keep [README.md](README.md) consistent in structure and facts.
+Keep [README.md](README.md) clear, welcoming and factually accurate.
 Detailed development documents in `docs/` are in English.
 Update the relevant architecture, terminal, Mosh or input-pipeline document when
 behavior changes. Changes to Agent Bridge belong in its protocol documentation.
 
 ## Submit a pull request
 
-1. For a substantial feature, open an [issue](https://github.com/ttermish/termish/issues)
+1. For a substantial feature, open an [issue](https://github.com/alfa-reza/Macodes/issues)
    to describe the user problem and proposed scope before implementation.
 2. Fork the repository and create a branch for a focused change.
 3. Explain the resulting behavior and the checks you ran in the PR template.

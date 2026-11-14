@@ -95,7 +95,7 @@ class ArchiveTest(unittest.TestCase):
 
     @unittest.skipUnless(sys.platform == "darwin", "macOS signature verification")
     def test_wrong_certificate_cannot_pass_real_signature_verification(self):
-        source = Path(__file__).parents[2] / "screenService/build/binaries/termish-screen-Darwin-arm64"
+        source = Path(__file__).parents[2] / "screenService/build/binaries/macodes-screen-Darwin-arm64"
         if not source.is_file():
             self.skipTest("Build a signed macOS service payload first")
         certificate = self.destination / ".github/macos-signing-certificate.sha1"

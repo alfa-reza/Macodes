@@ -124,7 +124,7 @@ impl Config {
             settings
                 .token_file
                 .as_deref()
-                .unwrap_or("~/.termish-screen.token"),
+                .unwrap_or("~/.macodes-screen.token"),
         )?;
         let bytes = fs::read(&token_file)?;
         let bytes = bytes.trim_ascii();
@@ -148,22 +148,22 @@ impl Config {
             token_file,
             log_file: expand(settings.log_file.as_deref().unwrap_or(
                 if cfg!(target_os = "macos") {
-                    "~/Library/Logs/termish-screen.err"
+                    "~/Library/Logs/macodes-screen.err"
                 } else {
-                    "~/.termish-screen.err"
+                    "~/.macodes-screen.err"
                 },
             ))?,
             encoder_pid_file: expand(
                 settings
                     .encoder_pid_file
                     .as_deref()
-                    .unwrap_or("~/.termish-screen-ffmpeg.pid"),
+                    .unwrap_or("~/.macodes-screen-ffmpeg.pid"),
             )?,
             stream_config_file: expand(
                 settings
                     .stream_config_file
                     .as_deref()
-                    .unwrap_or("~/.termish-screen.conf"),
+                    .unwrap_or("~/.macodes-screen.conf"),
             )?,
         })
     }
@@ -399,7 +399,7 @@ mod tests {
     use super::*;
     #[test]
     fn bundle_state_stays_outside_signed_contents() {
-        assert_eq!(state_directory(Path::new("/Users/test/Library/Application Support/termish/Termish Helper.app/Contents/MacOS/Termish Helper")), PathBuf::from("/Users/test/Library/Application Support/termish"));
+        assert_eq!(state_directory(Path::new("/Users/test/Library/Application Support/macodes/Macodes Helper.app/Contents/MacOS/Macodes Helper")), PathBuf::from("/Users/test/Library/Application Support/macodes"));
         assert_eq!(
             state_directory(Path::new("/tmp/Contents/MacOS/service")),
             PathBuf::from("/tmp/Contents/MacOS")

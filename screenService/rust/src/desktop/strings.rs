@@ -20,7 +20,7 @@ impl AppStrings {
     pub fn for_chinese(zh: bool) -> Self {
         if zh {
             Self {
-                launcher_name: "Termish 服务管理",
+                launcher_name: "Macodes 服务管理",
                 launcher_comment: "管理此电脑的远程访问",
                 manage: "管理服务",
                 portal_pending: "录屏与控制：等待桌面授权",
@@ -39,7 +39,7 @@ impl AppStrings {
             }
         } else {
             Self {
-                launcher_name: "Termish Helper",
+                launcher_name: "Macodes Helper",
                 launcher_comment: "Manage remote access to this computer",
                 manage: "Manage service",
                 portal_pending: "Recording and control: awaiting desktop consent",

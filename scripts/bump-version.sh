@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# One-click Termish version upgrade: Android version bump plus CHANGELOG housekeeping.
+# One-click Macodes version upgrade: Android version bump plus CHANGELOG housekeeping.
 #
 # Usage:
 #   ./scripts/bump-version.sh 0.3.0 # Version 0.3.0, build number automatically incremented by 1
@@ -36,7 +36,7 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 1
 fi
 GRADLE="composeApp/build.gradle.kts"
-APP_INFO="composeApp/src/commonMain/kotlin/dev/termish/AppInfo.kt"
+APP_INFO="composeApp/src/commonMain/kotlin/dev/macodes/AppInfo.kt"
 CHANGELOG="CHANGELOG.md"
 TODAY=$(date +%F)
 

@@ -41,9 +41,9 @@ case "$(basename "$0")" in
 codex)
   while IFS= read -r message; do
     case "$message" in
-    *termish-initialize*) printf '%s\n' '{"id":"termish-initialize","result":{}}' ;;
-    *termish-thread*) printf '%s\n' '{"id":"termish-thread","result":{"thread":{"id":"native-codex"}}}' ;;
-    *termish-turn*) printf '%s\n' '{"id":77,"method":"item/commandExecution/requestApproval","params":{"command":"echo test","cwd":"/tmp","availableDecisions":["accept","decline","cancel"]}}' ;;
+    *macodes-initialize*) printf '%s\n' '{"id":"macodes-initialize","result":{}}' ;;
+    *macodes-thread*) printf '%s\n' '{"id":"macodes-thread","result":{"thread":{"id":"native-codex"}}}' ;;
+    *macodes-turn*) printf '%s\n' '{"id":77,"method":"item/commandExecution/requestApproval","params":{"command":"echo test","cwd":"/tmp","availableDecisions":["accept","decline","cancel"]}}' ;;
     *'"id":77'*)
       printf '%s\n' '{"method":"item/agentMessage/delta","params":{"itemId":"a","delta":"中文🙂"}}' '{"method":"item/started","params":{"item":{"id":"tool","type":"commandExecution","command":"echo test"}}}' '{"method":"item/completed","params":{"item":{"id":"tool","type":"commandExecution","aggregatedOutput":"done","exitCode":0}}}' '{"method":"turn/completed","params":{"turn":{"status":"completed"}}}'
       exit 0 ;;
@@ -59,7 +59,7 @@ opencode)
   printf '%s\n' '{"type":"reasoning","sessionID":"native-opencode","part":{"text":"plan"}}' '{"type":"text","sessionID":"native-opencode","part":{"text":"中文🙂"}}' '{"type":"tool_use","part":{"id":"t","tool":"read","state":{"input":{},"output":"done","status":"completed"}}}' ;;
 pi)
   IFS= read -r state; IFS= read -r prompt
-  printf '%s\n' '{"type":"response","id":"termish-state","success":true,"data":{"sessionFile":"native-pi"}}' '{"type":"response","id":"termish-prompt","success":true}' '{"type":"extension_ui_request","id":"confirm","method":"confirm","title":"Confirm"}'
+  printf '%s\n' '{"type":"response","id":"macodes-state","success":true,"data":{"sessionFile":"native-pi"}}' '{"type":"response","id":"macodes-prompt","success":true}' '{"type":"extension_ui_request","id":"confirm","method":"confirm","title":"Confirm"}'
   IFS= read -r approval
   printf '%s\n' '{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","delta":"plan"}}' '{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"中文🙂"}}' '{"type":"tool_execution_start","toolCallId":"t","toolName":"read","args":{}}' '{"type":"tool_execution_end","toolCallId":"t","toolName":"read","result":{"content":[{"type":"text","text":"done"}]},"isError":false}' '{"type":"agent_settled"}' ;;
 esac
@@ -69,9 +69,9 @@ esac
             fs::write(&p, script).unwrap();
             fs::set_permissions(p, fs::Permissions::from_mode(0o700)).unwrap();
         }
-        let child = Command::new(env!("CARGO_BIN_EXE_termish-agent"))
+        let child = Command::new(env!("CARGO_BIN_EXE_macodes-agent"))
             .arg("serve")
-            .env("TERMISH_AGENT_HOME", dir.join("bridge"))
+            .env("MACODES_AGENT_HOME", dir.join("bridge"))
             .env("HOME", dir.join("home"))
             .env(
                 "PATH",
@@ -324,9 +324,9 @@ fn native_restart_and_stdio_relay_keep_persisted_sessions() {
     );
     client.wait_settled(session);
     drop(client);
-    let restart = Command::new(env!("CARGO_BIN_EXE_termish-agent"))
+    let restart = Command::new(env!("CARGO_BIN_EXE_macodes-agent"))
         .arg("restart")
-        .env("TERMISH_AGENT_HOME", server.dir.join("bridge"))
+        .env("MACODES_AGENT_HOME", server.dir.join("bridge"))
         .env("HOME", server.dir.join("home"))
         .output()
         .unwrap();
@@ -337,9 +337,9 @@ fn native_restart_and_stdio_relay_keep_persisted_sessions() {
     );
     let status: Value = serde_json::from_slice(&restart.stdout).unwrap();
     assert_eq!(status["daemonVersion"], "0.9.0");
-    let mut relay = Command::new(env!("CARGO_BIN_EXE_termish-agent"))
+    let mut relay = Command::new(env!("CARGO_BIN_EXE_macodes-agent"))
         .arg("connect")
-        .env("TERMISH_AGENT_HOME", server.dir.join("bridge"))
+        .env("MACODES_AGENT_HOME", server.dir.join("bridge"))
         .env("HOME", server.dir.join("home"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

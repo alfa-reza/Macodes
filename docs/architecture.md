@@ -50,7 +50,7 @@ Build tooling lives in `tools/service-build/`; both service kinds generate the K
 
 | Platform | SSH engine | Authentication | Mosh client | Key storage |
 |------|----------|------|-------------|----------|
-| Android | sshj + BouncyCastle | password / publickey / keyboard-interactive | pure Kotlin `dev.termish.mosh` (direct UDP) | Android Keystore (AES-GCM) |
+| Android | sshj + BouncyCastle | password / publickey / keyboard-interactive | pure Kotlin `dev.macodes.mosh` (direct UDP) | Android Keystore (AES-GCM) |
 
 ## expect/actual seams
 

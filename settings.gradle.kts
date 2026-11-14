@@ -1,4 +1,4 @@
-rootProject.name = "termish"
+rootProject.name = "macodes"
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 pluginManagement {

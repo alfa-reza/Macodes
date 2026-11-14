@@ -102,7 +102,7 @@ jobs:
           sudo apt-get install -y openssh-server
           # Create the test dir as the runner user first; the sudo-ed sshd script must not own it,
           # otherwise SFTP tests cannot mkdir/write inside it.
-          mkdir -p /tmp/termish_test
+          mkdir -p /tmp/macodes_test
           sudo bash scripts/test-sshd.sh
 
       - name: Run Android tests and lint
@@ -170,7 +170,7 @@ jobs:
           for f in apk/release/*.apk bundle/release/*.aab; do
             [ -f "$f" ] || continue
             name=$(basename "$f" | sed 's/^composeApp-//')
-            mv "$f" "$(dirname "$f")/Termish-$STAMP-$name"
+            mv "$f" "$(dirname "$f")/Macodes-$STAMP-$name"
           done
           ls apk/release bundle/release
 
@@ -214,7 +214,7 @@ jobs:
           # Collect APK/AAB files and rename them uniformly to the top level with the version.
           while IFS= read -r -d '' f; do
             name=$(basename "$f" | sed "s/^composeApp-//")
-            mv "$f" "Termish-$VER-$name"
+            mv "$f" "Macodes-$VER-$name"
           done < <(find . -type f \( -name "*.apk" -o -name "*.aab" \) -print0)
           rm -rf apk bundle
           ls -l

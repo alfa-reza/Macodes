@@ -6,7 +6,7 @@
 > semantics, sticky CTRL/ALT, bracketed paste, and the touch-to-mouse-event
 > mapping for TUIs with mouse reporting enabled.
 
-Termish's input pipeline is built around one principle: **IME composing state (pinyin) is a first-class citizen** — composing text
+The Macodes input pipeline is built around one principle: **IME composing state (pinyin) is a first-class citizen** — composing text
 never goes on the wire, only committed text is sent, and the remote line is never polluted by pinyin. The implementation is
 concentrated in `ui/TerminalScreen.kt` (state management), `ui/TerminalView.kt` (touch gestures), `ui/KeyToolbar.kt` (function keys).
 

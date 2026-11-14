@@ -737,13 +737,13 @@ impl Normalizer {
             }
             "pi" => match kind {
                 "response" => {
-                    if text(m, "id") == "termish-state"
+                    if text(m, "id") == "macodes-state"
                         && m["success"] == true
                         && !text(&m["data"], "sessionFile").is_empty()
                     {
                         run.resume_id = Some(text(&m["data"], "sessionFile").into());
                     }
-                    if text(m, "id") == "termish-prompt" {
+                    if text(m, "id") == "macodes-prompt" {
                         self.prompt_accepted = m["success"] == true;
                         if !self.prompt_accepted {
                             emit(json!({"type":"error","message":text(m,"error")}));
@@ -1009,8 +1009,8 @@ pub async fn run(
     let mut normalized = Normalizer::default();
     let result:Result<()>=async{
         if run.agent=="claude"{input.write_all(format!("{prompt}\n").as_bytes()).await?;input.shutdown().await?;}
-        if run.agent=="codex"{send(&mut input,&json!({"id":"termish-initialize","method":"initialize","params":{"clientInfo":{"name":"termish_agent_bridge","title":"Termish Agent Bridge","version":env!("CARGO_PKG_VERSION")}}})).await?;}
-        if run.agent=="pi"{send(&mut input,&json!({"id":"termish-state","type":"get_state"})).await?;send(&mut input,&json!({"id":"termish-prompt","type":"prompt","message":prompt})).await?;}
+        if run.agent=="codex"{send(&mut input,&json!({"id":"macodes-initialize","method":"initialize","params":{"clientInfo":{"name":"macodes_agent_bridge","title":"Macodes Agent Bridge","version":env!("CARGO_PKG_VERSION")}}})).await?;}
+        if run.agent=="pi"{send(&mut input,&json!({"id":"macodes-state","type":"get_state"})).await?;send(&mut input,&json!({"id":"macodes-prompt","type":"prompt","message":prompt})).await?;}
         let mut first=true;let mut handshaking=run.agent=="codex";
         loop{if *cancel.borrow(){store::emit(shared,sid,json!({"type":"cancelled"}),&secret).await?;break;}
             let received=tokio::select!{_=cancel.changed()=>{store::emit(shared,sid,json!({"type":"cancelled"}),&secret).await?;break;},read=async{if first||handshaking{tokio::time::timeout(Duration::from_secs(30),line(&mut reader,16*1024*1024)).await.map_err(|_|"Agent startup timed out")?}else{line(&mut reader,16*1024*1024).await}}=>read};first=false;
@@ -1018,8 +1018,8 @@ pub async fn run(
             if run.agent=="codex"{
                 if !m["id"].is_null()&&!text(&m,"method").is_empty(){let response=codex_approval(shared,sid,run,&m,&mut cancel,&secret).await?;send(&mut input,&json!({"id":m["id"],"result":response})).await?;continue;}
                 if !m["error"].is_null(){return Err(text(&m["error"],"message").to_owned().into());}
-                if text(&m,"id")=="termish-initialize"{send(&mut input,&json!({"method":"initialized","params":{}})).await?;let params=if let Some(id)=&run.resume_id{json!({"threadId":id})}else{let mut p=json!({"cwd":run.cwd});if let Some(model)=&run.model{p["model"]=json!(model);}p};send(&mut input,&json!({"id":"termish-thread","method":if run.resume_id.is_some(){"thread/resume"}else{"thread/start"},"params":params})).await?;continue;}
-                if text(&m,"id")=="termish-thread"{let thread=text(&m["result"]["thread"],"id");if thread.is_empty(){return Err("Codex App Server did not return a thread ID".into());}run.resume_id=Some(thread.into());let mut params=json!({"threadId":thread,"input":[{"type":"text","text":prompt}],"cwd":run.cwd});if let Some(model)=&run.model{params["model"]=json!(model);}send(&mut input,&json!({"id":"termish-turn","method":"turn/start","params":params})).await?;handshaking=false;continue;}
+                if text(&m,"id")=="macodes-initialize"{send(&mut input,&json!({"method":"initialized","params":{}})).await?;let params=if let Some(id)=&run.resume_id{json!({"threadId":id})}else{let mut p=json!({"cwd":run.cwd});if let Some(model)=&run.model{p["model"]=json!(model);}p};send(&mut input,&json!({"id":"macodes-thread","method":if run.resume_id.is_some(){"thread/resume"}else{"thread/start"},"params":params})).await?;continue;}
+                if text(&m,"id")=="macodes-thread"{let thread=text(&m["result"]["thread"],"id");if thread.is_empty(){return Err("Codex App Server did not return a thread ID".into());}run.resume_id=Some(thread.into());let mut params=json!({"threadId":thread,"input":[{"type":"text","text":prompt}],"cwd":run.cwd});if let Some(model)=&run.model{params["model"]=json!(model);}send(&mut input,&json!({"id":"macodes-turn","method":"turn/start","params":params})).await?;handshaking=false;continue;}
             }
             if run.agent=="pi"&&text(&m,"type")=="extension_ui_request"{let response=pi_approval(shared,sid,&m,&mut cancel,&secret).await?;send(&mut input,&response).await?;continue;}
             let events=normalized.events(run,&m);let settled=events.iter().any(|v|text(v,"type")=="settled");for e in events{if text(&e,"type")!="settled"{store::emit(shared,sid,e,&secret).await?;}}

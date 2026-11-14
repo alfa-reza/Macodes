@@ -224,7 +224,7 @@ async fn main() -> Result<()> {
             Ok(())
         }
         _ => Err(
-            "usage: termish-agent {serve|connect|restart|ensure-running|status|--version}".into(),
+            "usage: macodes-agent {serve|connect|restart|ensure-running|status|--version}".into(),
         ),
     }
 }

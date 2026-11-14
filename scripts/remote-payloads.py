@@ -14,7 +14,7 @@ import tempfile
 TARGETS = ("Darwin-arm64", "Darwin-x86_64", "Linux-aarch64", "Linux-x86_64")
 FILES = tuple(
     f"{service}/build/binaries/{name}"
-    for service, prefix in (("screenService", "termish-screen"), ("agentBridge", "termish-agent"))
+    for service, prefix in (("screenService", "macodes-screen"), ("agentBridge", "macodes-agent"))
     for name in ("manifest.json", *(f"{prefix}-{target}" for target in TARGETS))
 )
 METADATA = "remote-services.json"
@@ -81,7 +81,7 @@ def unpack(archive, root, commit):
 
 
 def unpack_bundle(archive, destination):
-    files = {"Contents/Info.plist", "Contents/MacOS/Termish Helper",
+    files = {"Contents/Info.plist", "Contents/MacOS/Macodes Helper",
              "Contents/Resources/AppIcon.icns", "Contents/_CodeSignature/CodeResources"}
     directories = {str(parent) for name in files for parent in Path(name).parents if str(parent) != "."}
     bodies, seen, total = {}, set(), 0
@@ -106,7 +106,7 @@ def unpack_bundle(archive, destination):
         target = destination / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(body)
-        target.chmod(0o700 if name.endswith("/Termish Helper") else 0o600)
+        target.chmod(0o700 if name.endswith("/Macodes Helper") else 0o600)
 
 
 def verify_macos(root):
@@ -115,9 +115,9 @@ def verify_macos(root):
         raise ValueError("Invalid signing certificate fingerprint")
     requirement = f'anchor apple generic and certificate leaf = H"{certificate}"'
     for target in TARGETS[:2]:
-        with tempfile.TemporaryDirectory(prefix="termish-signature-") as temporary:
-            app = Path(temporary) / "Termish Helper.app"
-            unpack_bundle(root / f"screenService/build/binaries/termish-screen-{target}", app)
+        with tempfile.TemporaryDirectory(prefix="macodes-signature-") as temporary:
+            app = Path(temporary) / "Macodes Helper.app"
+            unpack_bundle(root / f"screenService/build/binaries/macodes-screen-{target}", app)
             subprocess.run(["codesign", "--verify", "--strict", "-R", "=" + requirement, str(app)], check=True)
             subprocess.run(["codesign", "-dv", "--verbose=2", str(app)], check=True)
 

@@ -50,9 +50,9 @@ abstract class ExecTask @Inject constructor() : DefaultTask() {
 abstract class StartTestSshdTask @Inject constructor() : ExecTask() {
     @TaskAction
     fun start() {
-        // Maintain consistency with scripts/test-sshd.sh and integration tests (Termish_TEST_PORT defaults to 22222);
+        // Maintain consistency with scripts/test-sshd.sh and integration tests (Macodes_TEST_PORT defaults to 22222);
         // Do not hardcode the port—other services on the local machine or in CI (such as GitLab) may be using it, leading to a false positive that the port is already a listener.
-        val port = System.getenv("Termish_TEST_PORT")?.toIntOrNull() ?: 22222
+        val port = System.getenv("Macodes_TEST_PORT")?.toIntOrNull() ?: 22222
         val up = runCatching {
             java.net.Socket().use { it.connect(java.net.InetSocketAddress("127.0.0.1", port), 500) }
         }.isSuccess
@@ -88,13 +88,13 @@ project(":composeApp").tasks.configureEach {
 abstract class RunDebugTask @Inject constructor() : ExecTask() {
     @TaskAction
     fun launch() {
-        run("adb", "shell", "am", "force-stop", "dev.termish.app", ignoreExit = true)
-        run("adb", "shell", "monkey", "-p", "dev.termish.app", "-c", "android.intent.category.LAUNCHER", "1")
+        run("adb", "shell", "am", "force-stop", "dev.macodes.app", ignoreExit = true)
+        run("adb", "shell", "monkey", "-p", "dev.macodes.app", "-c", "android.intent.category.LAUNCHER", "1")
     }
 }
 tasks.register<RunDebugTask>("runDebug") {
     group = "run"
-    description = "installDebug + 启动 dev.termish.app"
+    description = "installDebug + 启动 dev.macodes.app"
     dependsOn(":composeApp:installDebug")
 }
 
@@ -112,13 +112,13 @@ val agentBridgeBuild = tasks.register<ExecTask>("agentBridgeBuild") {
     dependsOn(agentBridgeRustBuild)
     inputs.dir(layout.projectDirectory.dir("agentBridge/build/binaries"))
     inputs.files(fileTree("tools/service-build") { exclude("target/**", ".gitignore") })
-    outputs.file(layout.projectDirectory.file("composeApp/build/generated/agentBridge/kotlin/dev/termish/agent/AgentBridgeAssets.kt"))
-    outputs.dir(layout.projectDirectory.dir("composeApp/src/commonMain/composeResources/files/termish-agent"))
+    outputs.file(layout.projectDirectory.file("composeApp/build/generated/agentBridge/kotlin/dev/macodes/agent/AgentBridgeAssets.kt"))
+    outputs.dir(layout.projectDirectory.dir("composeApp/src/commonMain/composeResources/files/macodes-agent"))
     doLast { run("sh", "scripts/service-build.sh", "pack-agent") }
 }
 val screenServiceRustBuild = tasks.register<ExecTask>("screenServiceRustBuild") {
     group = "build"
-    inputs.property("macosSigningIdentity", providers.environmentVariable("TERMISH_SCREEN_MACOS_SIGN_IDENTITY").orElse(""))
+    inputs.property("macosSigningIdentity", providers.environmentVariable("MACODES_SCREEN_MACOS_SIGN_IDENTITY").orElse(""))
     inputs.files(fileTree("screenService/rust") { exclude("target/**", ".gitignore") })
     inputs.dir("screenService/macos")
     inputs.dir("screenService/linux")
@@ -133,8 +133,8 @@ val screenServiceBuild = tasks.register<ExecTask>("screenServiceBuild") {
     inputs.files("screenService/native-install.sh", "screenService/install.sh", "screenService/service.properties")
     inputs.files(fileTree("tools/service-build") { exclude("target/**", ".gitignore") })
     inputs.dir(layout.projectDirectory.dir("screenService/build/binaries"))
-    outputs.file(layout.projectDirectory.file("composeApp/build/generated/screenService/kotlin/dev/termish/screen/ScreenServiceAssets.kt"))
-    outputs.dir(layout.projectDirectory.dir("composeApp/src/commonMain/composeResources/files/termish-screen"))
+    outputs.file(layout.projectDirectory.file("composeApp/build/generated/screenService/kotlin/dev/macodes/screen/ScreenServiceAssets.kt"))
+    outputs.dir(layout.projectDirectory.dir("composeApp/src/commonMain/composeResources/files/macodes-screen"))
     doLast { run("sh", "scripts/service-build.sh", "pack-screen") }
 }
 project(":composeApp").tasks.configureEach {
@@ -159,14 +159,14 @@ tasks.register<ExecTask>("agentBridgeTest") {
 abstract class ReinstallDebugTask @Inject constructor() : ExecTask() {
     @TaskAction
     fun reinstall() {
-        run("adb", "uninstall", "dev.termish.app", ignoreExit = true)
+        run("adb", "uninstall", "dev.macodes.app", ignoreExit = true)
         run("adb", "install", "-r", "composeApp/build/outputs/apk/debug/composeApp-debug.apk")
-        run("adb", "shell", "monkey", "-p", "dev.termish.app", "-c", "android.intent.category.LAUNCHER", "1")
+        run("adb", "shell", "monkey", "-p", "dev.macodes.app", "-c", "android.intent.category.LAUNCHER", "1")
     }
 }
 tasks.register<ReinstallDebugTask>("reinstallDebug") {
     group = "run"
-    description = "卸载 dev.termish.app 后重新安装并启动"
+    description = "卸载 dev.macodes.app 后重新安装并启动"
     dependsOn(":composeApp:assembleDebug")
 }
 
@@ -204,6 +204,8 @@ abstract class CheckSigningSecretsTask @Inject constructor() : DefaultTask() {
                     add(if (configured.isAbsolute) configured else root.resolve(configuredPath))
                     add(root.resolve("composeApp").resolve(configuredPath))
                 }
+                add(root.resolve("macodes-release.jks"))
+                // The published releases were signed with termish-release.jks; keep the old name as a fallback.
                 add(root.resolve("termish-release.jks"))
             }
         val hasKeyMaterial = keyFiles.any { it.isFile } || secret("ANDROID_KEYSTORE_BASE64", "keystoreBase64") != null

@@ -29,10 +29,10 @@ use zbus::{
 
 const ITEM: &str = "/StatusNotifierItem";
 const MENU: &str = "/Menu";
-const CONTROL: &str = "/Termish";
-const INTERFACE: &str = "dev.termish.ScreenService";
+const CONTROL: &str = "/Macodes";
+const INTERFACE: &str = "dev.macodes.ScreenService";
 fn name(port: u16) -> String {
-    format!("dev.termish.ScreenService.p{port}")
+    format!("dev.macodes.ScreenService.p{port}")
 }
 fn runtime() -> io::Result<tokio::runtime::Runtime> {
     tokio::runtime::Builder::new_current_thread()
@@ -53,7 +53,7 @@ fn data_directory() -> PathBuf {
         })
 }
 fn icon() -> PathBuf {
-    data_directory().join("icons/hicolor/scalable/apps/termish-helper.svg")
+    data_directory().join("icons/hicolor/scalable/apps/macodes-helper.svg")
 }
 fn write_atomic(path: &std::path::Path, text: &str) -> io::Result<()> {
     use std::io::Write;
@@ -100,8 +100,8 @@ pub fn install() -> io::Result<()> {
     let en = strings::AppStrings::for_chinese(false);
     let zh = strings::AppStrings::for_chinese(true);
     write_atomic(
-        &data_directory().join("applications/dev.termish.screen.desktop"),
-        &format!("[Desktop Entry]\nType=Application\nName={}\nName[zh_CN]={}\nComment={}\nComment[zh_CN]={}\nExec={} --manage\nIcon=termish-helper\nTerminal=false\nCategories=Network;RemoteAccess;\nStartupNotify=true\n",
+        &data_directory().join("applications/dev.macodes.screen.desktop"),
+        &format!("[Desktop Entry]\nType=Application\nName={}\nName[zh_CN]={}\nComment={}\nComment[zh_CN]={}\nExec={} --manage\nIcon=macodes-helper\nTerminal=false\nCategories=Network;RemoteAccess;\nStartupNotify=true\n",
             en.launcher_name, zh.launcher_name, en.launcher_comment, zh.launcher_comment, desktop_quote(path)),
     )
 }
@@ -195,7 +195,7 @@ impl Desktop {
             self.strings.desktop_unavailable
         };
         let mut rows = vec![
-            Item::row(10, format!("Termish Helper · {VERSION}"), false),
+            Item::row(10, format!("Macodes Helper · {VERSION}"), false),
             Item::row(11, self.state(), false),
             Item::separator(20),
             Item::row(2, self.base.disconnect, ready && connected),
@@ -301,7 +301,7 @@ impl Desktop {
     }
 }
 struct LocalControl(Arc<Desktop>);
-#[zbus::interface(name = "dev.termish.ScreenService")]
+#[zbus::interface(name = "dev.macodes.ScreenService")]
 impl LocalControl {
     fn status(&self, chinese: bool) -> String {
         // A management window may be opened with a different locale than the
@@ -329,11 +329,11 @@ impl Notifier {
     }
     #[zbus(property)]
     fn id(&self) -> &str {
-        "termish-helper"
+        "macodes-helper"
     }
     #[zbus(property)]
     fn title(&self) -> &str {
-        "Termish Helper"
+        "Macodes Helper"
     }
     #[zbus(property)]
     fn status(&self) -> &str {
@@ -384,7 +384,7 @@ impl Notifier {
         (
             self.icon_name(),
             Vec::new(),
-            "Termish Helper".into(),
+            "Macodes Helper".into(),
             self.0.state().into(),
         )
     }
@@ -685,7 +685,7 @@ pub fn manage(config: &Config) -> io::Result<()> {
             "--list",
             "--no-markup",
             "--title",
-            "Termish Helper",
+            "Macodes Helper",
             "--text",
             &summary,
             "--column",
@@ -750,7 +750,7 @@ pub fn manage(config: &Config) -> io::Result<()> {
                     Command::new("systemctl").args([
                         "--user",
                         "start",
-                        "dev.termish.screen.service",
+                        "dev.macodes.screen.service",
                     ]),
                     Duration::from_secs(3),
                     None,
@@ -759,7 +759,7 @@ pub fn manage(config: &Config) -> io::Result<()> {
             if !started {
                 let mut child = Command::new(std::env::current_exe()?)
                     .args(std::env::args_os().skip(1).filter(|a| a != "--manage"))
-                    .env_remove("TERMISH_SYSTEMD_SERVICE")
+                    .env_remove("MACODES_SYSTEMD_SERVICE")
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
                     .stderr(Stdio::null())
@@ -789,7 +789,7 @@ pub fn manage(config: &Config) -> io::Result<()> {
                     "--error",
                     "--no-markup",
                     "--title",
-                    "Termish Helper",
+                    "Macodes Helper",
                     "--text",
                     &e.to_string(),
                 ])

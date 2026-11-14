@@ -1,0 +1,457 @@
+package dev.macodes.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import dev.macodes.data.AsrProvider
+import dev.macodes.data.AsrProviderType
+import dev.macodes.data.newId
+import dev.macodes.util.monospaceFontFamily
+import dev.macodes.util.openApplicationSettings
+import dev.macodes.voice.VolcAsrProtocol
+import dev.macodes.voice.rememberMicPermissionRequester
+
+/** Volcano Engine Speech Recognition Console API Key Management page. */
+private const val VOLC_ASR_CONSOLE_URL =
+    "https://console.volcengine.com/speech/new/setting/apikeys?projectName=default"
+
+/**
+ * Voice Input Settings Subpage: Master Switch + **List of Recognition Services** (Pluggable providers:
+ * Add/edit/delete/start/stop—each with its own key and parameters; new service types in the future only require adding to the enumeration).
+ */
+@Composable
+fun SettingsVoiceScreen(
+    enabled: Boolean,
+    providers: List<AsrProvider>,
+    /** Read a provider’s API key (secure storage on the platform). */
+    apiKeyOf: (AsrProvider) -> String,
+    onChangeEnabled: (Boolean) -> Unit,
+    /** Add, modify, or remove providers. */
+    onAddProvider: (AsrProvider, apiKey: String) -> Unit,
+    onUpdateProvider: (AsrProvider, apiKey: String) -> Unit,
+    onDeleteProvider: (AsrProvider) -> Unit,
+    onBack: () -> Unit,
+) {
+    val s = LocalAppStrings.current
+    val uriHandler = LocalUriHandler.current
+    val micPermission = rememberMicPermissionRequester()
+    // Edit dialog status: null = disabled; otherwise, edit this provider (ID is empty when new)
+    var editing by remember { mutableStateOf<AsrProvider?>(null) }
+    var isNew by remember { mutableStateOf(false) }
+    var pendingDelete by remember { mutableStateOf<AsrProvider?>(null) }
+    var showDataDisclosure by remember { mutableStateOf(false) }
+
+    fun setEnabled(next: Boolean) {
+        if (!next) {
+            onChangeEnabled(false)
+        } else {
+            showDataDisclosure = true
+        }
+    }
+
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        Row(
+            Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = s.navBack)
+            }
+            Text(
+                s.voice.settingsVoiceTitle,
+                style = MaterialTheme.typography.titleMedium,
+                fontFamily = monospaceFontFamily(),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            // Main Switch
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { setEnabled(!enabled) }
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    s.voice.settingsVoiceEnabled,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(checked = enabled, onCheckedChange = ::setEnabled)
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = ::openApplicationSettings)
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    s.voice.settingsMicrophonePermission,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+
+            // Service List
+            if (providers.isEmpty()) {
+                Text(
+                    s.voice.providerEmpty,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp),
+                )
+            } else {
+                providers.forEachIndexed { i, p ->
+                    AsrProviderRow(
+                        provider = p,
+                        apiKey = apiKeyOf(p),
+                        onToggle = { onUpdateProvider(p.copy(enabled = !p.enabled), apiKeyOf(p)) },
+                        onEdit = {
+                            editing = p
+                            isNew = false
+                        },
+                        onDelete = { pendingDelete = p },
+                    )
+                    if (i < providers.lastIndex) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                    }
+                }
+            }
+
+            // Add Button
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        editing =
+                            AsrProvider(
+                                id = newId(),
+                                type = AsrProviderType.VOLC_STREAMING,
+                                name = "",
+                                resourceId = VolcAsrProtocol.DEFAULT_RESOURCE_ID,
+                                enabled = true,
+                            )
+                        isNew = true
+                    }.padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Box(
+                    Modifier.size(26.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.Add,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+                Text(
+                    s.voice.providerAdd,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+
+            // Usage Instructions + Console Entry Point
+            Text(
+                s.voice.settingsVoiceHint,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            )
+            TextButton(onClick = { uriHandler.openUri(VOLC_ASR_CONSOLE_URL) }) {
+                Text(
+                    s.voice.settingsVoiceConsole,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            TextButton(onClick = { uriHandler.openUri(PRIVACY_POLICY_URL) }) {
+                Text(
+                    s.permissions.privacyPolicy,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Box(Modifier.height(24.dp))
+        }
+    }
+
+    if (showDataDisclosure) {
+        AlertDialog(
+            onDismissRequest = { showDataDisclosure = false },
+            title = { Text(s.voice.dataDisclosureTitle) },
+            text = { Text(s.voice.dataDisclosureBody) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDataDisclosure = false
+                        micPermission.request { granted -> onChangeEnabled(granted) }
+                    },
+                ) {
+                    Text(s.voice.dataDisclosureAgree)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDataDisclosure = false }) {
+                    Text(s.voice.dataDisclosureCancel)
+                }
+            },
+        )
+    }
+
+    // Add / Edit Dialog
+    editing?.let { provider ->
+        AsrProviderEditDialog(
+            provider = provider,
+            isNew = isNew,
+            initialApiKey = if (isNew) "" else apiKeyOf(provider),
+            onDismiss = { editing = null },
+            onSave = { updated, key ->
+                if (isNew) {
+                    onAddProvider(updated, key)
+                } else {
+                    onUpdateProvider(updated, key)
+                }
+                editing = null
+            },
+        )
+    }
+
+    // Delete Confirm
+    pendingDelete?.let { p ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text(s.voice.providerDeleteConfirmTitle(p.name.ifBlank { providerTypeLabel(p.type, s) })) },
+            text = { Text(s.voice.providerDeleteConfirmBody) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteProvider(p)
+                        pendingDelete = null
+                    },
+                ) { Text(s.terminalConfirm) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text(s.terminalCancel) }
+            },
+        )
+    }
+}
+
+/** Single-item recognition service: Name/Type/Key Status + Switch + Edit/Delete. */
+@Composable
+private fun AsrProviderRow(
+    provider: AsrProvider,
+    apiKey: String,
+    onToggle: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val s = LocalAppStrings.current
+    val name = provider.name.ifBlank { providerTypeLabel(provider.type, s) }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(34.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                providerIcon(provider.type),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Text(
+                name,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                providerTypeLabel(provider.type, s) + if (apiKey.isBlank()) " · " + s.voice.providerNoKey else "",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Switch(
+            checked = provider.enabled,
+            onCheckedChange = { onToggle() },
+        )
+        IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
+            Text(
+                s.voice.providerEdit,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+            Icon(
+                Icons.Filled.Close,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                modifier = Modifier.size(16.dp),
+            )
+        }
+    }
+}
+
+/** Add / Edit dialog: Name + API Key + type-specific params (Volcano Engine: Resource ID). */
+@Composable
+private fun AsrProviderEditDialog(
+    provider: AsrProvider,
+    isNew: Boolean,
+    initialApiKey: String,
+    onDismiss: () -> Unit,
+    onSave: (AsrProvider, String) -> Unit,
+) {
+    val s = LocalAppStrings.current
+    var name by remember { mutableStateOf(provider.name) }
+    var apiKey by remember { mutableStateOf(initialApiKey) }
+    var resourceId by remember { mutableStateOf(provider.resourceId) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (isNew) s.voice.providerAdd else s.voice.providerEdit) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Type (selection when new; currently only "Volcano Streaming," with dropdown options to be expanded later)
+                Text(
+                    s.voice.providerTypeLabel + "：" + providerTypeLabel(provider.type, s),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(s.voice.providerName) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = apiKey,
+                    onValueChange = { apiKey = it },
+                    label = { Text(s.voice.settingsVoiceApiKey) },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (provider.type == AsrProviderType.VOLC_STREAMING) {
+                    OutlinedTextField(
+                        value = resourceId,
+                        onValueChange = { resourceId = it },
+                        label = { Text(s.voice.settingsVoiceResourceId) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    // Quick Selection of Common Resource IDs
+                    Row(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
+                        VolcAsrProtocol.RESOURCE_IDS.forEach { rid ->
+                            TextButton(onClick = { resourceId = rid }) {
+                                Text(
+                                    when (rid) {
+                                        "volc.seedasr.sauc.duration" -> "2.0 小时"
+                                        "volc.seedasr.sauc.concurrent" -> "2.0 并发"
+                                        "volc.bigasr.sauc.duration" -> "1.0 小时"
+                                        else -> "1.0 并发"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = apiKey.isNotBlank(),
+                onClick = {
+                    onSave(
+                        provider.copy(
+                            name = name.trim(),
+                            resourceId = resourceId.trim().ifBlank { VolcAsrProtocol.DEFAULT_RESOURCE_ID },
+                        ),
+                        apiKey.trim(),
+                    )
+                },
+            ) { Text(s.editSave) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(s.terminalCancel) }
+        },
+    )
+}
+
+/** Provider type icon. */
+private fun providerIcon(type: AsrProviderType) =
+    when (type) {
+        AsrProviderType.VOLC_STREAMING -> Icons.Filled.Mic
+    }
+
+/** Show the name of the `provider` type. */
+internal fun providerTypeLabel(
+    type: AsrProviderType,
+    s: AppStrings,
+): String =
+    when (type) {
+        AsrProviderType.VOLC_STREAMING -> s.voice.providerTypeVolc
+    }
