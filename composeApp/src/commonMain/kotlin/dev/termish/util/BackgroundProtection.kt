@@ -7,7 +7,7 @@ enum class BackgroundProtectionState {
     SYSTEM_EXEMPT,
 }
 
-/*Battery management entries differ by vendor; used only to pick the appropriate user-facing guidance text. */
+// Battery management entries differ by vendor; used only to pick the appropriate user-facing guidance text.
 enum class BackgroundProtectionVendor {
     GENERIC,
     OPPO_FAMILY,

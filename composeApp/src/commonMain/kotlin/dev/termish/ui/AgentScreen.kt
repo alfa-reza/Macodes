@@ -3312,7 +3312,7 @@ internal fun extractToolCommand(input: String): String? {
     return cmd?.trim()?.takeIf { it.isNotBlank() }
 }
 
-/*Tool-row single-line summary: command / path / url / first 40 chars of params (see tuiniverse extractSummary). */
+// Tool-row single-line summary: command / path / url / first 40 chars of params (see tuiniverse extractSummary).
 internal fun extractToolSummary(input: String): String {
     if (input.isBlank()) return ""
     val obj =

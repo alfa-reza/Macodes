@@ -312,7 +312,7 @@ fun AppRoot(repository: HostRepository) {
     /** Limit each host to one task to reconnect the screen to prevent newly established channels from being closed after an old task is completed. */
     val screenReconnectJobs = remember { mutableMapOf<String, Job>() }
 
-    /*When the user taps “Screen” on the host card, automatically expand to fullscreen once the first frame arrives; normal terminal-menu launches are unaffected. */
+    // When the user taps “Screen” on the host card, automatically expand to fullscreen once the first frame arrives; normal terminal-menu launches are unaffected.
     var screenFullscreenRequestHostId by remember { mutableStateOf<String?>(null) }
 
     /** SFTP: Select host overlay / Current session / Authentication and host key dialog. */
@@ -320,7 +320,7 @@ fun AppRoot(repository: HostRepository) {
     var sftpAuth by remember { mutableStateOf<AuthPromptRequest?>(null) }
     var sftpHostKey by remember { mutableStateOf<HostKeyRequest?>(null) }
 
-    /*The Agent control connection persists across pages; dialogs must also be owned by AppRoot and cannot capture the state of a destroyed screen. */
+    // The Agent control connection persists across pages; dialogs must also be owned by AppRoot and cannot capture the state of a destroyed screen.
     var agentAuth by remember { mutableStateOf<Pair<String, AuthPromptRequest>?>(null) }
     var agentHostKey by remember { mutableStateOf<Pair<String, HostKeyRequest>?>(null) }
     val agentControllers = remember { mutableStateMapOf<String, AgentBridgeController>() }
