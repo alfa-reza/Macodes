@@ -34,13 +34,9 @@ reinstall: ## Uninstall then reinstall (gradle reinstallDebug, fixes signature c
 
 ## ---------- Tests ----------
 
-.PHONY: screen-service
-screen-service: ## Build the Rust remote service and package it into phone resources
-	$(GRADLEW) screenServiceBuild
-
 .PHONY: test
 test: ## Unit tests + integration tests (auto-SKIP when sshd/mosh are absent)
-	$(GRADLEW) agentBridgeTest screenServiceTest :composeApp:testDebugUnitTest
+	$(GRADLEW) agentBridgeTest :composeApp:testDebugUnitTest
 
 .PHONY: test-integration
 test-integration: ## Integration tests: starts sshd automatically then runs (gradle testIntegration)

@@ -6,7 +6,7 @@ Contact: research@alfareza.my.id
 
 ## English
 
-Macodes is a local-first SSH, Mosh, SFTP, remote-screen, and remote Agent client.
+Macodes is a local-first SSH, Mosh, SFTP, and remote Agent client.
 It does not require a Macodes account and does not include advertising, analytics,
 or telemetry services.
 
@@ -21,10 +21,10 @@ Android backups are disabled for Macodes. You can delete local data by removing 
 corresponding host or provider, clearing the app's data in system settings, or
 uninstalling the app.
 
-### SSH, Mosh, SFTP, and remote-screen connections
+### SSH, Mosh, and SFTP connections
 
-Macodes connects directly to servers that you configure. Terminal traffic, files,
-remote-screen frames, and control events are transmitted between your device and
+Macodes connects directly to servers that you configure. Terminal traffic and
+files are transmitted between your device and
 the selected server. They are not proxied, stored, or inspected by the Macodes
 project. The owner or operator of the destination server may process this data
 under their own terms and privacy policy.

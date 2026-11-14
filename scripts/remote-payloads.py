@@ -1,21 +1,18 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Transfer locally signed service payloads to CI, without transferring keys."""
+"""Transfer Agent Bridge payloads to CI, without transferring keys."""
 import argparse
 import io
 import json
 import os
 from pathlib import Path
 import re
-import subprocess
 import tarfile
-import tempfile
 
 TARGETS = ("Darwin-arm64", "Darwin-x86_64", "Linux-aarch64", "Linux-x86_64")
 FILES = tuple(
-    f"{service}/build/binaries/{name}"
-    for service, prefix in (("screenService", "macodes-screen"), ("agentBridge", "macodes-agent"))
-    for name in ("manifest.json", *(f"{prefix}-{target}" for target in TARGETS))
+    f"agentBridge/build/binaries/{name}"
+    for name in ("manifest.json", *(f"macodes-agent-{target}" for target in TARGETS))
 )
 METADATA = "remote-services.json"
 LIMIT = 128 * 1024 * 1024
@@ -80,47 +77,6 @@ def unpack(archive, root, commit):
         temporary.replace(target)
 
 
-def unpack_bundle(archive, destination):
-    files = {"Contents/Info.plist", "Contents/MacOS/Macodes Helper",
-             "Contents/Resources/AppIcon.icns", "Contents/_CodeSignature/CodeResources"}
-    directories = {str(parent) for name in files for parent in Path(name).parents if str(parent) != "."}
-    bodies, seen, total = {}, set(), 0
-    with tarfile.open(archive, "r:gz") as source:
-        for member in source:
-            if member.name in seen:
-                raise ValueError("Duplicate bundle member")
-            seen.add(member.name)
-            if member.isdir() and member.name in directories:
-                continue
-            if not member.isfile() or member.name not in files:
-                raise ValueError("Unexpected bundle member")
-            total += member.size
-            if member.size < 0 or total > LIMIT:
-                raise ValueError("Bundle exceeds size limit")
-            with source.extractfile(member) as stream:
-                bodies[member.name] = stream.read()
-    if bodies.keys() != files:
-        raise ValueError("Incomplete signed bundle")
-    # destination is a fresh private directory owned by this verification run.
-    for name, body in bodies.items():
-        target = destination / name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(body)
-        target.chmod(0o700 if name.endswith("/Macodes Helper") else 0o600)
-
-
-def verify_macos(root):
-    certificate = (root / ".github/macos-signing-certificate.sha1").read_text().strip()
-    if not re.fullmatch(r"[A-Fa-f0-9]{40}", certificate):
-        raise ValueError("Invalid signing certificate fingerprint")
-    requirement = f'anchor apple generic and certificate leaf = H"{certificate}"'
-    for target in TARGETS[:2]:
-        with tempfile.TemporaryDirectory(prefix="macodes-signature-") as temporary:
-            app = Path(temporary) / "Macodes Helper.app"
-            unpack_bundle(root / f"screenService/build/binaries/macodes-screen-{target}", app)
-            subprocess.run(["codesign", "--verify", "--strict", "-R", "=" + requirement, str(app)], check=True)
-            subprocess.run(["codesign", "-dv", "--verbose=2", str(app)], check=True)
-
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -129,13 +85,9 @@ def main():
         command = commands.add_parser(action)
         command.add_argument("archive", type=Path)
         command.add_argument("commit", type=commit_id)
-    commands.add_parser("verify-macos")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    if args.action == "verify-macos":
-        verify_macos(root)
-    else:
-        {"pack": pack, "unpack": unpack}[args.action](args.archive, root, args.commit)
+    {"pack": pack, "unpack": unpack}[args.action](args.archive, root, args.commit)
 
 
 if __name__ == "__main__":

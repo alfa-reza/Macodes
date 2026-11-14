@@ -37,14 +37,9 @@ composeApp/
 Android local tests run through `:composeApp:testDebugUnitTest`, and also include `commonTest`.
 Session and controller tests use Robolectric to provide the Android environment; repository tests use an in-memory `MapSettings`.
 
-The repository root's `screenService/` holds the macOS Python session service, ScreenCaptureKit/CoreGraphics native capture, the Linux Rust X11/Wayland service, configuration and install scripts.
-Gradle generates `ScreenServiceAssets` before Kotlin compilation; the phone side keeps the existing SSH install/probe entry points;
-the service runs inside the remote graphical session, with video and control reaching loopback ports over SSH direct-tcpip.
-See [remote screen service](screen-service.md) for source layout, configuration and logs.
-
 `agentBridge/rust/` holds the native Agent companion service; the phone likewise uploads the bundled binary per OS and architecture.
 Control flow goes over SSH exec/NDJSON and a private Unix socket; new sessions persist atomically as JSON, with no migration from the old SQLite.
-Build tooling lives in `tools/service-build/`; both service kinds generate the Kotlin manifest and file resources before compilation.
+Build tooling lives in `tools/service-build/`; it generates the Agent Bridge Kotlin manifest and file resources before compilation.
 
 ## Platform split
 

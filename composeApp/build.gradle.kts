@@ -28,7 +28,6 @@ kotlin {
 
     sourceSets {
         commonMain {
-            kotlin.srcDir(layout.buildDirectory.dir("generated/screenService/kotlin"))
             kotlin.srcDir(layout.buildDirectory.dir("generated/agentBridge/kotlin"))
         }
         val androidMain by getting

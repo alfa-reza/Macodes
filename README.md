@@ -1,7 +1,7 @@
 <h1 align="center">Macodes</h1>
 
 <p align="center"><strong>Your remote workspace, in your pocket.</strong></p>
-<p align="center">An Android workspace for SSH, Mosh, files, remote desktops, and coding agents.</p>
+<p align="center">An Android workspace for SSH, Mosh, files, and coding agents.</p>
 
 <p align="center">
   <a href="https://github.com/alfa-reza/Macodes/releases/latest"><strong>Download for Android</strong></a> ·
@@ -18,7 +18,7 @@
 ## A workspace that travels with you
 
 Macodes brings the tools you use on remote machines to your phone. Connect to a
-host, open a terminal, transfer a file, check its desktop, or continue a coding
+host, open a terminal, transfer a file, or continue a coding
 agent conversation—all from one place. Your commands and development tools run
 on machines you choose; no Macodes account or hosted relay is required.
 
@@ -31,8 +31,6 @@ on machines you choose; no Macodes account or hosted relay is required.
 - **Use coding agents your way.** Open a terminal-first Herdr workspace or use
   native Agent chat with supported CLIs including Codex, Claude Code, Gemini CLI,
   OpenCode and Pi. Agent accounts or provider credentials are separate.
-- **See the remote desktop.** View and control a graphical session with touch or
-  a virtual mouse using the optional remote screen service.
 - **Make the terminal yours.** Choose light or dark themes, terminal palettes,
   quick commands, English or Chinese, and phone-friendly input controls.
 
@@ -43,7 +41,7 @@ on machines you choose; no Macodes account or hosted relay is required.
    release page when published.
 2. Open **Hosts**, add your SSH address and credentials, and verify the host-key
    fingerprint on first connection.
-3. Choose **Terminal**, **Files**, **Herdr**, **Screen**, or **Agent** from the
+3. Choose **Terminal**, **Files**, **Herdr**, or **Agent** from the
    host menu. Some features offer guided installation of their remote components.
 4. For Mosh, select it in the host settings. The server needs `mosh-server` and a
    reachable UDP port. Use a persistent session such as `tmux new -A -s main`
@@ -63,10 +61,12 @@ Android's platform-protected storage. SSH host-key verification helps you confir
 that you are connecting to the intended machine.
 
 The optional **Agent Bridge** is uploaded over SFTP and runs under your remote
-user account; its communication travels through SSH. The optional **screen
-service** runs in the remote graphical session. GitHub Actions builds currently
-bundle Linux remote-service payloads; macOS host payloads are not included in
-those APKs. Desktop permissions and the host's lock-screen policy still apply.
+user account; its communication travels through SSH. GitHub Actions builds
+currently bundle Linux Agent Bridge payloads; macOS host payloads are not
+included in those APKs.
+
+Remote screen is no longer included. Updating the app does not stop or uninstall
+screen services previously installed on remote hosts; manage those on each host.
 
 AI and speech providers receive the content needed for features you configure
 and may charge separately. Agent conversations are stored on the remote host.
@@ -94,7 +94,7 @@ for prerequisites, tests, formatting, and development conventions.
 | Architecture | [Project architecture](docs/architecture.md) |
 | Remote connections | [SSH](docs/ssh-transport.md) · [Mosh](docs/mosh.md) · [SFTP](docs/sftp.md) |
 | Terminal | [Emulator](docs/terminal-emulator.md) · [Input pipeline](docs/input-pipeline.md) |
-| Remote companions | [Agent Bridge](agentBridge/README.md) · [Screen service](docs/screen-service.md) |
+| Remote companion | [Agent Bridge](agentBridge/README.md) |
 | Security | [Cryptography](composeApp/src/commonMain/kotlin/dev/macodes/crypto/README.md) · [Security policy](SECURITY.md) |
 | Project | [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) · [Code of conduct](CODE_OF_CONDUCT.md) |
 

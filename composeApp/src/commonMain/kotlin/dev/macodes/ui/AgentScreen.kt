@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -27,7 +26,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -66,7 +64,6 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Monitor
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Public
@@ -116,7 +113,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -260,18 +256,6 @@ fun AgentScreen(
     /** After leaving the screen, AppRoot launches a one-minute idle timer; re-entering before the timeout cancels the release. */
     onRelease: () -> Unit,
     onBack: () -> Unit,
-    /** Remote screen session entries (held by AppRoot; if not empty, the Agent page plays the remote screen in fullscreen mode). */
-    screenEntry: ScreenSessionEntry? = null,
-    /** Establish a screen streaming session (reuse the `establishScreen` process from the terminal screen). */
-    onStartScreen: (Host) -> Unit = {},
-    /** Close the screen session and remove the entry. */
-    onCloseScreen: (Host) -> Unit = {},
-    /** Reconnection after a screen disconnection (rebuild the streaming session). */
-    onReconnectScreen: (Host) -> Unit = {},
-    /** Screen Streaming Service Installation Guide (one-click installation when ffmpeg or relay is missing). */
-    onInstallScreenService: (Host, String?) -> Unit = { _, _ -> },
-    /** Toggle between fullscreen frame rate and image quality settings. */
-    onScreenConfigChange: (Host, Int, String) -> Unit = { _, _, _ -> },
 ) {
     val scope = rememberCoroutineScope()
     LaunchedEffect(controller) {
@@ -289,12 +273,6 @@ fun AgentScreen(
         onSavePreferences = { repository.saveAgentPreferences(host.id, it) },
         onInstallBridge = controller::installBridge,
         onExit = onBack,
-        screenEntry = screenEntry,
-        onStartScreen = onStartScreen,
-        onCloseScreen = onCloseScreen,
-        onReconnectScreen = onReconnectScreen,
-        onInstallScreenService = onInstallScreenService,
-        onScreenConfigChange = onScreenConfigChange,
     )
 }
 
@@ -308,12 +286,6 @@ private fun AgentWorkspace(
     onSavePreferences: (AgentWorkspacePreferences) -> Unit,
     onInstallBridge: () -> Unit,
     onExit: () -> Unit,
-    screenEntry: ScreenSessionEntry? = null,
-    onStartScreen: (Host) -> Unit = {},
-    onCloseScreen: (Host) -> Unit = {},
-    onReconnectScreen: (Host) -> Unit = {},
-    onInstallScreenService: (Host, String?) -> Unit = { _, _ -> },
-    onScreenConfigChange: (Host, Int, String) -> Unit = { _, _, _ -> },
 ) {
     AgentImeResizeEffect()
     val strings = LocalAppStrings.current.nativeAgents
@@ -333,15 +305,6 @@ private fun AgentWorkspace(
     val voiceSettings = appSettings
     var editingProvider by remember { mutableStateOf<AgentProvider?>(null) }
     var addingProvider by remember { mutableStateOf(false) }
-
-    // ---- Remote Screen Control: Immersive (Status Bar is Hidden) + Status Bar Height Recording (Header Content Alignment)----
-    val screenDensity = LocalDensity.current
-    var lastStatusBarTop by remember { mutableIntStateOf(0) }
-    val screenActive = screenEntry?.session != null
-    if (!screenActive) {
-        lastStatusBarTop = maxOf(lastStatusBarTop, WindowInsets.statusBars.getTop(screenDensity))
-    }
-    PlatformImmersiveMode(screenActive)
 
     // ---- Terminal “+” Tools Menu (⋮ in the top-right corner)----
     var gitOpen by remember { mutableStateOf(false) }
@@ -393,10 +356,10 @@ private fun AgentWorkspace(
         )
     }
 
-    // Terminal “+” Tools menu (⋮ in the top-right corner): File Management / Upload / Git / Favorites / Remote Screen Control.
+    // Terminal “+” Tools menu (⋮ in the top-right corner): File Management / Upload / Git / Favorites.
     // Synonymous with "terminal screen": File management navigates to the Agent session's working directory; upload target = Agent
-    // cwd + /tmp; Git uses an agent to control connections via a separate exec channel; screen reuse streaming infrastructure.
-    // After each recomposition rebuild (the cost of 5 items is negligible), language switches take effect immediately.
+    // cwd + /tmp; Git uses an agent to control connections via a separate exec channel.
+    // After each recomposition rebuild (the cost of 4 items is negligible), language switches take effect immediately.
     val all = LocalAppStrings.current
     val toolActions =
         listOf(
@@ -443,14 +406,6 @@ private fun AgentWorkspace(
                     }
                 },
             ),
-            AgentToolAction(
-                label = all.screen.menuLabel,
-                icon = Icons.Filled.Monitor,
-                onClick = {
-                    // Existing session = Playing (overlay already shown); create one if none exists
-                    if (screenEntry == null) onStartScreen(controller.host)
-                },
-            ),
         )
 
     // Upload Success/Failure Tooltips (Listener for status changes; use the same text as the terminal screen)
@@ -471,14 +426,12 @@ private fun AgentWorkspace(
     fun handleWorkspaceBack() {
         when (
             agentBackTarget(
-                screenOpen = screenActive,
                 fileBrowserOpen = fileBrowserOpen,
                 gitOpen = gitOpen,
                 childPageOpen = page != AgentWorkspacePage.CHAT,
                 sessionOpen = controller.currentSession != null,
             )
         ) {
-            AgentBackTarget.CLOSE_SCREEN -> screenEntry?.let { onCloseScreen(it.host) }
             AgentBackTarget.CLOSE_FILE_BROWSER -> fileBrowserOpen = false
             AgentBackTarget.CLOSE_GIT -> gitOpen = false
             AgentBackTarget.SHOW_CHAT -> page = AgentWorkspacePage.CHAT
@@ -681,24 +634,6 @@ private fun AgentWorkspace(
                 )
             }
         }
-    }
-
-    // Full-screen remote screen control: After creating a session entry in AppRoot, play it in fullscreen mode here (the Agent connection is not interrupted).
-    // Place at the root level (after `ModalNavigationDrawer`, declared last): Isomorphic with the terminal screen’s fullscreen mode—
-    // If embedded within a drawer, the video gesture layer will intercept touches intended for the header’s back and mode buttons.
-    screenEntry?.session?.let { screenSession ->
-        ScreenContent(
-            host = screenEntry.host,
-            session = screenSession,
-            state = screenEntry.uiState,
-            onBack = { onCloseScreen(screenEntry.host) },
-            onReconnect = { onReconnectScreen(screenEntry.host) },
-            onInstallService = { password -> onInstallScreenService(screenEntry.host, password) },
-            onClose = { onCloseScreen(screenEntry.host) },
-            statusBarInsetTop = lastStatusBarTop,
-            onStreamConfigChange = { fps, scale -> onScreenConfigChange(screenEntry.host, fps, scale) },
-            modifier = Modifier.fillMaxSize(),
-        )
     }
 
     if (directoryPickerOpen) {

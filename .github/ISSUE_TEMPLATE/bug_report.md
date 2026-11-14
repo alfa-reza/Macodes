@@ -9,7 +9,7 @@ labels: bug
 
 - Version (Settings page or APK file name, e.g. 1.0.0):
 - Platform: Android (including OS version):
-- Feature: terminal / Agent chat / SFTP / remote screen / voice / other
+- Feature: terminal / Agent chat / SFTP / voice / other
 - Connection: SSH / Mosh
 - Agent and Bridge version (if relevant):
 - Server (e.g. Ubuntu 24.04 + OpenSSH 9.x, if relevant):

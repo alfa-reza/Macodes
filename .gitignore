@@ -13,7 +13,6 @@ build/
 .DS_Store
 __pycache__/
 *.py[cod]
-composeApp/src/commonMain/composeResources/files/macodes-screen/
 
 # Android
 local.properties

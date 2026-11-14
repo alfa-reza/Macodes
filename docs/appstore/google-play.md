@@ -19,7 +19,7 @@ Creating a separate upload key is recommended.
 
 ### Short description
 
-`Local-first SSH, Mosh, SFTP, remote screen, and AI Agent terminal`
+`Local-first SSH, Mosh, SFTP, and AI Agent terminal`
 
 ### Full description
 
@@ -42,9 +42,8 @@ A real mobile terminal
 • CTRL, ALT, ESC, arrow keys, and TUI mouse input
 • Multiple session tabs, terminal themes, fonts, and column controls
 
-Files and remote desktop
+File management
 • Browse, upload, download, and manage files with SFTP
-• View and control a remote desktop with touch or a virtual mouse
 • Transfer progress and completion notifications
 
 Remote AI Agents
@@ -77,7 +76,7 @@ service terms, and the live privacy policy.
 
 ### App access
 
-Choose "Some functionality is restricted" because the core SSH/SFTP/remote-screen
+Choose "Some functionality is restricted" because the core SSH/SFTP
 capabilities require server credentials.
 
 ```text
@@ -95,7 +94,7 @@ Steps:
 3. Save and tap the host card.
 4. Accept the displayed host fingerprint.
 5. Run `help`, `ls`, or `htop` to verify terminal input and output.
-6. Open the session menu to access SFTP and remote-screen functions.
+6. Open the session menu to access SFTP functions.
 
 The credentials are reusable, do not require MFA, and remain available throughout
 the review period. The account is isolated and contains only disposable test data.
@@ -168,7 +167,7 @@ Use an unlisted YouTube link for the video and make sure reviewers can access it
 For the first internal test, use:
 
 ```text
-First Google Play test release with SSH, Mosh, SFTP, multiple sessions, remote screen, voice input, and remote Agent workflows.
+First Google Play test release with SSH, Mosh, SFTP, multiple sessions, voice input, and remote Agent workflows.
 ```
 
 ## Graphic assets

@@ -146,16 +146,6 @@ sealed interface HostSessionItem {
         override val isConnected: Boolean get() = session != null
     }
 
-    data class Screen(
-        val entry: ScreenSessionEntry,
-    ) : HostSessionItem {
-        override val hostId: String get() = entry.host.id
-        override val createdAt: Long get() = entry.createdAt
-        override val isActive: Boolean get() = true
-        override val isConnecting: Boolean get() = entry.session == null
-        override val isConnected: Boolean get() = entry.session != null
-    }
-
     data class Agent(
         val controller: AgentBridgeController,
     ) : HostSessionItem {
@@ -192,9 +182,7 @@ fun HostListScreen(
     onAgents: (Host) -> Unit,
     onOpenSession: (TerminalController) -> Unit,
     onOpenSftp: (Host, SftpSession?) -> Unit,
-    onOpenScreenSession: (ScreenSessionEntry) -> Unit,
     onStartSftp: (Host) -> Unit,
-    onOpenScreen: (Host) -> Unit,
     onCloseAllSessions: (Host) -> Unit,
 ) {
     val s = LocalAppStrings.current
@@ -352,7 +340,6 @@ fun HostListScreen(
                                     when (val target = sessions.firstOrNull { it.isActive } ?: sessions.firstOrNull()) {
                                         is HostSessionItem.Terminal -> onOpenSession(target.controller)
                                         is HostSessionItem.Sftp -> onOpenSftp(target.host, target.session)
-                                        is HostSessionItem.Screen -> onOpenScreenSession(target.entry)
                                         is HostSessionItem.Agent -> onAgents(host)
                                         null -> onConnect(host)
                                     }
@@ -378,18 +365,9 @@ fun HostListScreen(
                                     onStartSftp(host)
                                 }
                             },
-                            onScreen = {
-                                val existing = sessions.filterIsInstance<HostSessionItem.Screen>().firstOrNull()
-                                if (existing != null) {
-                                    onOpenScreenSession(existing.entry)
-                                } else {
-                                    onOpenScreen(host)
-                                }
-                            },
                             onAgents = { onAgents(host) },
                             onOpenSession = onOpenSession,
                             onOpenSftp = onOpenSftp,
-                            onOpenScreenSession = onOpenScreenSession,
                             onCloseAllSessions = { onCloseAllSessions(host) },
                         )
                     }
@@ -506,11 +484,9 @@ private fun HostCard(
     onTerminal: () -> Unit,
     onHerdr: () -> Unit,
     onSftp: () -> Unit,
-    onScreen: () -> Unit,
     onAgents: () -> Unit,
     onOpenSession: (TerminalController) -> Unit,
     onOpenSftp: (Host, SftpSession?) -> Unit,
-    onOpenScreenSession: (ScreenSessionEntry) -> Unit,
     onCloseAllSessions: () -> Unit,
 ) {
     val s = LocalAppStrings.current
@@ -635,11 +611,9 @@ private fun HostCard(
                         onTerminal = onTerminal,
                         onHerdr = onHerdr,
                         onSftp = onSftp,
-                        onScreen = onScreen,
                         onAgents = onAgents,
                         onOpenTerminal = onOpenSession,
                         onOpenSftp = onOpenSftp,
-                        onOpenScreenSession = onOpenScreenSession,
                         onCloseAll = onCloseAllSessions,
                     )
                 }
@@ -655,11 +629,9 @@ private fun HostMoreMenu(
     onTerminal: () -> Unit,
     onHerdr: () -> Unit,
     onSftp: () -> Unit,
-    onScreen: () -> Unit,
     onAgents: () -> Unit,
     onOpenTerminal: (TerminalController) -> Unit,
     onOpenSftp: (Host, SftpSession?) -> Unit,
-    onOpenScreenSession: (ScreenSessionEntry) -> Unit,
     onCloseAll: () -> Unit,
 ) {
     val s = LocalAppStrings.current
@@ -724,14 +696,6 @@ private fun HostMoreMenu(
                 },
             )
             DropdownMenuItem(
-                text = { Text(s.hostsActionScreen) },
-                leadingIcon = { Icon(Icons.Default.DesktopWindows, contentDescription = null) },
-                onClick = {
-                    open = false
-                    onScreen()
-                },
-            )
-            DropdownMenuItem(
                 text = { Text(s.hostsActionAgents) },
                 leadingIcon = { Icon(Icons.Default.SmartToy, contentDescription = null) },
                 onClick = {
@@ -760,8 +724,6 @@ private fun HostMoreMenu(
                             }
                         // SFTP: has connection = active; disconnected retained (session=null) = disconnected; enter the tab to reconnect
                         is HostSessionItem.Sftp -> if (item.session != null) s.hostsActive else s.connStatusClosed
-                        is HostSessionItem.Screen ->
-                            if (item.isConnecting) s.connStatusConnecting else s.hostsActive
                         is HostSessionItem.Agent ->
                             when {
                                 item.controller.pendingApprovals.isNotEmpty() -> s.nativeAgents.sessionWaitingApproval
@@ -787,8 +749,6 @@ private fun HostMoreMenu(
                             } else {
                                 StatusColors.Neutral
                             }
-                        is HostSessionItem.Screen ->
-                            if (item.isConnecting) StatusColors.Warning else StatusColors.Connected
                         is HostSessionItem.Agent ->
                             when {
                                 item.controller.pendingApprovals.isNotEmpty() -> StatusColors.Warning
@@ -844,27 +804,6 @@ private fun HostMoreMenu(
                             onClick = {
                                 open = false
                                 onOpenSftp(item.host, item.session)
-                            },
-                        )
-                    is HostSessionItem.Screen ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    "${s.hostsActionScreen} · ${formatSessionCreatedAt(item.createdAt)}",
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            },
-                            trailingIcon = {
-                                Text(
-                                    statusLabel,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = statusColor,
-                                )
-                            },
-                            onClick = {
-                                open = false
-                                onOpenScreenSession(item.entry)
                             },
                         )
                     is HostSessionItem.Agent ->

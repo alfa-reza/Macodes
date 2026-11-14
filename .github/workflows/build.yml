@@ -13,23 +13,26 @@ permissions:
   contents: read
 
 jobs:
-  screen-service:
-    name: Rust remote services (Linux)
+  agent-bridge:
+    name: Rust Agent Bridge (Linux)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-unknown-linux-musl,x86_64-unknown-linux-musl
-      - name: Build Linux remote service payloads
+      - name: Test Agent Bridge and build tooling
         run: |
-          sh scripts/service-build.sh build-screen
+          sh scripts/service-test.sh agentBridge
+          cargo test --locked --manifest-path tools/service-build/Cargo.toml
+          python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
+      - name: Build Linux Agent Bridge payloads
+        run: |
           sh scripts/service-build.sh build-agent
       - uses: actions/upload-artifact@v4
         with:
           name: remote-service-payloads
           path: |
-            screenService/build/binaries/
             agentBridge/build/binaries/
           if-no-files-found: error
 
@@ -46,7 +49,7 @@ jobs:
   # ---------------------------------------------------------------------------
   android:
     name: Android (APK + AAB)
-    needs: [screen-service]
+    needs: [agent-bridge]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
