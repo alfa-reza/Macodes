@@ -278,7 +278,7 @@ fun SettingsScreen(
             }
 
             // About: Set a fixed position at the bottom of the settings page (industry convention: Termius, Blink, and others all place this at the bottom)
-            // Version + official website/documentation/repository links). Tap to open in a browser; Android and iOS both use LocalUriHandler.
+            // Version + official website/documentation/repository links). Tap to open in a browser; uses LocalUriHandler.
             SettingsGroup(s.settingsGroupAbout) {
                 SettingsOptionItem(s.settingsVersion, APP_VERSION) {}
                 HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))

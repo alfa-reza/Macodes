@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# One-click Termish version upgrade: Upgrade both Android and iOS at the same time.
+# One-click Termish version upgrade: Android version bump plus CHANGELOG housekeeping.
 #
 # Usage:
 #   ./scripts/bump-version.sh 0.3.0 # Version 0.3.0, build number automatically incremented by 1
@@ -10,10 +10,6 @@
 # Update location:
 #   - composeApp/build.gradle.kts
 #       Android: versionName / versionCode
-#   - iosApp/iosApp.xcodeproj/project.pbxproj
-#       MARKETING_VERSION / CURRENT_PROJECT_VERSION (in two places: Debug and Release)
-#   - iosApp/iosApp/Info.plist
-#       CFBundleShortVersionString / CFBundleVersion
 #   - CHANGELOG.md
 #       Save the [Unreleased] paragraph as [X.Y.Z] - <TODAY's date>, and rebuild the version link block at the end of the document.
 #       (If a Git remote exists, use the actual `compare/releases` link; otherwise, retain the `TODO` comment as a placeholder.)
@@ -41,8 +37,6 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
 fi
 GRADLE="composeApp/build.gradle.kts"
 APP_INFO="composeApp/src/commonMain/kotlin/dev/termish/AppInfo.kt"
-PBXPROJ="iosApp/iosApp.xcodeproj/project.pbxproj"
-INFO_PLIST="iosApp/iosApp/Info.plist"
 CHANGELOG="CHANGELOG.md"
 TODAY=$(date +%F)
 
@@ -83,11 +77,6 @@ apply() {
 apply "Android versionName -> $VERSION" "$GRADLE" "s/versionName = \"[^\"]*\"/versionName = \"$VERSION\"/"
 apply "Settings page APP_VERSION constant -> $VERSION" "$APP_INFO" "s/APP_VERSION = \"[^\"]*\"/APP_VERSION = \"$VERSION\"/"
 apply "Android versionCode -> $BUILD" "$GRADLE" "s/versionCode = [0-9][0-9]*/versionCode = $BUILD/"
-apply "iOS MARKETING_VERSION -> $VERSION" "$PBXPROJ" "s/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = $VERSION;/g"
-apply "iOS CURRENT_PROJECT_VERSION -> $BUILD" "$PBXPROJ" "s/CURRENT_PROJECT_VERSION = [0-9][0-9]*;/CURRENT_PROJECT_VERSION = $BUILD;/g"
-apply "iOS CFBundleShortVersionString -> $VERSION" "$INFO_PLIST" "/CFBundleShortVersionString/{n;s/<string>[^<]*<\\/string>/<string>$VERSION<\\/string>/;}"
-apply "iOS CFBundleVersion -> $BUILD" "$INFO_PLIST" "/CFBundleVersion/{n;s/<string>[^<]*<\\/string>/<string>$BUILD<\\/string>/;}"
-
 # ---------------------------------------------------------------------------
 # CHANGELOG Integration: Save the accumulated [Unreleased] content to disk as [X.Y.Z] - <TODAY>,
 # Also rebuild the version link block at the end of the text. Idempotent: If the [X.Y.Z] paragraph already exists, skip it (repeated bumps are safe).

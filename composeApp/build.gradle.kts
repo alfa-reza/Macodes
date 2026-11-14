@@ -26,51 +26,6 @@ kotlin {
         }
     }
 
-    val nativeRoot = rootProject.file("iosApp/native")
-    val libssh2Def = project.file("src/nativeInterop/cinterop/libssh2.def")
-    val screenPlayerDef = project.file("src/nativeInterop/cinterop/screen_player.def")
-    val zlibDef = project.file("src/nativeInterop/cinterop/zlib.def")
-
-    val iosArm64 = iosArm64()
-    val iosSimulatorArm64 = iosSimulatorArm64()
-
-    listOf(
-        iosArm64 to nativeRoot.resolve("lib/device"),
-        iosSimulatorArm64 to nativeRoot.resolve("lib/sim"),
-    ).forEach { (target, libDir) ->
-        target.binaries.framework {
-            baseName = "Termish"
-            isStatic = true
-            binaryOption("bundleId", "dev.termish.app.Termish")
-            linkerOpts(
-                "-L$libDir",
-                "-lssh2", "-lssl", "-lcrypto", "-lz",
-                "-framework", "AVFoundation",
-                "-framework", "CoreMedia",
-                "-framework", "Security",
-                "-framework", "VideoToolbox",
-            )
-        }
-        target.compilations.getByName("main").cinterops.create("libssh2") {
-            defFile(libssh2Def)
-            compilerOpts("-I${nativeRoot.resolve("include")}")
-        }
-        target.compilations.getByName("main").cinterops.create("zlib") {
-            defFile(zlibDef)
-        }
-        target.compilations.getByName("main").cinterops.create("sftpWrite") {
-            defFile(project.file("src/nativeInterop/cinterop/sftp_write.def"))
-            compilerOpts(
-                "-I${nativeRoot.resolve("include")}",
-                "-I${project.file("src/nativeInterop/cinterop")}",
-            )
-        }
-        target.compilations.getByName("main").cinterops.create("screenPlayer") {
-            defFile(screenPlayerDef)
-            compilerOpts("-I${project.file("src/nativeInterop/cinterop")}")
-        }
-    }
-
     sourceSets {
         commonMain {
             kotlin.srcDir(layout.buildDirectory.dir("generated/screenService/kotlin"))
@@ -78,13 +33,6 @@ kotlin {
         }
         val androidMain by getting
         val androidUnitTest by getting
-
-        // iOS Shared Source Set (default hierarchy templates are disabled in `gradle.properties`).
-        val iosMain by creating {
-            dependsOn(commonMain.get())
-        }
-        getByName("iosArm64Main").dependsOn(iosMain)
-        getByName("iosSimulatorArm64Main").dependsOn(iosMain)
 
         commonMain.dependencies {
             implementation(compose.runtime)

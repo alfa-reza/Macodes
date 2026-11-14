@@ -33,7 +33,6 @@ data class ScreenPlayerMetrics(
 /**
  * Platform Video Player (Remote Screen Rendering Layer):
  * - Android: MediaCodec direct decoding + SurfaceView direct-to-screen (ToDesk-style direct pipeline).
- * - iOS: AVSampleBufferDisplayLayer + VideoToolbox for hardware-accelerated direct display.
  *
  * Usage: Complete H.264 frames extracted via the TCP protocol [feed]; first-frame rendering callback [onReady];
  * Playback error callback [onError]; the UI renders the screen using [ScreenVideoSurface].
@@ -65,7 +64,7 @@ expect class ScreenPlayer(
     fun metrics(): ScreenPlayerMetrics
 }
 
-/** Video rendering surface (Android = SurfaceView; iOS = AVSampleBufferDisplayLayer). */
+/** Video rendering surface (Android = SurfaceView). */
 @Composable
 expect fun ScreenVideoSurface(
     player: ScreenPlayer?,

@@ -7,7 +7,7 @@ import androidx.compose.runtime.Composable
  * - [MicrophoneRecorder]: 16 kHz / PCM16 / Mono Recorder
  * - [VoiceWebSocket]: Binary WebSocket client
  * - [rememberMicPermissionRequester]: Microphone permission request (Android runtime permission dialog;
- *   (iOS uses internal requests via AVAudioSession)
+ *   idempotent; if permission was already granted, `onResult(true)` is called immediately)
  *
  * Microphone permission requester: `request` is idempotent; if permission was already granted, call back `true` immediately.
  */

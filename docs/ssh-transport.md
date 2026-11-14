@@ -1,11 +1,10 @@
 # SSH Transport Layer (ssh/)
 
-> **Summary:** the platform-neutral `SshSession` contract and the two
-> engines behind it — sshj+BouncyCastle on Android and a hand-
-> written libssh2 cinterop engine on iOS. Covers the auth chain (password /
+> **Summary:** the platform-neutral `SshSession` contract and the sshj+
+> BouncyCastle engine on Android. Covers the auth chain (password /
 > publickey / passphrase / keyboard-interactive), the single-threaded reader
-> discipline that keeps escape-sequence decoding race-free, non-blocking
-> polling on iOS, mosh-server bootstrap, and system probing.
+> discipline that keeps escape-sequence decoding race-free, mosh-server
+> bootstrap, and system probing.
 
 ## Division of Labor
 
@@ -18,8 +17,7 @@ injected via expect/actual:
 | Contract | `SftpSession.kt` | SFTP abstraction (see sftp.md) |
 | Contract | `MoshSession.kt` | mosh client abstraction + `parseMoshConnect` / bootstrap command / system probing |
 | JVM engine | `androidMain/…/SshSessionSshj.kt` | sshj + BouncyCastle (Android) |
-| iOS engine | `iosMain/…/SshSessionLibssh2.kt` | libssh2 + statically linked OpenSSL, hand-written cinterop |
-| Factory | `SshEngine.jvm.kt` / `SshEngine.ios.kt` | `actual fun createSshSession` |
+| Factory | `SshEngine.android.kt` | `actual fun createSshSession` |
 
 ## SshSession Contract
 
@@ -79,64 +77,6 @@ failed" without knowing the private key never took part.
 `Buffer.PlainBuffer().putPublicKey(key)` serializes the public key blob, then
 SHA-256 / MD5, matching OpenSSH's fingerprint convention.
 
-## iOS Engine (libssh2)
-
-662 lines of hand-written cinterop — the file in the whole project that needs the
-most careful maintenance. libssh2's cinterop mapping is incomplete and it is not
-thread-safe; every workaround exists for these two facts.
-
-### Threading Model: single-threaded serial dispatch
-
-`serialDispatcher = Dispatchers.Default.limitedParallelism(1)` — **the read loop /
-writes / resize / keepalive / cleanup are all dispatched to the same thread**,
-ruling out concurrent access to a single `LIBSSH2_SESSION` (libssh2 is not
-thread-safe; concurrency crashes outright).
-
-- the read loop is a resident coroutine: non-blocking `channel_read_ex`,
-  `delay(30)` on `EAGAIN` while also sending the application-level keepalive (the
-  keepalive must be sent from the read thread — the fundamental reason it can only
-  live here)
-- `sendData`/`resize` are posted from the UI thread to the serial thread for
-  execution, never touching libssh2 on the calling thread
-- `close()` is made async: wait for the reader to exit before cleanup (guarding
-  against use-after-free); on a dead link `channel_close` may loop on EAGAIN for
-  seconds, and it must not block the UI thread
-
-### Two-Phase Blocking ↔ Non-blocking
-
-- **Handshake / auth / exec bootstrap**: blocking mode (`session_set_blocking(1)`), straightforward code
-- **Interactive shell**: switch to non-blocking + polling — the only way to respond to `close()` and send keepalives on the same thread
-- `retryUntilSuccess`: EAGAIN retries under a uniform 10s timeout
-
-### Three cinterop Workarounds (each one a trap already hit)
-
-1. **`tcpConnect` hand-written non-blocking connect**: cinterop has no ready-made
-   connect timeout. `getaddrinfo` + `O_NONBLOCK` + `poll(POLLOUT)`, then a second
-   `connect` after readiness checking for `EISCONN` (a standard POSIX trick,
-   avoiding the cross-platform type burden of `getsockopt(SO_ERROR)`). The timeout
-   matches sshj's `setConnectTimeout` — a black-hole address fails fast instead of
-   waiting for 60s+ of kernel TCP retries while the UI keeps spinning
-2. **`writeAll`'s UTF-8 boundary**: `libssh2_channel_write_ex`'s cinterop mapping
-   maps the buffer to `String` (UTF-8 encoding + explicit length), so rc may stop
-   in the middle of a UTF-8 character; `bytesDone` can only advance by whole
-   characters, and residual bytes are resent with the whole character (very
-   unlikely, tolerated)
-3. **`termish_sftp_write` native helper**: see sftp.md — libssh2_sftp_write only
-   exposes the String variant, so binary upload must go through `unsigned char*`
-
-### Host Fingerprint Convention
-
-The blob returned by `libssh2_session_hostkey` already includes the algorithm
-string prefix (consistent with `libssh2_hostkey_hash(SHA256)`, i.e. the OpenSSH
-fingerprint convention) — SHA-256 the whole blob directly, **do not manually
-prepend the type prefix** (the fingerprint would then not match known_hosts).
-
-### KBI Global Callback
-
-`staticCFunction` cannot capture variables → `kbiHandler` is a process-level
-singleton guarded by `kbiMutex`: concurrent KBI auth across sessions is serialized,
-preventing prompts from being routed to the wrong session.
-
 ## Mosh Bootstrap (connectAndRun)
 
 mosh mode uses the `connectAndRun` one-shot exec channel:
@@ -162,8 +102,6 @@ and runs `cat /etc/os-release 2>/dev/null; uname -s`, without re-authenticating 
 interrupting the interactive shell:
 
 - sshj: `client.startSession()` on a new channel, 5s timeout
-- libssh2: the session is not thread-safe, so probing must be dispatched to the
-  read thread via `withContext(serialDispatcher)`
 - `detectSystemFromOutput`: prefers os-release's `ID=` (ubuntu / debian / …),
   otherwise normalizes from `uname -s` to linux / macos / freebsd / openbsd
 
@@ -174,5 +112,3 @@ interrupting the interactive shell:
 - `androidUnitTest/ssh/`: `SshjIntegrationTest` / `SftpIntegrationTest` against a
   real sshd (127.0.0.1:22222, started automatically by `scripts/test-sshd.sh`),
   **self-detect, SKIP when sshd is absent does not count as a failure**
-- the iOS engine has no automated tests (CI does not build iOS) — libssh2 changes
-  must be verified on a real device/simulator, see the iOS build process in AGENTS.md

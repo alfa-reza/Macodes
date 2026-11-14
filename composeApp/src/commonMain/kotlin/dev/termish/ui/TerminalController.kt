@@ -564,7 +564,7 @@ class TerminalController(
     /** Silently detect changes when the foreground resumes or the default network changes; a healthy connection will not alter the UI state. */
     internal fun verifySshConnection(cause: SessionReconnectCause) = connector.verifySshConnection(cause)
 
-    /** When the platform explicitly cannot retain the socket (iOS suspension), actively rebuild it and show the actual resume semantics. */
+    /** When the platform explicitly cannot retain the socket (e.g. the app is suspended), actively rebuild it and show the actual resume semantics. */
     internal fun forceReconnect(cause: SessionReconnectCause) = connector.forceReconnect(cause)
 
     fun close() {

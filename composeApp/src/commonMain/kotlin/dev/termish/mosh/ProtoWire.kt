@@ -2,7 +2,7 @@ package dev.termish.mosh
 
 /**
  * Minimalist proto2 wire encoding and decoding: Covers only the varint, bytes, and embedded messages used by mosh.
- * Avoid introducing Protobuf dependencies (the cost of integrating protobuf-lite on the KMP iOS side is high and unnecessary).
+ * Avoid introducing Protobuf dependencies (protobuf-lite brings no benefit here and costs a build dependency).
  */
 internal class ProtoWriter {
     private val out = ArrayList<Byte>()

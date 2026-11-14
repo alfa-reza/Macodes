@@ -10,7 +10,7 @@ class ScreenInstallScriptTest {
     fun `headless Linux is rejected before relay upgrade is offered`() {
         val script = ScreenSession.READ_STREAM_SCRIPT
         val desktopProbe = script.indexOf("case \"\$OS\" in")
-        val relayVersionProbe = script.indexOf("# relay 版本匹配")
+        val relayVersionProbe = script.indexOf("# relay version match")
         assertTrue(desktopProbe >= 0)
         assertTrue(relayVersionProbe > desktopProbe)
         assertContains(script.substring(desktopProbe, relayVersionProbe), "SCREEN_NO_DISPLAY")
@@ -74,8 +74,8 @@ class ScreenInstallScriptTest {
         assertContains(ScreenSession.INSTALL_SCRIPT, "printf 'python-macos\\n'")
         val macStartup =
             ScreenSession.INSTALL_SCRIPT
-                .substringAfter("# ---- 服务启动：macOS")
-                .substringBefore("# Linux：重启 relay")
+                .substringAfter("# ---- Service launch: macOS")
+                .substringBefore("# Linux: Restart the relay")
         assertFalse(macStartup.contains("--write-launch-agent"))
         assertFalse(macStartup.contains("cleanup_legacy_screen_files"))
         assertFalse(ScreenSession.READ_STREAM_SCRIPT.contains("python3"))

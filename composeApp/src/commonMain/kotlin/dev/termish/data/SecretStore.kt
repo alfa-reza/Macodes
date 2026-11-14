@@ -1,7 +1,7 @@
 package dev.termish.data
 
 /**
- * Secure platform storage: passwords, private keys, and other secrets. Keychain (iOS) / Keystore (Android).
+ * Secure platform storage: passwords, private keys, and other secrets. Stored in the Android Keystore.
  */
 expect object SecretStore {
     fun get(

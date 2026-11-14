@@ -635,7 +635,7 @@ fun SftpContent(
             val files = state.pendingDownloadMulti
             if (dir == null && files == null) {
                 // No targets to download (defensive path): Abort immediately; do not call `sink.close()`——
-                // On iOS, clicking “Close” brings up an export panel; doing so on an empty directory also brings up a panel.
+                // (on an empty directory, calling it would also finalize an empty export)
                 return@rememberDirectorySaver
             }
             val sc = session ?: return@rememberDirectorySaver
@@ -651,7 +651,7 @@ fun SftpContent(
                     sink.close()
                     snackbar.showSnackbar(s.sftpDownloaded)
                 } catch (e: Exception) {
-                    // Do not call `sink.close()` on failure: On iOS, the export panel only appears when all operations are successful; this prevents the export of incomplete directories.
+                    // Do not call `sink.close()` on failure: export only when all operations are successful, which prevents the export of incomplete directories.
                     snackbar.showSnackbar(s.sftpDownloadFailed(e.message ?: "download"))
                 }
             }
@@ -2141,7 +2141,7 @@ enum class SftpFileKind {
 
 internal fun extensionOf(name: String): String = name.substringAfterLast('.', "").lowercase()
 
-/** Image formats that can be previewed online (platform decoding: Android BitmapFactory / iOS UIImage; GIFs show the first frame). */
+/** Image formats that can be previewed online (platform decoding: Android BitmapFactory; GIFs show the first frame). */
 internal val PREVIEW_IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "svg")
 
 /** Image files: Use the bitmap preview branch (the NUL detection in the text preview may incorrectly flag images). */

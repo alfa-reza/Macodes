@@ -73,7 +73,7 @@ class SessionManager(
     /** SFTP sessions (managed in the same way as terminal sessions: visible on the Connections page, can be closed by clicking the “Close” button on the card, and deleting a host releases the session). */
     val sftpSessions = mutableStateListOf<SftpSessionEntry>()
 
-    /** Session ID that remains active when the app is in the background (used to automatically reconnect when the app is brought back to the foreground; iOS scenario). */
+    /** Session ID that remains active when the app is in the background (used to automatically reconnect when the app is brought back to the foreground). */
     private val activeAtBackground = HashSet<String>()
 
     /** Go to the background: Record the current active session so it can be resumed when returning to the foreground. */
@@ -90,7 +90,7 @@ class SessionManager(
     /**
      * Return to the foreground: Automatically reconnect active sessions that were disconnected while the process was in the background (with buffering).
      *
-     * [recovery] Determined by the platform: On iOS, rebuild immediately after suspension; on Android, when the background service is stopped,
+     * [recovery] On Android, when the background service is stopped,
      * Perform end-to-end checks only to avoid falsely flagging healthy sockets.
      */
     fun reconnectDroppedSessions(recovery: ForegroundSshRecovery = ForegroundSshRecovery.KEEP) {

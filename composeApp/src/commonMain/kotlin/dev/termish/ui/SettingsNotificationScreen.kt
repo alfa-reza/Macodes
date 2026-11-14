@@ -75,7 +75,7 @@ fun SettingsNotificationScreen(
             )
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            // Master switch: When enabled, requests system notification permissions (Android 13+ / iOS)
+            // Master switch: When enabled, requests system notification permissions (Android 13+)
             Row(
                 Modifier
                     .fillMaxWidth()
