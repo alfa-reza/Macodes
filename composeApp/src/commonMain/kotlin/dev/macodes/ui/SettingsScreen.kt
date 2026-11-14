@@ -67,7 +67,7 @@ import dev.macodes.util.openApplicationSettings
 
 // ---- About External Links (Official Website / Contact Email) ----
 private const val WEBSITE_URL = "https://github.com/alfa-reza/Macodes"
-private const val WEBSITE_HOST = "macodes.dev"
+private const val WEBSITE_HOST = "github.com/alfa-reza/Macodes"
 private const val CONTACT_EMAIL = "research@alfareza.my.id"
 internal const val PRIVACY_POLICY_URL = "https://github.com/alfa-reza/Macodes/blob/main/docs/appstore/privacy-policy.md"
 
