@@ -1,8 +1,8 @@
 package dev.macodes.agent
 
-/** Retire only this account's old companion after the native bridge starts. */
 // The legacy companion keeps its pre-rebrand path: it only exists on hosts that were
 // provisioned before the rename.
+/** Retire only this account's old companion after the native bridge starts. */
 internal val legacyBridgeCleanupScript =
     """
     (
