@@ -1,10 +1,12 @@
 package dev.macodes.agent
 
 /** Retire only this account's old companion after the native bridge starts. */
+// The legacy companion keeps its pre-rebrand path: it only exists on hosts that were
+// provisioned before the rename.
 internal val legacyBridgeCleanupScript =
     """
     (
-      LEGACY="${'$'}HOME/.local/share/macodes-agent/current/macodes-agent.pyz"
+      LEGACY="${'$'}HOME/.local/share/termish-agent/current/termish-agent.pyz"
       legacy_bridge_owner() {
         case "${'$'}1" in ''|*[!0-9]*) return 1 ;; esac
         [ "${'$'}1" -gt 1 ] || return 1

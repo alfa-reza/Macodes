@@ -13,7 +13,7 @@ class LegacyBridgeCleanupTest {
         fixture { root ->
             assertEquals(0, runCleanup(root, "stop"))
             assertEquals("888\n", File(root, "signals").readText())
-            assertFalse(File(root, ".local/share/macodes-agent/current/macodes-agent.pyz").exists())
+            assertFalse(File(root, ".local/share/termish-agent/current/termish-agent.pyz").exists())
             preserved.forEach { assertEquals(it, File(root, it).readText()) }
             assertEquals(0, runCleanup(root, "absent"))
         }
@@ -23,7 +23,7 @@ class LegacyBridgeCleanupTest {
     fun `cleanup preserves legacy executable if daemon does not stop`() {
         fixture { root ->
             assertEquals(1, runCleanup(root, "stuck"))
-            assertTrue(File(root, ".local/share/macodes-agent/current/macodes-agent.pyz").exists())
+            assertTrue(File(root, ".local/share/termish-agent/current/termish-agent.pyz").exists())
             assertEquals("888\n", File(root, "signals").readText())
         }
     }
@@ -40,7 +40,7 @@ class LegacyBridgeCleanupTest {
     private fun fixture(test: (File) -> Unit) {
         val root = Files.createTempDirectory("macodes legacy home ").toFile()
         try {
-            (preserved + ".local/share/macodes-agent/current/macodes-agent.pyz").forEach { path ->
+            (preserved + ".local/share/termish-agent/current/termish-agent.pyz").forEach { path ->
                 File(root, path).apply { parentFile.mkdirs() }.writeText(path)
             }
             File(root, "bin/ps").apply {
@@ -49,7 +49,7 @@ class LegacyBridgeCleanupTest {
                     """
                     #!/bin/sh
                     OWNER=${'$'}(id -u)
-                    LEGACY="${'$'}HOME/.local/share/macodes-agent/current/macodes-agent.pyz"
+                    LEGACY="${'$'}HOME/.local/share/termish-agent/current/termish-agent.pyz"
                     if [ "${'$'}1" = -axo ]; then
                       [ "${'$'}MODE" != absent ] || exit 0
                       printf '%s\n' "888 ${'$'}OWNER /usr/bin/python3 ${'$'}LEGACY serve" "889 ${'$'}OWNER /usr/bin/rust ${'$'}LEGACY serve" "890 999999 /usr/bin/python3 ${'$'}LEGACY serve" "891 ${'$'}OWNER /usr/bin/python3 ${'$'}LEGACY serve" "892 ${'$'}OWNER /usr/bin/python3 /other/agent.pyz serve"
