@@ -4,26 +4,26 @@
 #include <stdint.h>
 #include <string.h>
 
-typedef void (*TermishMenuCallback)(uint32_t);
-static const CGFloat TermishIconSize = 18;
+typedef void (*MacodesMenuCallback)(uint32_t);
+static const CGFloat MacodesIconSize = 18;
 
-@interface TermishMenu : NSObject <NSApplicationDelegate>
+@interface MacodesMenu : NSObject <NSApplicationDelegate>
 @property(nonatomic, strong) NSStatusItem *item;
 @property(nonatomic, strong) NSString *logPath;
 @property(nonatomic, strong) NSString *directoryPath;
-@property(nonatomic, assign) TermishMenuCallback callback;
+@property(nonatomic, assign) MacodesMenuCallback callback;
 @property(nonatomic, assign) BOOL terminationPending;
 @property(nonatomic, assign) NSInteger iconState;
 - (void)selected:(NSMenuItem *)sender;
 @end
-static TermishMenu *owner;
+static MacodesMenu *owner;
 
 static NSImage *icon(BOOL connected, BOOL paused) {
-    NSImage *image = [NSImage imageWithSize:NSMakeSize(TermishIconSize, TermishIconSize)
+    NSImage *image = [NSImage imageWithSize:NSMakeSize(MacodesIconSize, MacodesIconSize)
                                  flipped:NO drawingHandler:^BOOL(NSRect rect) {
         (void)rect;
         [NSColor.blackColor setStroke];
-        // Monochrome version of the existing rounded >_ Termish mark.
+        // Monochrome version of the existing rounded >_ Macodes mark.
         NSBezierPath *border = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(1,1,16,16)
                                                             xRadius:4.3 yRadius:4.3];
         border.lineWidth = 1;
@@ -51,7 +51,7 @@ static NSImage *icon(BOOL connected, BOOL paused) {
     return image;
 }
 
-@implementation TermishMenu
+@implementation MacodesMenu
 - (void)selected:(NSMenuItem *)sender {
     NSURL *url = nil;
     switch (sender.tag) {
@@ -77,12 +77,12 @@ static NSImage *icon(BOOL connected, BOOL paused) {
 }
 @end
 
-bool termish_menu_chinese(void) {
+bool macodes_menu_chinese(void) {
     @autoreleasepool {
         return [NSLocale.preferredLanguages.firstObject hasPrefix:@"zh"];
     }
 }
-bool termish_menu_create(const char *paths, TermishMenuCallback callback) {
+bool macodes_menu_create(const char *paths, MacodesMenuCallback callback) {
     @autoreleasepool {
         if (![NSThread isMainThread] || owner) return false;
         NSData *data = [NSData dataWithBytes:paths length:strlen(paths)];
@@ -90,7 +90,7 @@ bool termish_menu_create(const char *paths, TermishMenuCallback callback) {
         if (![settings isKindOfClass:NSDictionary.class]) return false;
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
-        owner = [TermishMenu new];
+        owner = [MacodesMenu new];
         owner.callback = callback;
         owner.logPath = settings[@"log"];
         owner.directoryPath = settings[@"directory"];
@@ -102,7 +102,7 @@ bool termish_menu_create(const char *paths, TermishMenuCallback callback) {
         return owner.item != nil;
     }
 }
-void termish_menu_update(const char *model) {
+void macodes_menu_update(const char *model) {
     @autoreleasepool {
         if (!owner || ![NSThread isMainThread]) return;
         NSData *data = [NSData dataWithBytes:model length:strlen(model)];
@@ -131,7 +131,7 @@ void termish_menu_update(const char *model) {
         }
     }
 }
-void termish_menu_poll(void) {
+void macodes_menu_poll(void) {
     @autoreleasepool {
         if (!owner || ![NSThread isMainThread]) return;
         NSEvent *event;
@@ -141,7 +141,7 @@ void termish_menu_poll(void) {
         }
     }
 }
-void termish_menu_destroy(void) {
+void macodes_menu_destroy(void) {
     @autoreleasepool {
         if (!owner) return;
         BOOL reply = owner.terminationPending;
@@ -152,10 +152,10 @@ void termish_menu_destroy(void) {
     }
 }
 
-#ifdef TERMISH_MENU_TEST
+#ifdef MACODES_MENU_TEST
 // Test build only: use AppKit's real menu target/action dispatch without requiring
 // permission to synthesize system keyboard or mouse events.
-bool termish_menu_test_action(uint32_t action) {
+bool macodes_menu_test_action(uint32_t action) {
     for (NSMenuItem *item in owner.item.menu.itemArray) {
         if (item.tag == action && item.enabled) {
             [owner.item.menu performActionForItemAtIndex:[owner.item.menu indexOfItem:item]];

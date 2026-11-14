@@ -39,7 +39,7 @@ def control(kind=13, x=0, y=0, extra=0, text=""):
 
 class Fixture:
     def __init__(self, desktop=False):
-        self.temp = tempfile.TemporaryDirectory(prefix="termish-macos-relay-")
+        self.temp = tempfile.TemporaryDirectory(prefix="macodes-macos-relay-")
         self.root = Path(self.temp.name)
         self.connections = []
         encoder = shutil.which("ffmpeg")
@@ -139,9 +139,9 @@ g['Power']=Power
 
 
 class RelayTest(unittest.TestCase):
-    @unittest.skipUnless(sys.platform == "darwin" and os.environ.get("TERMISH_CAPTURE_TEST_HELPER"), "macOS capture helper build required")
+    @unittest.skipUnless(sys.platform == "darwin" and os.environ.get("MACODES_CAPTURE_TEST_HELPER"), "macOS capture helper build required")
     def test_native_videotoolbox_annex_b_stream_decodes_without_capture_permission(self):
-        helper = os.environ["TERMISH_CAPTURE_TEST_HELPER"]
+        helper = os.environ["MACODES_CAPTURE_TEST_HELPER"]
         result = subprocess.run([helper, "--capture-test", "30", "320", "1000000"], capture_output=True, timeout=10)
         self.assertEqual(0, result.returncode, result.stderr.decode(errors="replace"))
         types = {result.stdout[m.end()] & 31 for m in relay.START_CODE.finditer(result.stdout) if m.end() < len(result.stdout)}
@@ -195,7 +195,7 @@ class RelayTest(unittest.TestCase):
         self.assertNotIn("CGPreflightScreenCaptureAccess", RENDERED)
 
     def native_helper(self, fixture, body):
-        helper = fixture.root / "Termish Helper.app/Contents/MacOS/Termish Helper"
+        helper = fixture.root / "Macodes Helper.app/Contents/MacOS/Macodes Helper"
         helper.parent.mkdir(parents=True)
         helper.write_text("#!/bin/sh\n" + body)
         helper.chmod(0o700)

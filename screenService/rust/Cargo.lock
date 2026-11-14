@@ -263,6 +263,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
+name = "macodes-screen-service"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "libc",
+ "serde",
+ "serde_json",
+ "tokio",
+ "x11rb",
+ "zbus",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -481,19 +494,6 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys",
-]
-
-[[package]]
-name = "termish-screen-service"
-version = "0.1.0"
-dependencies = [
- "futures-util",
- "libc",
- "serde",
- "serde_json",
- "tokio",
- "x11rb",
- "zbus",
 ]
 
 [[package]]

@@ -16,7 +16,7 @@ pub fn output(
     cancelled: Option<&AtomicBool>,
 ) -> io::Result<(bool, String)> {
     let path = std::env::temp_dir().join(format!(
-        "termish-helper-{}-{}",
+        "macodes-helper-{}-{}",
         std::process::id(),
         SERIAL.fetch_add(1, Ordering::Relaxed)
     ));

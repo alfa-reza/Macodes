@@ -28,9 +28,9 @@ pub fn expand(s: &str) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(s))
 }
 pub fn bridge_home() -> PathBuf {
-    env::var("TERMISH_AGENT_HOME")
+    env::var("MACODES_AGENT_HOME")
         .map(|s| expand(&s))
-        .unwrap_or_else(|_| home().join(".local/share/termish-agent"))
+        .unwrap_or_else(|_| home().join(".local/share/macodes-agent"))
 }
 pub fn private_dir(p: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;

@@ -48,7 +48,7 @@ fn execute() -> Result<(), Box<dyn std::error::Error>> {
                     return Err("invalid capture parameters".into());
                 }
                 extern "C" {
-                    fn termish_capture_main(
+                    fn macodes_capture_main(
                         fps: i32,
                         width: i32,
                         bitrate: i32,
@@ -56,7 +56,7 @@ fn execute() -> Result<(), Box<dyn std::error::Error>> {
                     ) -> i32;
                 }
                 std::process::exit(unsafe {
-                    termish_capture_main(fps, width, bitrate, arg == "--capture-test")
+                    macodes_capture_main(fps, width, bitrate, arg == "--capture-test")
                 });
             }
             #[cfg(target_os = "linux")]
@@ -85,7 +85,7 @@ fn execute() -> Result<(), Box<dyn std::error::Error>> {
                 return Ok(());
             }
             "--help" => {
-                println!("Termish screen service\n--version --config FILE --port PORT --ffmpeg FILE --check-config\n--write-config FILE PORT FFMPEG\n--write-launch-agent FILE\n--display-state\nLinux: --install-desktop --manage --check-encoder --control {{status|pause|resume|toggle|disconnect|restart|quit}}");
+                println!("Macodes screen service\n--version --config FILE --port PORT --ffmpeg FILE --check-config\n--write-config FILE PORT FFMPEG\n--write-launch-agent FILE\n--display-state\nLinux: --install-desktop --manage --check-encoder --control {{status|pause|resume|toggle|disconnect|restart|quit}}");
                 return Ok(());
             }
             "--display-state" => {
@@ -115,7 +115,7 @@ fn execute() -> Result<(), Box<dyn std::error::Error>> {
                     .replace('>', "&gt;")
                     .replace('"', "&quot;")
                     .replace('\'', "&apos;");
-                let plist = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\"><dict>\n<key>Label</key><string>dev.termish.screen</string>\n<key>ProgramArguments</key><array><string>{escaped}</string></array>\n<key>RunAtLoad</key><true/>\n<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>\n</dict></plist>\n");
+                let plist = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\"><dict>\n<key>Label</key><string>dev.macodes.screen</string>\n<key>ProgramArguments</key><array><string>{escaped}</string></array>\n<key>RunAtLoad</key><true/>\n<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>\n</dict></plist>\n");
                 let mut output = fs::OpenOptions::new()
                     .write(true)
                     .create(true)
@@ -233,8 +233,8 @@ fn execute() -> Result<(), Box<dyn std::error::Error>> {
     let outcome = desktop::run(config, management)?;
     if outcome == management::Outcome::Restart {
         let managed = env::var("XPC_SERVICE_NAME").is_ok_and(|name| {
-            name == "dev.termish.screen" || name.starts_with("dev.termish.screen.")
-        }) || env::var("TERMISH_SYSTEMD_SERVICE").is_ok_and(|value| value == "1");
+            name == "dev.macodes.screen" || name.starts_with("dev.macodes.screen.")
+        }) || env::var("MACODES_SYSTEMD_SERVICE").is_ok_and(|value| value == "1");
         if managed {
             // launchd/systemd restart unsuccessful exits, but leave menu Quit alone.
             std::process::exit(1);

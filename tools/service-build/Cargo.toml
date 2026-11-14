@@ -1,5 +1,5 @@
 [package]
-name = "termish-service-build"
+name = "macodes-service-build"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"

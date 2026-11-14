@@ -1,7 +1,7 @@
 set -e
 PORT=@SCREEN_PORT@
 OS=$(uname)
-PLIST="$HOME/Library/LaunchAgents/dev.termish.screen.plist"
+PLIST="$HOME/Library/LaunchAgents/dev.macodes.screen.plist"
 @NATIVE_SOURCE@
 cleanup_legacy_screen_files() {
   # Called only after the native service passes startup verification.
@@ -11,6 +11,35 @@ cleanup_legacy_screen_files() {
     rm -f "$CACHE"
   done
   rmdir "$APP_DIR/__pycache__" 2>/dev/null || true
+}
+# ---- Legacy service teardown: releases before the rebrand registered the relay as
+# dev.termish.screen and used the same fixed port, so the old service keeps holding it.
+# Unregister it and stop its process before the renamed service binds the port. ----
+LEGACY_NATIVE="$HOME/Library/Application Support/termish/screen-service"
+LEGACY_RUNNER="$HOME/.termish-screen-launch.sh"
+LEGACY_RELAY="$HOME/Library/Application Support/termish/screen-relay.py"
+cleanup_legacy_service_names() {
+  launchctl bootout "gui/$(id -u)/dev.termish.screen" 2>/dev/null || true
+  launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/dev.termish.screen.plist" 2>/dev/null || true
+  rm -f "$HOME/Library/LaunchAgents/dev.termish.screen.plist"
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl --user disable --now dev.termish.screen.service 2>/dev/null || true
+  fi
+  rm -f "$HOME/.config/systemd/user/dev.termish.screen.service" "$HOME/.config/autostart/dev.termish.screen.desktop"
+  # Only the process that currently listens on the port is inspected; the installer's own
+  # command line contains the script text, so a pattern match over all processes is unsafe.
+  LEGACY_PID=""
+  if command -v lsof >/dev/null 2>&1; then
+    LEGACY_PID="$(lsof -t -iTCP:$PORT -sTCP:LISTEN 2>/dev/null | head -1)"
+  elif command -v fuser >/dev/null 2>&1; then
+    LEGACY_PID="$(fuser -n tcp "$PORT" 2>/dev/null | awk '{print $1}')"
+  fi
+  [ -n "$LEGACY_PID" ] || return 0
+  LEGACY_CMD="$(ps -p "$LEGACY_PID" -o command= 2>/dev/null || true)"
+  case "$LEGACY_CMD" in
+    *"$LEGACY_NATIVE"*|*"$LEGACY_RUNNER"*|*"$LEGACY_RELAY"*) kill "$LEGACY_PID" 2>/dev/null || true ;;
+  esac
+  return 0
 }
 # ---- ffmpeg: Install if missing (find the path that matches the stream-reading script to avoid non-interactive errors after installation)
 # (PATH false positive missing). macOS uses brew/static packages; Linux requires apt (sudo) ——
@@ -27,7 +56,7 @@ if [ "$OS" = "Linux" ]; then
     run_admin() { "$@"; }
   elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
     run_admin() { sudo -n "$@"; }
-  elif [ "${TERMISH_SUDO_STDIN:-}" = "1" ] && command -v sudo >/dev/null 2>&1; then
+  elif [ "${MACODES_SUDO_STDIN:-}" = "1" ] && command -v sudo >/dev/null 2>&1; then
     run_admin() { sudo -S -p '' "$@"; }
   else
     ADMIN_AVAILABLE=0
@@ -46,10 +75,10 @@ if [ -z "$FF" ]; then
   else
     echo "==> Downloading static ffmpeg to ~/bin"
     mkdir -p "$HOME/bin"
-    curl -fsSL -o /tmp/termish-ffmpeg.zip https://evermeet.cx/ffmpeg/getrelease/zip
-    rm -rf /tmp/termish-ffmpeg && mkdir -p /tmp/termish-ffmpeg
-    unzip -q /tmp/termish-ffmpeg.zip -d /tmp/termish-ffmpeg
-    cp /tmp/termish-ffmpeg/ffmpeg "$HOME/bin/ffmpeg"
+    curl -fsSL -o /tmp/macodes-ffmpeg.zip https://evermeet.cx/ffmpeg/getrelease/zip
+    rm -rf /tmp/macodes-ffmpeg && mkdir -p /tmp/macodes-ffmpeg
+    unzip -q /tmp/macodes-ffmpeg.zip -d /tmp/macodes-ffmpeg
+    cp /tmp/macodes-ffmpeg/ffmpeg "$HOME/bin/ffmpeg"
     chmod +x "$HOME/bin/ffmpeg"
     FF="$HOME/bin/ffmpeg"
   fi
@@ -97,7 +126,7 @@ esac
 echo "==> ffmpeg: $FF_PATH"
 # A unique 256-bit bearer token for each remote account: even a loopback TCP connection on the same machine
 # For users accessing from other operating systems, “a listener that listens only on 127.0.0.1” should not be treated as an authentication boundary.
-TOKEN_FILE="$HOME/.termish-screen.token"
+TOKEN_FILE="$HOME/.macodes-screen.token"
 TOKEN=""
 if [ -f "$TOKEN_FILE" ]; then
   TOKEN="$(tr -d '\r\n' < "$TOKEN_FILE" 2>/dev/null || true)"
@@ -124,7 +153,7 @@ if [ "$OS" = "Linux" ]; then
       echo '==> Install zenity, then retry' >&2; exit 1
     fi
   fi
-  if [ "${TERMISH_SESSION_TYPE:-}" = "wayland" ]; then
+  if [ "${MACODES_SESSION_TYPE:-}" = "wayland" ]; then
     if ! command -v gst-launch-1.0 >/dev/null 2>&1 || ! gst-inspect-1.0 pipewiresrc >/dev/null 2>&1 || ! gst-inspect-1.0 y4menc >/dev/null 2>&1; then
       [ "$ADMIN_AVAILABLE" = "1" ] || { echo '==> Wayland capture dependencies require administrator permission' >&2; exit 1; }
       if command -v apt-get >/dev/null 2>&1; then
@@ -151,8 +180,8 @@ if [ "$OS" = "Linux" ]; then
   fi
 fi
 mkdir -p "$APP_DIR"
-"$TERMISH_NATIVE_EXEC" --write-config "$APP_DIR/screen-service.json" "$PORT" "$FF_PATH"
-"$TERMISH_NATIVE_EXEC" --check-config --config "$APP_DIR/screen-service.json"
+"$MACODES_NATIVE_EXEC" --write-config "$APP_DIR/screen-service.json" "$PORT" "$FF_PATH"
+"$MACODES_NATIVE_EXEC" --check-config --config "$APP_DIR/screen-service.json"
 @MACOS_SOURCE@
 restore_macos_service() {
   launchctl bootout gui/$(id -u) "$PLIST" 2>/dev/null || true
@@ -178,31 +207,31 @@ restore_macos_service() {
 if [ "$OS" = "Darwin" ]; then
   /usr/bin/python3 --version >/dev/null 2>&1 || { echo '==> macOS system Python is required' >&2; exit 1; }
   RELAY="$APP_DIR/screen-relay.py"
-  RELAY_STAGE="$TERMISH_NATIVE_STAGE.py"
+  RELAY_STAGE="$MACODES_NATIVE_STAGE.py"
   RELAY_BACKUP="$APP_DIR/.screen-relay.previous"
   RELAY_REPLACED=0
   BACKEND_BACKUP="$APP_DIR/.screen-service.backend.previous"
   write_macos_relay > "$RELAY_STAGE"
   chmod 600 "$RELAY_STAGE"
   /usr/bin/python3 "$RELAY_STAGE" --check-config --config "$APP_DIR/screen-service.json"
-  /usr/bin/python3 - "$RELAY_STAGE" <<'TERMISH_PY_CHECK'
+  /usr/bin/python3 - "$RELAY_STAGE" <<'MACODES_PY_CHECK'
 import ast, sys
 with open(sys.argv[1]) as source:
     ast.parse(source.read())
-TERMISH_PY_CHECK
+MACODES_PY_CHECK
   # Only replace this service after checksum, bundle signature and config pass.
-  PLIST_BACKUP="$PLIST.termish-previous"
+  PLIST_BACKUP="$PLIST.macodes-previous"
   rm -f "$PLIST_BACKUP"
   if [ -f "$PLIST" ]; then cp "$PLIST" "$PLIST_BACKUP"; fi
   rm -f "$BACKEND_BACKUP"
   if [ -f "$APP_DIR/screen-service.backend" ]; then cp "$APP_DIR/screen-service.backend" "$BACKEND_BACKUP"; fi
   launchctl bootout gui/$(id -u) "$PLIST" 2>/dev/null || true
-  APP_BACKUP="$APP_DIR/.Termish Helper.previous"
+  APP_BACKUP="$APP_DIR/.Macodes Helper.previous"
   rm -rf "$APP_BACKUP"
   if [ -d "$APP_BUNDLE" ]; then mv "$APP_BUNDLE" "$APP_BACKUP"; fi
   rm -f "$RELAY_BACKUP"
   if [ -f "$RELAY" ]; then cp "$RELAY" "$RELAY_BACKUP"; fi
-  if ! mv "$TERMISH_APP_STAGE" "$APP_BUNDLE"; then
+  if ! mv "$MACODES_APP_STAGE" "$APP_BUNDLE"; then
     restore_macos_service
     exit 1
   fi
@@ -211,9 +240,9 @@ TERMISH_PY_CHECK
     exit 1
   fi
   RELAY_REPLACED=1
-  rm -f "$TERMISH_NATIVE_STAGE"
+  rm -f "$MACODES_NATIVE_STAGE"
 else
-  mv "$TERMISH_NATIVE_STAGE" "$NATIVE"
+  mv "$MACODES_NATIVE_STAGE" "$NATIVE"
 fi
 "$NATIVE" --licenses > "$APP_DIR/screen-service.NOTICE"
 if [ "$OS" = "Darwin" ]; then
@@ -224,19 +253,20 @@ fi
 # ---- Service launch: macOS uses LaunchAgent (GUI screen recording permission);
 # Linux uses systemd user services (with desktop autostart as a fallback); runs after a system reboot upon graphical login
 # Automatic resume. Older versions only used `nohup`; processes would survive after the SSH session was disconnected but would be lost after a reboot. ----
+cleanup_legacy_service_names
 if [ "$OS" = "Darwin" ]; then
 mkdir -p "$HOME/Library/LaunchAgents"
-if ! /usr/bin/python3 - "$PLIST" "$RELAY" "$APP_DIR/screen-service.json" <<'TERMISH_PLIST'
+if ! /usr/bin/python3 - "$PLIST" "$RELAY" "$APP_DIR/screen-service.json" <<'MACODES_PLIST'
 import os, plistlib, sys
 os.umask(0o077)
 with open(sys.argv[1], 'wb') as output:
     plistlib.dump({
-        'Label': 'dev.termish.screen',
+        'Label': 'dev.macodes.screen',
         'ProgramArguments': ['/usr/bin/python3', sys.argv[2], '--config', sys.argv[3]],
         'RunAtLoad': True,
         'KeepAlive': {'SuccessfulExit': False},
     }, output)
-TERMISH_PLIST
+MACODES_PLIST
 then
   restore_macos_service
   exit 1
@@ -252,18 +282,18 @@ fi
 sleep 1
 # Verify using launchctl (do not touch the connection: detecting a connection—disconnecting will interrupt the relay’s current service cycle;
 # (Also, do not use pgrep: the script’s own zsh command line containing the script text may cause false matches.)
-if launchctl print gui/$(id -u)/dev.termish.screen 2>/dev/null | grep -q "state = running" \
+if launchctl print gui/$(id -u)/dev.macodes.screen 2>/dev/null | grep -q "state = running" \
   && lsof -nP -iTCP:$((PORT + 2)) -sTCP:LISTEN >/dev/null 2>&1; then
-  echo @RELAY_VERSION@ > "$HOME/.termish-screen.version"
+  echo @RELAY_VERSION@ > "$HOME/.macodes-screen.version"
   rm -rf "$APP_BACKUP"
   rm -f "$PLIST_BACKUP"
   rm -f "$RELAY_BACKUP"
   rm -f "$BACKEND_BACKUP"
   rm -f "$APP_DIR/screen-service"
-  echo "==> TERMISH_SCREEN_OK"
+  echo "==> MACODES_SCREEN_OK"
 else
   restore_macos_service
-  echo "==> Service did not start (check ~/Library/Logs/termish-screen.err)" >&2
+  echo "==> Service did not start (check ~/Library/Logs/macodes-screen.err)" >&2
   exit 1
 fi
 else
@@ -271,8 +301,8 @@ else
 # ⚠️ Do not use `pkill -f`: The install script’s own (sh -c) command line contains
 # Script text: The -f option for exact matching will crash the program (same issue on the macOS branch; user feedback:
 # (Ubuntu boot installation failure) — Use PID files for precise cleanup
-RELAY_PID="$HOME/.termish-screen.pid"
-stop_termish_relay_pid() {
+RELAY_PID="$HOME/.macodes-screen.pid"
+stop_macodes_relay_pid() {
   OLD_PID="$1"
   # The install script enables `set -e`; PID file corruption is a normal part of the upgrade process, and the function must
   # Explicitly return success; otherwise, the process will exit early after writing the new relay but before launching it.
@@ -280,12 +310,12 @@ stop_termish_relay_pid() {
   [ -r "/proc/$OLD_PID/cmdline" ] || return 0
   OLD_CMD="$(tr '\0' ' ' < "/proc/$OLD_PID/cmdline" 2>/dev/null)"
   case "$OLD_CMD" in
-    *"$NATIVE"*|*"$HOME/.termish-screen-launch.sh"*) kill "$OLD_PID" 2>/dev/null || true ;;
+    *"$NATIVE"*|*"$HOME/.macodes-screen-launch.sh"*) kill "$OLD_PID" 2>/dev/null || true ;;
   esac
   return 0
 }
 if [ -f "$RELAY_PID" ]; then
-  stop_termish_relay_pid "$(cat "$RELAY_PID" 2>/dev/null)"
+  stop_macodes_relay_pid "$(cat "$RELAY_PID" 2>/dev/null)"
   rm -f "$RELAY_PID"
 fi
 # Versions v31 and earlier may not have reliable PID files, or a process failure may have overwritten the PID.
@@ -296,16 +326,16 @@ if command -v lsof >/dev/null 2>&1; then
 elif command -v fuser >/dev/null 2>&1; then
   LISTENER_PID="$(fuser -n tcp "$PORT" 2>/dev/null | awk '{print $1}')"
 fi
-stop_termish_relay_pid "$LISTENER_PID"
+stop_macodes_relay_pid "$LISTENER_PID"
 sleep 0.5
 # The launch wrapper re-detects DISPLAY/XAUTHORITY on every run. Xwayland's display
 # The serial number and authorization files will change after a restart; the values from the time of installation must not be hard-coded into the service unit.
-RUNNER="$HOME/.termish-screen-launch.sh"
-LOG="$HOME/.termish-screen.log"
-cat > "$RUNNER" <<'TERMISH_EOF'
+RUNNER="$HOME/.macodes-screen-launch.sh"
+LOG="$HOME/.macodes-screen.log"
+cat > "$RUNNER" <<'MACODES_EOF'
 #!/bin/sh
-NATIVE="$HOME/Library/Application Support/termish/screen-service"
-LOG="$HOME/.termish-screen.log"
+NATIVE="$HOME/Library/Application Support/macodes/screen-service"
+LOG="$HOME/.macodes-screen.log"
 # relay logs record exceptions, bitrate adjustments, and encoder self-healing; log size is still limited to avoid long-term
 # Once stored, it grows indefinitely. Retain the last 1 MiB to allow for troubleshooting the most recent session.
 if [ -f "$LOG" ] && [ "$(wc -c < "$LOG" 2>/dev/null || echo 0)" -gt 5242880 ]; then
@@ -391,39 +421,39 @@ while :; do
   fi
   sleep 2
 done
-TERMISH_EOF
+MACODES_EOF
 chmod 700 "$RUNNER"
 
 SERVICE_STARTED=0
 USER_RUNTIME="/run/user/$(id -u)"
 UNIT_DIR="$HOME/.config/systemd/user"
-UNIT="$UNIT_DIR/dev.termish.screen.service"
+UNIT="$UNIT_DIR/dev.macodes.screen.service"
 if command -v systemctl >/dev/null 2>&1 && [ -S "$USER_RUNTIME/bus" ]; then
   mkdir -p "$UNIT_DIR"
-  cat > "$UNIT" <<TERMISH_EOF
+  cat > "$UNIT" <<MACODES_EOF
 [Unit]
-Description=Termish screen relay
+Description=Macodes screen relay
 After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=%h/.termish-screen-launch.sh
-Environment=TERMISH_SYSTEMD_SERVICE=1
+ExecStart=%h/.macodes-screen-launch.sh
+Environment=MACODES_SYSTEMD_SERVICE=1
 Restart=on-failure
 RestartSec=2
 
 [Install]
 WantedBy=default.target
-TERMISH_EOF
+MACODES_EOF
   export XDG_RUNTIME_DIR="$USER_RUNTIME"
   export DBUS_SESSION_BUS_ADDRESS="unix:path=$USER_RUNTIME/bus"
   # `enable --now` will not restart existing running units; you must explicitly restart when upgrading Relay,
   # The presence of a session bus does not imply that the systemd user manager is available; in case of failure, proceed with desktop autostart.
   if systemctl --user daemon-reload \
-    && systemctl --user enable dev.termish.screen.service \
-    && systemctl --user restart dev.termish.screen.service; then
+    && systemctl --user enable dev.macodes.screen.service \
+    && systemctl --user restart dev.macodes.screen.service; then
     SERVICE_STARTED=1
-    rm -f "$HOME/.config/autostart/dev.termish.screen.desktop"
+    rm -f "$HOME/.config/autostart/dev.macodes.screen.desktop"
     echo "==> systemd user service: enabled (restored automatically after reboot)"
   fi
 fi
@@ -431,14 +461,14 @@ if [ "$SERVICE_STARTED" != "1" ]; then
   # When the systemd user bus is not available (on some minimal desktops), pass XDG autostart
   # Ensure that graphical login starts automatically next time; for the current installation, use `nohup` to launch it immediately.
   mkdir -p "$HOME/.config/autostart"
-  cat > "$HOME/.config/autostart/dev.termish.screen.desktop" <<'TERMISH_EOF'
+  cat > "$HOME/.config/autostart/dev.macodes.screen.desktop" <<'MACODES_EOF'
 [Desktop Entry]
 Type=Application
-Name=Termish Screen Relay
-Exec=/bin/sh -c "$HOME/.termish-screen-launch.sh"
+Name=Macodes Screen Relay
+Exec=/bin/sh -c "$HOME/.macodes-screen-launch.sh"
 X-GNOME-Autostart-enabled=true
 NoDisplay=true
-TERMISH_EOF
+MACODES_EOF
   nohup "$RUNNER" >/dev/null 2>&1 &
   echo $! > "$RELAY_PID"
   echo "==> Desktop autostart service: enabled (restored automatically after reboot)"
@@ -447,10 +477,10 @@ sleep 1.5
 # Verify that both the control plane and the loopback video port are listeners; do not establish a probe connection (which would trigger ffmpeg).
 if (lsof -nP -iTCP:$PORT -sTCP:LISTEN >/dev/null 2>&1 || ss -ltn 2>/dev/null | grep -q ":$PORT ") \
   && (lsof -nP -iTCP:$((PORT + 2)) -sTCP:LISTEN >/dev/null 2>&1 || ss -ltn 2>/dev/null | grep -q ":$((PORT + 2)) "); then
-  echo @RELAY_VERSION@ > "$HOME/.termish-screen.version"
+  echo @RELAY_VERSION@ > "$HOME/.macodes-screen.version"
   "$NATIVE" --install-desktop
   cleanup_legacy_screen_files
-  echo "==> TERMISH_SCREEN_OK"
+  echo "==> MACODES_SCREEN_OK"
 else
   echo "==> Service did not start (check $LOG)" >&2
   exit 1

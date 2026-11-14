@@ -224,7 +224,7 @@ mod tests {
     fn advertised_codec_must_initialize_and_probing_is_cancellable() {
         use std::os::unix::fs::PermissionsExt;
         let directory =
-            std::env::temp_dir().join(format!("termish-encoder-probe-{}", std::process::id()));
+            std::env::temp_dir().join(format!("macodes-encoder-probe-{}", std::process::id()));
         std::fs::create_dir_all(&directory).unwrap();
         let ffmpeg = directory.join("ffmpeg");
         std::fs::write(&ffmpeg, "#!/bin/sh\ncase \"$*\" in *-encoders*) printf ' V..... h264_nvenc test\\n';; *) exit 1;; esac\n").unwrap();

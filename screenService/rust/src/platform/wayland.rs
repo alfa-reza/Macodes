@@ -29,7 +29,7 @@ fn token() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);
     format!(
-        "termish_{}_{}",
+        "macodes_{}_{}",
         std::process::id(),
         SEQ.fetch_add(1, Ordering::Relaxed)
     )
@@ -726,7 +726,7 @@ mod tests {
             }
         }
         let _bus = BusGuard(bus);
-        let dir = std::env::temp_dir().join(format!("termish-portal-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("macodes-portal-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         let gst = dir.join("gst-launch-1.0");
         fs::write(&gst,"#!/bin/sh\nfor arg in \"$@\"; do case \"$arg\" in fd=*) FD=${arg#fd=}; break ;; esac; done\ncat /proc/self/fd/\"$FD\"\n").unwrap();

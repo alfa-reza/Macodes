@@ -30,7 +30,7 @@ export const publicUrl = (base, key) => `${base}/${key.split('/').map(encodeURIC
 export async function verifyPublicObject(url, expected, { fetchImpl = fetch, sleep = ms => new Promise(r => setTimeout(r, ms)) } = {}) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const response = await fetchImpl(url, { signal: AbortSignal.timeout(30_000), headers: { 'Cache-Control': 'no-cache', 'User-Agent': 'Termish-Release-Check/1.0 (+https://termish.dev)' } });
+      const response = await fetchImpl(url, { signal: AbortSignal.timeout(30_000), headers: { 'Cache-Control': 'no-cache', 'User-Agent': 'Macodes-Release-Check/1.0 (+https://github.com/alfa-reza/Macodes)' } });
       if (!response.ok) { await response.body?.cancel(); throw Error(`HTTP ${response.status}`); }
       const digest = createHash('sha256'); let size = 0;
       const reader = response.body.getReader();
@@ -53,7 +53,7 @@ export async function verifyAssets(release, directory) {
   }
   const files = {};
   for (const ext of Object.keys(MIME)) {
-    const name = `Termish-${tag.slice(1)}-release.${ext}`, body = await readFile(join(directory, name)), digest = sha(body);
+    const name = `Macodes-${tag.slice(1)}-release.${ext}`, body = await readFile(join(directory, name)), digest = sha(body);
     const asset = release.assets.find(a => a.name === name);
     if (!body.length || digest !== checksums.get(name)) throw Error(`Checksum mismatch: ${name}`);
     if (!asset || asset.size !== body.length) throw Error(`Release asset size mismatch: ${name}`);
@@ -76,8 +76,8 @@ export async function publish(client, config, release, directory, latestTag, ver
   const encoded = Buffer.from(JSON.stringify(metadata, null, 2) + '\n');
   await put(`${archive}/release.json`, encoded, 'application/json; charset=utf-8');
   if (await latestTag() !== tag) return metadata;
-  for (const [ext, asset] of Object.entries(files)) await put(`${prefix}/termish.${ext}`, asset.body, MIME[ext], { filename: asset.name });
-  await put(`${prefix}/SHA256SUMS`, Buffer.from(Object.entries(files).map(([ext, a]) => `${a.sha256}  termish.${ext}\n`).join('')), 'text/plain; charset=utf-8');
+  for (const [ext, asset] of Object.entries(files)) await put(`${prefix}/macodes.${ext}`, asset.body, MIME[ext], { filename: asset.name });
+  await put(`${prefix}/SHA256SUMS`, Buffer.from(Object.entries(files).map(([ext, a]) => `${a.sha256}  macodes.${ext}\n`).join('')), 'text/plain; charset=utf-8');
   await put(`${prefix}/release.json`, encoded, 'application/json; charset=utf-8');
   await put(`${prefix}/version.json`, encoded, 'application/json; charset=utf-8');
   return metadata;
@@ -113,9 +113,9 @@ async function main() {
   if (args.length && (args[0] !== '--tag' || args.length !== 2)) throw Error('Usage: publish-r2.mjs [--tag vX.Y.Z]');
   const config = requiredConfig(process.env), repo = process.env.GITHUB_REPOSITORY;
   if (!repo) throw Error('GITHUB_REPOSITORY is missing');
-  const release = githubRelease(repo, args[1] ?? ''), tag = validateRelease(release), temp = await mkdtemp(join(tmpdir(), 'termish-r2-'));
+  const release = githubRelease(repo, args[1] ?? ''), tag = validateRelease(release), temp = await mkdtemp(join(tmpdir(), 'macodes-r2-'));
   try {
-    execFileSync('gh', ['release', 'download', tag, '--repo', repo, '--dir', temp, '--pattern', `Termish-${tag.slice(1)}-release.apk`, '--pattern', `Termish-${tag.slice(1)}-release.aab`, '--pattern', 'SHA256SUMS'], { stdio: 'inherit' });
+    execFileSync('gh', ['release', 'download', tag, '--repo', repo, '--dir', temp, '--pattern', `Macodes-${tag.slice(1)}-release.apk`, '--pattern', `Macodes-${tag.slice(1)}-release.aab`, '--pattern', 'SHA256SUMS'], { stdio: 'inherit' });
     const metadata = await publish(s3Client(config, process.env, temp), config, release, temp, async () => githubRelease(repo).tag_name);
     if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `R2 release uploaded and public downloads verified: ${tag}\n\n[Release APK](${metadata.download_url})\n`);
   } finally { await rm(temp, { recursive: true, force: true }); }

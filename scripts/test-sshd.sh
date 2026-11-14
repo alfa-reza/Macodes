@@ -3,13 +3,13 @@
 # Generate host/client ed25519 keys and use the client’s public key for pubkey authentication.
 set -e
 
-DIR="${Termish_TEST_DIR:-/tmp/termish_test}"
-PORT="${Termish_TEST_PORT:-22222}"
+DIR="${Macodes_TEST_DIR:-/tmp/macodes_test}"
+PORT="${Macodes_TEST_PORT:-22222}"
 mkdir -p "$DIR"
 cd "$DIR"
 
-[ -f hostkey ] || ssh-keygen -q -t ed25519 -f hostkey -N "" -C "termish-test-host"
-[ -f client ]  || ssh-keygen -q -t ed25519 -f client  -N "" -C "termish-test-client"
+[ -f hostkey ] || ssh-keygen -q -t ed25519 -f hostkey -N "" -C "macodes-test-host"
+[ -f client ]  || ssh-keygen -q -t ed25519 -f client  -N "" -C "macodes-test-client"
 # In CI, sshd is launched as root, while the test process runs as a regular user: the private key must be readable (for local testing purposes only).
 chmod 644 client
 cat client.pub > authorized_keys

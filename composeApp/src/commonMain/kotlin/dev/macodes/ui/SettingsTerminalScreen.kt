@@ -1,0 +1,224 @@
+package dev.macodes.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import dev.macodes.ui.theme.TerminalTheme
+import dev.macodes.ui.theme.TerminalThemes
+import dev.macodes.util.TerminalFont
+import dev.macodes.util.monospaceFontFamily
+
+/**
+ * Terminal Themes and Fonts Screen (Termius Style):
+ * A font dropdown menu at the top, followed by a two-column card layout for themes below (live color scheme preview: background + 16 colors + text samples).
+ */
+@Composable
+fun SettingsTerminalScreen(
+    currentThemeIndex: Int,
+    currentFontId: String,
+    onChangeTheme: (Int) -> Unit,
+    onChangeFont: (String) -> Unit,
+    onBack: () -> Unit,
+) {
+    val s = LocalAppStrings.current
+    var fontMenuOpen by remember { mutableStateOf(false) }
+    val selectedFont = TerminalFont.byId(currentFontId)
+
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        // Page header: Back + Title
+        Row(
+            Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = s.navBack)
+            }
+            Text(
+                s.settingsTerminalPageTitle,
+                style = MaterialTheme.typography.titleMedium,
+                fontFamily = monospaceFontFamily(),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+
+        // Fixed font area; theme grid scrolls independently (LazyVerticalGrid cannot be nested within verticalScroll)
+        Column(Modifier.fillMaxSize()) {
+            // Font selection dropdown menu
+            Text(
+                s.settingsTerminalFontLabel,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 6.dp),
+            )
+            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))
+                        .clickable { fontMenuOpen = true }
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        selectedFont.label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontFamily =
+                            if (selectedFont ==
+                                TerminalFont.JETBRAINS
+                            ) {
+                                monospaceFontFamily()
+                            } else {
+                                FontFamily.Monospace
+                            },
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Icon(
+                        Icons.Filled.ArrowDropDown,
+                        null,
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    )
+                }
+                DropdownMenu(expanded = fontMenuOpen, onDismissRequest = { fontMenuOpen = false }) {
+                    TerminalFont.entries.forEach { font ->
+                        DropdownMenuItem(
+                            text = { Text(font.label) },
+                            onClick = {
+                                fontMenuOpen = false
+                                onChangeFont(font.id)
+                            },
+                        )
+                    }
+                }
+            }
+
+            // Theme two-column grid layout
+            Text(
+                s.settingsTerminalPalette,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                modifier = Modifier.padding(start = 20.dp, top = 18.dp, bottom = 6.dp),
+            )
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier.fillMaxSize().weight(1f),
+                contentPadding =
+                    androidx.compose.foundation.layout
+                        .PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(TerminalThemes.ALL, key = { it.name }) { theme ->
+                    ThemeCard(
+                        theme = theme,
+                        selected = TerminalThemes.ALL.indexOf(theme) == currentThemeIndex,
+                        onClick = { onChangeTheme(TerminalThemes.ALL.indexOf(theme)) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Theme preview card: Actual color scheme (background/foreground/16 color blocks) + name + highlight when selected. */
+@Composable
+private fun ThemeCard(
+    theme: TerminalTheme,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val borderColor =
+        if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.outlineVariant
+        }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(if (selected) 2.dp else 1.dp, borderColor, RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(10.dp),
+    ) {
+        // Preview area: Background + sample foreground text + 16 color blocks
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(theme.background())
+                .padding(10.dp),
+        ) {
+            Text(
+                "Aa 123",
+                style = MaterialTheme.typography.bodyLarge,
+                fontFamily = FontFamily.Monospace,
+                color = theme.foreground(),
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                theme.ansi.forEach { c ->
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(14.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(Color(c)),
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            theme.name,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color =
+                if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface.copy(
+                        alpha = 0.8f,
+                    )
+                },
+        )
+    }
+}

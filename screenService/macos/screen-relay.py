@@ -73,7 +73,7 @@ class Power:
     def start(self):
         if self.io is None:
             return
-        name = self.cf.CFStringCreateWithCString(None, b"Termish authenticated remote screen", 0x08000100)
+        name = self.cf.CFStringCreateWithCString(None, b"Macodes authenticated remote screen", 0x08000100)
         try:
             for kind in (b"PreventUserIdleDisplaySleep", b"PreventUserIdleSystemSleep"):
                 text = self.cf.CFStringCreateWithCString(None, kind, 0x08000100)
@@ -92,7 +92,7 @@ class Power:
             return
         owned = name is None
         if owned:
-            name = self.cf.CFStringCreateWithCString(None, b"Termish remote display recovery", 0x08000100)
+            name = self.cf.CFStringCreateWithCString(None, b"Macodes remote display recovery", 0x08000100)
         try:
             previous = self.activity.value
             if self.io.IOPMAssertionDeclareUserActivity(name, 0, c.byref(self.activity)) != 0:
@@ -300,14 +300,14 @@ class Config:
         self.diagnostic = settings.get("capture_source", "desktop") == "test_pattern"
         if settings.get("capture_source", "desktop") not in ("desktop", "test_pattern"):
             raise ValueError("invalid capture source")
-        self.token = Path(os.path.expanduser(settings.get("token_file", "~/.termish-screen.token"))).read_bytes().strip()
+        self.token = Path(os.path.expanduser(settings.get("token_file", "~/.macodes-screen.token"))).read_bytes().strip()
         if len(self.token) != 64 or any(ch not in b"0123456789abcdefABCDEF" for ch in self.token):
             raise ValueError("invalid token")
-        self.log = Path(os.path.expanduser(settings.get("log_file", "~/Library/Logs/termish-screen.err")))
-        self.pid = Path(os.path.expanduser(settings.get("encoder_pid_file", "~/.termish-screen-ffmpeg.pid")))
+        self.log = Path(os.path.expanduser(settings.get("log_file", "~/Library/Logs/macodes-screen.err")))
+        self.pid = Path(os.path.expanduser(settings.get("encoder_pid_file", "~/.macodes-screen-ffmpeg.pid")))
         self.identity = self.pid.with_name(self.pid.name + ".identity")
-        self.quality = Path(os.path.expanduser(settings.get("stream_config_file", "~/.termish-screen.conf")))
-        self.helper = Path(path).parent / "Termish Helper.app/Contents/MacOS/Termish Helper"
+        self.quality = Path(os.path.expanduser(settings.get("stream_config_file", "~/.macodes-screen.conf")))
+        self.helper = Path(path).parent / "Macodes Helper.app/Contents/MacOS/Macodes Helper"
         self.log.parent.mkdir(parents=True, exist_ok=True)
         self.pid.parent.mkdir(parents=True, exist_ok=True)
 
@@ -653,7 +653,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", action="store_true")
     parser.add_argument("--check-config", action="store_true")
-    parser.add_argument("--config", default=os.path.expanduser("~/Library/Application Support/termish/screen-service.json"))
+    parser.add_argument("--config", default=os.path.expanduser("~/Library/Application Support/macodes/screen-service.json"))
     args = parser.parse_args()
     if args.version:
         print(VERSION)

@@ -646,7 +646,7 @@ mod tests {
                 }
             };
             let dir =
-                std::env::temp_dir().join(format!("termish-menu-{}-{port}", std::process::id()));
+                std::env::temp_dir().join(format!("macodes-menu-{}-{port}", std::process::id()));
             fs::create_dir_all(&dir).unwrap();
             let config = Config {
                 encoder: crate::encoding::Preference::Software,

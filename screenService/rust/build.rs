@@ -77,11 +77,11 @@ fn build_menu() {
         .arg(&capture));
     run(Command::new("xcrun")
         .args(["libtool", "-static", "-o"])
-        .arg(out.join("libtermish_menu.a"))
+        .arg(out.join("libmacodes_menu.a"))
         .arg(object)
         .arg(capture));
     println!("cargo:rustc-link-search=native={}", out.display());
-    println!("cargo:rustc-link-lib=static=termish_menu");
+    println!("cargo:rustc-link-lib=static=macodes_menu");
     println!("cargo:rustc-link-lib=framework=AppKit");
     for framework in ["VideoToolbox", "CoreMedia", "CoreVideo", "IOSurface"] {
         println!("cargo:rustc-link-lib=framework={framework}");

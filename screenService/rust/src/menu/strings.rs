@@ -39,7 +39,7 @@ impl AppStrings {
                 restart: "重启服务／刷新权限",
                 logs: "查看服务日志",
                 directory: "打开服务目录",
-                quit: "退出 Termish Helper",
+                quit: "退出 Macodes Helper",
             }
         } else {
             Self {
@@ -59,7 +59,7 @@ impl AppStrings {
                 restart: "Restart service / refresh permissions",
                 logs: "View service log",
                 directory: "Open service folder",
-                quit: "Quit Termish Helper",
+                quit: "Quit Macodes Helper",
             }
         }
     }

@@ -198,7 +198,7 @@ impl Store {
         let roots: BTreeSet<PathBuf> = self
             .sessions
             .values()
-            .filter_map(|s| fs::canonicalize(Path::new(&s.cwd).join(".termish/attachments")).ok())
+            .filter_map(|s| fs::canonicalize(Path::new(&s.cwd).join(".macodes/attachments")).ok())
             .collect();
         let cutoff = now().saturating_sub(30 * 24 * 60 * 60 * 1000);
         for root in roots {
@@ -238,10 +238,10 @@ impl Store {
 }
 pub fn safe_attachment(s: &Session, name: &str) -> Option<PathBuf> {
     let path = Path::new(name);
-    if path.parent() != Some(Path::new(".termish/attachments")) || path.file_name().is_none() {
+    if path.parent() != Some(Path::new(".macodes/attachments")) || path.file_name().is_none() {
         return None;
     }
-    let root = fs::canonicalize(Path::new(&s.cwd).join(".termish/attachments")).ok()?;
+    let root = fs::canonicalize(Path::new(&s.cwd).join(".macodes/attachments")).ok()?;
     let candidate = fs::canonicalize(Path::new(&s.cwd).join(path)).ok()?;
     if candidate.parent() == Some(root.as_path()) && candidate.is_file() {
         Some(candidate)

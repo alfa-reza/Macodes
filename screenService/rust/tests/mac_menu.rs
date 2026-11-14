@@ -3,7 +3,7 @@ use std::{fs, process::Command};
 
 #[test]
 fn native_menu_dispatches_enabled_actions_and_updates_status_icon() {
-    let binary = std::env::temp_dir().join(format!("termish-menu-smoke-{}", std::process::id()));
+    let binary = std::env::temp_dir().join(format!("macodes-menu-smoke-{}", std::process::id()));
     let output = Command::new("xcrun")
         .args([
             "clang",

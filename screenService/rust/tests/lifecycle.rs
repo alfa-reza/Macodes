@@ -71,13 +71,13 @@ impl Service {
         .unwrap();
         fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o700)).unwrap();
         fs::write(dir.join("config.json"),json!({"capture_source":"test_pattern","port":port,"ffmpeg":wrapper,"token_file":dir.join("token"),"log_file":dir.join("log"),"encoder_pid_file":dir.join("encoder.pid"),"stream_config_file":dir.join("settings")}).to_string()).unwrap();
-        let child = Command::new(env!("CARGO_BIN_EXE_termish-screen-service"))
+        let child = Command::new(env!("CARGO_BIN_EXE_macodes-screen-service"))
             .args(["--config"])
             .arg(dir.join("config.json"))
             .env_remove("XDG_SESSION_TYPE")
             .env(
                 "DBUS_SESSION_BUS_ADDRESS",
-                "unix:path=/nonexistent/termish-test-bus",
+                "unix:path=/nonexistent/macodes-test-bus",
             )
             .stdout(Stdio::null())
             .stderr(Stdio::from(fs::File::create(dir.join("stderr")).unwrap()))
@@ -209,7 +209,7 @@ fn heartbeat_keeps_lease_alive_and_disconnect_reaps_encoder() {
 }
 #[test]
 fn native_configuration_is_atomic_and_preserves_paths() {
-    let dir = std::env::temp_dir().join(format!("termish-config-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("macodes-config-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let path = dir.join("screen-service.json");
     fs::write(dir.join("custom-token"), "a".repeat(64)).unwrap();
@@ -218,7 +218,7 @@ fn native_configuration_is_atomic_and_preserves_paths() {
         json!({"token_file":"~/custom-token","log_file":"~/custom-log"}).to_string(),
     )
     .unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_termish-screen-service"))
+    let output = Command::new(env!("CARGO_BIN_EXE_macodes-screen-service"))
         .env("HOME", &dir)
         .arg("--write-config")
         .arg(&path)
@@ -234,7 +234,7 @@ fn native_configuration_is_atomic_and_preserves_paths() {
     assert_eq!(value["token_file"], "~/custom-token");
     assert_eq!(path.metadata().unwrap().permissions().mode() & 0o777, 0o600);
     let before = fs::read(&path).unwrap();
-    let status = Command::new(env!("CARGO_BIN_EXE_termish-screen-service"))
+    let status = Command::new(env!("CARGO_BIN_EXE_macodes-screen-service"))
         .arg("--write-config")
         .arg(&path)
         .args(["not-a-port", "/bin/sh"])
@@ -243,7 +243,7 @@ fn native_configuration_is_atomic_and_preserves_paths() {
     assert!(!status.success());
     assert_eq!(fs::read(&path).unwrap(), before);
     let agent = dir.join("agent.plist");
-    let status = Command::new(env!("CARGO_BIN_EXE_termish-screen-service"))
+    let status = Command::new(env!("CARGO_BIN_EXE_macodes-screen-service"))
         .arg("--write-launch-agent")
         .arg(&agent)
         .status()
@@ -322,7 +322,7 @@ fn real_x11_capture_keyboard_clipboard_and_disconnect_releases_drag() {
                 "-oL",
                 "xev",
                 "-name",
-                "TermishRustTest",
+                "MacodesRustTest",
                 "-geometry",
                 "640x360+0+0",
             ])
@@ -332,7 +332,7 @@ fn real_x11_capture_keyboard_clipboard_and_disconnect_releases_drag() {
             .unwrap(),
     );
     let output = Command::new("xdotool")
-        .args(["search", "--sync", "--name", "TermishRustTest"])
+        .args(["search", "--sync", "--name", "MacodesRustTest"])
         .output()
         .unwrap();
     let window = String::from_utf8(output.stdout).unwrap();
@@ -341,13 +341,13 @@ fn real_x11_capture_keyboard_clipboard_and_disconnect_releases_drag() {
         .status()
         .unwrap()
         .success());
-    service.child = Command::new(env!("CARGO_BIN_EXE_termish-screen-service"))
+    service.child = Command::new(env!("CARGO_BIN_EXE_macodes-screen-service"))
         .arg("--config")
         .arg(service.dir.join("config.json"))
         .env("XDG_SESSION_TYPE", "x11")
         .env(
             "DBUS_SESSION_BUS_ADDRESS",
-            "unix:path=/nonexistent/termish-test-bus",
+            "unix:path=/nonexistent/macodes-test-bus",
         )
         .stdout(Stdio::null())
         .stderr(Stdio::inherit())
@@ -505,13 +505,13 @@ fn hardware_failure_falls_back_in_the_same_connection_with_increasing_sequences(
     fs::write(service.dir.join("config.json"), config.to_string()).unwrap();
     fs::write(service.dir.join("settings"), "fps=15\nscale=640:-2\n").unwrap();
     fs::write(service.dir.join("log"), "").unwrap();
-    service.child = Command::new(env!("CARGO_BIN_EXE_termish-screen-service"))
+    service.child = Command::new(env!("CARGO_BIN_EXE_macodes-screen-service"))
         .arg("--config")
         .arg(service.dir.join("config.json"))
         .env("XDG_SESSION_TYPE", "x11")
         .env(
             "DBUS_SESSION_BUS_ADDRESS",
-            "unix:path=/nonexistent/termish-test-bus",
+            "unix:path=/nonexistent/macodes-test-bus",
         )
         .stdout(Stdio::null())
         .stderr(Stdio::inherit())
