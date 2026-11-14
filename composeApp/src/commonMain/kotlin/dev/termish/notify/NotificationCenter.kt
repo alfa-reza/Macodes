@@ -67,7 +67,7 @@ object NotificationCenter {
     }
 }
 
-/** Platform implementation: Android NotificationManager / iOS UNUserNotificationCenter. */
+/** Platform implementation: Android NotificationManager. */
 expect fun showPlatformNotification(
     id: Int,
     title: String,

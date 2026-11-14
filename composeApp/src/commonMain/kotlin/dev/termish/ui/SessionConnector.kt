@@ -571,7 +571,7 @@ internal class SessionConnector(
                         HERDR_INSTALL_CMD
                     }
                 withContext(ioDispatcher()) {
-                    // Streaming exec (JVM): Read the script block by block and log the output; on iOS, fall back to `runCommand` if `startExec` is not available.
+                    // Streaming exec (JVM): Read the script block by block and log the output; fall back to `runCommand` if `startExec` is not available.
                     val exec = s.startExec(installCmd, c.lastCols, c.lastRows)
                     if (exec != null) {
                         try {
@@ -650,7 +650,7 @@ internal class SessionConnector(
      * Mosh install: in Mosh mode, when the remote lacks `mosh-server`, install via the system package manager over the authenticated connection —
      * Three permission modes: direct installation as root / password-less sudo for non-root users (`sudo -n`) / non-
      * non-root needs a password (entered on the install card; `sudo -S` feeds the password via stdin — JVM writes over the exec channel,
-     * (Do not write the command line; on iOS, fall back to a printf pipe; passwords must not appear in the Compose state or in logs.)
+     * (Do not write the command line; if exec is unavailable, fall back to a printf pipe; passwords must not appear in the Compose state or in logs.)
      * After success, reboot mosh (in case of failure, naturally return to the boot card or perform a fallback).
      * Stream the installation process output into [TerminalController.moshInstallLog] (displayed in real-time on the guide card).
      *

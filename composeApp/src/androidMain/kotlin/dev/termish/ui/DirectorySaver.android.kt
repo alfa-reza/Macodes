@@ -11,7 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.documentfile.provider.DocumentFile
 
-/** Android: In SAF OpenDocumentTree, select the target directory, create a <REMOTE directory name> subdirectory within the tree, and then write to it (consistent with iOS semantics). */
+/** Android: In SAF OpenDocumentTree, select the target directory, create a <REMOTE directory name> subdirectory within the tree, and then write to it. */
 @Composable
 actual fun rememberDirectorySaver(onReady: (name: String, sink: DirectorySink) -> Unit): (name: String) -> Unit {
     val context = LocalContext.current

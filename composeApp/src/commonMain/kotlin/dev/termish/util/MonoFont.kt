@@ -52,9 +52,8 @@ val LocalTerminalFont = staticCompositionLocalOf { TerminalFont.JETBRAINS }
  *   (ColorOS, MIUI, EMUI, etc.) will parse fonts that are not strictly monospaced, and different device models’
  *   Inconsistent glyph widths cause terminal text and the cursor—which are drawn based on “grid width”—to be misaligned overall.
  *   (Typical issue: Works normal on the emulator, but on a physical device, the cursor moves beyond the end of the row.)
- * - Monospace font metrics also vary across different versions of the iOS system.
  *
- * After the font is embedded, the same font file is used to measure (perform row and column calculations) and draw, ensuring consistent behavior across all three platforms.
+ * After the font is embedded, the same font file is used to measure (perform row and column calculations) and draw on every device, ensuring consistent metrics across all Android devices.
  */
 @Composable
 fun monospaceFontFamily(): FontFamily {
@@ -92,9 +91,7 @@ fun monospaceFontFamily(): FontFamily {
 /**
  * Font families used for wide characters (such as Chinese and other CJK characters).
  *
- * JetBrains Mono does not include CJK glyphs. The system will automatically fall back to the default font family;
- * CMP’s fallback for missing characters in custom fonts on iOS is unreliable (both FontFamily.Default and SansSerif are invalid),
- * The built-in Noto Sans SC font must be explicitly loaded to render Chinese characters.
+ * JetBrains Mono does not include CJK glyphs. On Android, wide characters fall back to the system default family (FontFamily.Default).
  */
 @Composable
 expect fun cjkFontFamily(): FontFamily

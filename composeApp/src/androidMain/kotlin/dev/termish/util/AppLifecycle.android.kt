@@ -6,9 +6,8 @@ import android.os.Bundle
 import dev.termish.AppContext
 
 /**
- * Android: The lifecycle hook implementation using Activity foreground/background counting, triggered when the app returns to the foreground
- * sessionManager.reconnectDroppedSessions() (consistent with iOS behavior).
- * If the connection is lost due to a failure in the keep-alive process or a network interruption, simply return to the foreground to automatically reconnect and resume the session.
+ * Android: The lifecycle hook implementation using Activity foreground/background counting, triggered when the app returns to the foreground.
+ * sessionManager.reconnectDroppedSessions() is called there, so sessions dropped while backgrounded are resumed automatically.
  */
 actual fun observeAppLifecycle(listener: (foreground: Boolean) -> Unit): () -> Unit {
     val app =

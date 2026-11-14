@@ -949,8 +949,7 @@ fun AppRoot(repository: HostRepository) {
         sessionsRestored = true
     }
 
-    // iOS: When returning to the home screen, the system suspends the process and closes the socket; when returning to the foreground, it automatically reconnects to active sessions (retaining the buffer).
-    // Android is kept alive by a foreground service, which has a null implementation.
+    // Android is kept alive by a foreground service and a wakelock; network changes are observed so dropped sessions reconnect.
     val disposeNetwork =
         observeNetworkChange { kind ->
             // Network events: SSH first detects changes in the default network before deciding whether to reconnect; mosh relies on UDP roaming for self-healing.

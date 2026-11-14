@@ -7,7 +7,7 @@ import kotlin.concurrent.Volatile
  * You no longer need to use temporary `println` statements to debug and pinpoint issues.
  *
  * - [termLogEnabled] Platform-specific control based on build type: Android debuggable,
- *   iOS DEBUG Symbols
+ *   so release builds are silent unless diagnostics are enabled.
  * - [diagnosticsEnabled] Diagnostics mode: Can also be enabled at runtime in release mode (settings page),
  *   Also write to the log file ([logFileDirectory]) for exporting to troubleshoot production issues.
  * - Messages are lazy parameters: the lambda does not execute when the switch is off, and string concatenation incurs zero overhead
@@ -83,7 +83,7 @@ object TermLog {
 /** Is the platform build in debug mode (disable logging for release builds)? */
 expect val termLogEnabled: Boolean
 
-/** Platform log output: Android logcat / iOS NSLog. */
+/** Platform log output: Android logcat. */
 expect fun platformLog(
     level: Char,
     tag: String,
@@ -93,5 +93,5 @@ expect fun platformLog(
 /** Log file directory (used for writing files in diagnostics mode); returns null if unavailable. */
 expect fun logFileDirectory(): String?
 
-/** Share/export diagnostics logs (Android system sharing / iOS UIActivityViewController). */
+/** Share/export diagnostics logs (Android system sharing). */
 expect fun shareDiagnosticLogs()

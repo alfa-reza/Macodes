@@ -179,7 +179,7 @@ class KmpMoshSession(
         val job =
             scope.launch(ioDispatcher()) {
                 try {
-                    // Cancel check: On iOS, `receive` returns `null` due to a timeout after `close`; if this check is removed,
+                    // Cancel check: `receive` returns `null` on timeout after `close`; if this check is removed,
                     // the coroutine idles for up to 60 seconds after the session closes (coroutineContext.isActive:
                     // (Avoid naming conflicts with the isActive() member function in this class.)
                     while (coroutineContext.isActive) {

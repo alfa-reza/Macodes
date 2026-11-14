@@ -94,7 +94,7 @@ internal fun SshCallbacks.forSftpReader(): SshCallbacks =
         override fun onTraceStep(step: String) {}
     }
 
-/** Platform factories: JVM=sshj SFTPClient; iOS=libssh2_sftp. */
+/** Platform factories: JVM = sshj SFTPClient. */
 expect fun createSftpSession(
     connection: SshConnection,
     callbacks: SshCallbacks,

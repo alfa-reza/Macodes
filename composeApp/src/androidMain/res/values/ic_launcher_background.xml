@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Adaptive icon background: zinc dark, consistent with iOS icons -->
+    <!-- Adaptive icon background: zinc dark -->
     <color name="ic_launcher_background">#0D0E11</color>
 </resources>
