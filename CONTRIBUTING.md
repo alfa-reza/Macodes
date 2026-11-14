@@ -8,8 +8,8 @@ You can contribute in English.
 ## Get started
 
 ```bash
-git clone https://github.com/ttermish/termish.git
-cd termish
+git clone https://github.com/alfa-reza/Macodes.git
+cd macodes
 ```
 
 | Component | Development requirements |
@@ -68,11 +68,11 @@ Maintainers can find Android release mirroring configuration in the
 
 ## Where changes belong
 
-- `composeApp/src/commonMain/kotlin/dev/termish/term/` contains the pure-Kotlin terminal
+- `composeApp/src/commonMain/kotlin/dev/macodes/term/` contains the pure-Kotlin terminal
   emulator. Keep platform and UI dependencies out of this module.
-- `composeApp/src/commonMain/kotlin/dev/termish/mosh/` contains the Mosh protocol
+- `composeApp/src/commonMain/kotlin/dev/macodes/mosh/` contains the Mosh protocol
   and prediction layers. Preserve the boundary documented in [AGENTS.md](AGENTS.md).
-- `composeApp/src/commonMain/kotlin/dev/termish/ui/` contains shared UI. Use the
+- `composeApp/src/commonMain/kotlin/dev/macodes/ui/` contains shared UI. Use the
   existing theme tokens and put user-facing copy in `AppStrings` in both languages.
 - Platform code belongs behind the existing SSH, storage and utility interfaces.
 - `agentBridge/rust/` contains the Rust companion and its tests. Target binaries are
@@ -106,7 +106,7 @@ behavior changes. Changes to Agent Bridge belong in its protocol documentation.
 
 ## Submit a pull request
 
-1. For a substantial feature, open an [issue](https://github.com/ttermish/termish/issues)
+1. For a substantial feature, open an [issue](https://github.com/alfa-reza/Macodes/issues)
    to describe the user problem and proposed scope before implementation.
 2. Fork the repository and create a branch for a focused change.
 3. Explain the resulting behavior and the checks you ran in the PR template.

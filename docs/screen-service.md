@@ -23,8 +23,8 @@ verifies successfully. On macOS, `screen-relay.py` is kept and updated; a failed
 restores the original script, original launch configuration, original background program and
 backend marker; configuration, token and logs are retained.
 
-The macOS `dev.termish.screen` GUI LaunchAgent runs
-`/usr/bin/python3 ~/Library/Application Support/termish/screen-relay.py`. From deployment version 63
+The macOS `dev.macodes.screen` GUI LaunchAgent runs
+`/usr/bin/python3 ~/Library/Application Support/macodes/screen-relay.py`. From deployment version 63
 onwards, the Helper's `--capture-native FPS WIDTH BITRATE` subprocess captures and encodes first;
 when ScreenCaptureKit yields no first frame or is unavailable it tries a CoreGraphics display
 stream, and VideoToolbox outputs Annex-B H.264. When the native subprocess is absent, the
@@ -89,7 +89,7 @@ sh scripts/service-build.sh build-agent --all
 make screen-service
 ```
 
-The Darwin installer toolkit still supports `TERMISH_SCREEN_MACOS_SIGN_IDENTITY`, which can sign
+The Darwin installer toolkit still supports `MACODES_SCREEN_MACOS_SIGN_IDENTITY`, which can sign
 with a fixed Developer ID certificate and verifies the whole app bundle; when unset, ad hoc signing
 is used and the manifest keeps the signing information. Native capture also lives inside that
 bundle, so official distribution should use a fixed Developer ID certificate, otherwise updating an
@@ -111,27 +111,27 @@ during the build, or manifest and binary SHA mismatches, all fail the build.
 `screenServiceBuild` depends on `screenServiceRustBuild` and packages before Kotlin compilation and
 resource copying. Manifests live in `screenService/build/binaries/`, generated Kotlin in
 `composeApp/build/generated/screenService/kotlin/`, and file resources in
-`composeResources/files/termish-screen/`. Generated artifacts are not committed.
+`composeResources/files/macodes-screen/`. Generated artifacts are not committed.
 
 The deployment version is changed via `RELAY_VERSION` in `service.properties`, independent of the
 app version.
 
 ## Configuration and service paths
 
-The install directory is `~/Library/Application Support/termish/`; configuration lives outside the
+The install directory is `~/Library/Application Support/macodes/`; configuration lives outside the
 signed bundle, and upgrades keep the token and custom paths:
 
 ```text
-Termish Helper.app/        # macOS background app (still screen-service on Linux)
+Macodes Helper.app/        # macOS background app (still screen-service on Linux)
   Contents/Info.plist
-  Contents/MacOS/Termish Helper
+  Contents/MacOS/Macodes Helper
   Contents/Resources/AppIcon.icns
 screen-service.NOTICE      # full third-party copyright notices
 screen-service.backend     # macOS: python-macos; Linux: rust
 screen-service.json        # configuration, 0600
 ```
 
-The Darwin payload filename keeps `termish-screen-Darwin-*`, and its content is a gzip tar of the
+The Darwin payload filename keeps `macodes-screen-Darwin-*`, and its content is a gzip tar of the
 signed app bundle; the Linux payload is still an ELF. Installation verifies the uploaded SHA first,
 then unpacks and verifies the signature and version; the old service is stopped only after
 verification passes. A failed start restores the old app bundle and LaunchAgent; on success the old
@@ -140,7 +140,7 @@ quotes and shell/XML characters are not expanded; an invalid configuration never
 original file.
 
 ```bash
-"$HOME/Library/Application Support/termish/Termish Helper.app/Contents/MacOS/Termish Helper" --version
+"$HOME/Library/Application Support/macodes/Macodes Helper.app/Contents/MacOS/Macodes Helper" --version
 # the Linux or standalone Rust debug binary still supports these flags:
 screen-service --config /path/to/screen-service.json --check-config
 screen-service --config /path/to/screen-service.json
@@ -162,10 +162,10 @@ encoder or request authorisation, and does not print the token.
 | `capture_source` | `desktop`; `test_pattern` is available for diagnostics and only generates a test pattern, without capturing the desktop or injecting input |
 | `menu_bar` | `true` by default for Linux desktop capture; `false` by default for `test_pattern`. The macOS Python session service does not start a menu bar; the native menu can be diagnosed independently |
 | `encoder` | `auto` by default on Linux; `software`, `nvenc`, `qsv` and `vaapi` are selectable, and an unavailable requested hardware encoder still falls back to software; macOS stays on VideoToolbox |
-| `token_file` | `~/.termish-screen.token`, 256-bit token |
-| `log_file` | macOS `~/Library/Logs/termish-screen.err`, Linux `~/.termish-screen.err` |
-| `encoder_pid_file` | `~/.termish-screen-ffmpeg.pid`, for diagnostics and cleaning up its own child processes |
-| `stream_config_file` | `~/.termish-screen.conf`, phone FPS/quality settings |
+| `token_file` | `~/.macodes-screen.token`, 256-bit token |
+| `log_file` | macOS `~/Library/Logs/macodes-screen.err`, Linux `~/.macodes-screen.err` |
+| `encoder_pid_file` | `~/.macodes-screen-ffmpeg.pid`, for diagnostics and cleaning up its own child processes |
+| `stream_config_file` | `~/.macodes-screen.conf`, phone FPS/quality settings |
 
 Phone deployments keep the default ports; standalone debugging can override them with
 `--port`/`--ffmpeg`. The former UDP compatibility endpoint has been removed, and the phone uses the
@@ -173,14 +173,14 @@ TCP protocol.
 
 ## Lifecycle and diagnostics
 
-macOS uses the `dev.termish.screen` LaunchAgent and Linux uses a same-named systemd user service,
+macOS uses the `dev.macodes.screen` LaunchAgent and Linux uses a same-named systemd user service,
 falling back to desktop autostart when unavailable. The Linux launcher re-probes the graphical
 session and Xauthority.
 
 Linux implements StatusNotifierItem and D-Bus Menu natively in Rust, reusing the service's same
-lifecycle state; KDE and GNOME with a matching tray host enabled can show the Termish icon. It
+lifecycle state; KDE and GNOME with a matching tray host enabled can show the Macodes icon. It
 re-registers automatically when the host starts late or restarts.
-When GNOME has no tray support, open **Termish Helper** / the "Termish service manager" launcher
+When GNOME has no tray support, open **Macodes Helper** / the "Macodes service manager" launcher
 entry from the app list, which offers the same management actions.
 The installer deploys the branded SVG and a desktop entry; the management window depends on zenity,
 and when it is missing the existing sudo authorisation flow is shared with the other system
@@ -209,7 +209,7 @@ a connection releases the current encoder and mouse buttons, then allows a new c
 
 "Restart service" releases input, closes the connection and cleans up the encoder first, then the
 service supervisor starts a new process.
-The Linux systemd unit sets `TERMISH_SYSTEMD_SERVICE=1` and `Restart=on-failure`; the restart action
+The Linux systemd unit sets `MACODES_SYSTEMD_SERVICE=1` and `Restart=on-failure`; the restart action
 exits with a failure code so the supervisor starts a replacement process, while a normal exit does
 not restart immediately. Desktop autostart or standalone runs start a replacement process with the
 original arguments.
@@ -278,7 +278,7 @@ verifying authentication, frame format, heartbeat, occupancy protection, feedbac
 and encoder cleanup. Synthetic tests use a separate configuration, token and random port. Phone
 tests verify SFTP installation and TCP video parsing. A real installation affects the account's
 existing service, so it is SKIP by default and runs only when
-`TERMISH_TEST_INSTALL_SCREEN=1` is set explicitly. Real system authorisation, lock screen/sleep and
+`MACODES_TEST_INSTALL_SCREEN=1` is set explicitly. Real system authorisation, lock screen/sleep and
 Wayland desktop behaviour need manual verification.
 End-to-end cases and reports are stored locally in `.aiadb/` and are not distributed with the
 repository.

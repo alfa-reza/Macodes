@@ -9,7 +9,7 @@ installer straight from R2.
 ## Cloudflare configuration
 
 1. Enable R2 and create a bucket that holds only public release files, with storage class **Standard**. The workflow below uses the S3 endpoint of the default jurisdiction.
-2. In the bucket's **Settings → Custom Domains**, bind the download domain, for example `download.termish.dev`, and wait for the status to become Active. The domain must be in the same Cloudflare account.
+2. In the bucket's **Settings → Custom Domains**, bind the download domain, for example `download.macodes.dev`, and wait for the status to become Active. The domain must be in the same Cloudflare account.
 3. During testing you can also enable **Public Development URL** and use the `https://pub-….r2.dev` address the console provides; that address is rate-limited and not CDN-cached, so official distribution uses the custom domain.
 4. In R2's **Manage API Tokens**, create credentials with **Object Read & Write** scoped to this bucket, and save the **Access Key ID** and **Secret Access Key**. These two values are used for the S3 API and differ from a regular Cloudflare API token.
 
@@ -19,7 +19,7 @@ bucket's **CORS Policy**. For example:
 ```json
 [
   {
-    "AllowedOrigins": ["https://termish.dev", "https://www.termish.dev"],
+    "AllowedOrigins": ["https://github.com/alfa-reza/Macodes", "https://github.com/alfa-reza/Macodes"],
     "AllowedMethods": ["GET", "HEAD"],
     "ExposeHeaders": ["Content-Length", "ETag"],
     "MaxAgeSeconds": 3600
@@ -43,8 +43,8 @@ In the repository's **Settings → Secrets and variables → Actions**, add the 
 | Secret | `R2_ACCESS_KEY_ID` | R2 S3 Access Key ID |
 | Secret | `R2_SECRET_ACCESS_KEY` | R2 S3 Secret Access Key |
 | Variable | `R2_ACCOUNT_ID` | the 32-character Cloudflare Account ID |
-| Variable | `R2_BUCKET` | R2 bucket name, for example `termish-releases` |
-| Variable | `R2_PUBLIC_BASE_URL` | HTTPS root domain for public downloads, for example `https://download.termish.dev`, without `/downloads` |
+| Variable | `R2_BUCKET` | R2 bucket name, for example `macodes-releases` |
+| Variable | `R2_PUBLIC_BASE_URL` | HTTPS root domain for public downloads, for example `https://download.macodes.dev`, without `/downloads` |
 | Variable | `R2_PREFIX` | optional, defaults to `downloads` |
 
 `R2_PUBLIC_BASE_URL` must not be `*.r2.cloudflarestorage.com`, which is an S3 API address that
@@ -58,7 +58,7 @@ The local Android signing configuration is stored in `.env` at the project root 
 Git-ignored). Its secrets can be written into separate repository Secrets in bulk:
 
 ```bash
-gh secret set --repo ttermish/termish --env-file .env
+gh secret set --repo alfa-reza/Macodes --env-file .env
 ```
 
 That command uploads only the entries already in the file and does not delete other repository
@@ -92,12 +92,12 @@ anonymous check is no substitute for a browser CORS check.
 downloads/
   version.json
   release.json
-  termish.apk
-  termish.aab
+  macodes.apk
+  macodes.aab
   SHA256SUMS
   releases/v1.7.1/
-    Termish-1.7.1-release.apk
-    Termish-1.7.1-release.aab
+    Macodes-1.7.1-release.apk
+    Macodes-1.7.1-release.aab
     SHA256SUMS
     release.json
 ```
@@ -108,15 +108,15 @@ The website reads `download_url` from `version.json` to download the signed offi
 {
   "version": "v1.7.1",
   "version_name": "1.7.1",
-  "download_url": "https://download.termish.dev/downloads/releases/v1.7.1/Termish-1.7.1-release.apk",
-  "github_download_url": "https://github.com/ttermish/termish/releases/download/v1.7.1/Termish-1.7.1-release.apk",
+  "download_url": "https://download.macodes.dev/downloads/releases/v1.7.1/Macodes-1.7.1-release.apk",
+  "github_download_url": "https://github.com/alfa-reza/Macodes/releases/download/v1.7.1/Macodes-1.7.1-release.apk",
   "sha256": "the file's SHA-256",
   "assets": {"apk": {}, "aab": {}}
 }
 ```
 
 `assets.apk.url` and `assets.aab.url` are both R2 download addresses; `github_download_url` points to
-the corresponding GitHub Release file. The fixed download object `/downloads/termish.apk` also comes
+the corresponding GitHub Release file. The fixed download object `/downloads/macodes.apk` also comes
 from the same official Release.
 
 ## Local verification

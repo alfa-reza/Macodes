@@ -1,13 +1,13 @@
 # Google Play submission material
 
-> Package name: `dev.termish.app`<br>
+> Package name: `dev.macodes.app`<br>
 > Category: Tools<br>
 > Default language: English (United States)<br>
-> Privacy policy URL: `https://termish.dev/privacy`<br>
-> Support URL: `https://termish.dev`
+> Privacy policy URL: `https://github.com/alfa-reza/Macodes/blob/main/docs/appstore/privacy-policy.md`<br>
+> Support URL: `https://github.com/alfa-reza/Macodes`
 
 Before the first upload, confirm that `compileSdk` / `targetSdk` are both 36 and
-use the existing Termish production signing key as the Play App Signing app
+use the existing Macodes production signing key as the Play App Signing app
 signing key, so the website APK and the Play version keep the same signature.
 Creating a separate upload key is recommended.
 
@@ -15,7 +15,7 @@ Creating a separate upload key is recommended.
 
 ### App name
 
-`Termish SSH Terminal`
+`Macodes SSH Terminal`
 
 ### Short description
 
@@ -24,8 +24,8 @@ Creating a separate upload key is recommended.
 ### Full description
 
 ```text
-Termish is a mobile SSH and Mosh terminal and a pocket workspace for remote
-development environments and AI Agents. No Termish account, ads, analytics, or
+Macodes is a mobile SSH and Mosh terminal and a pocket workspace for remote
+development environments and AI Agents. No Macodes account, ads, analytics, or
 telemetry are required. Credentials stay in platform-protected storage, and
 connections go directly to servers you choose.
 
@@ -51,7 +51,7 @@ Remote AI Agents
 • Connect to Agent tools running on your own server
 • Supports Codex, Claude Code, Gemini CLI, OpenCode, and Pi
 • Session history, attachments, approvals, and task status
-• You choose the Agent provider; traffic does not pass through Termish servers
+• You choose the Agent provider; traffic does not pass through Macodes servers
 
 Security and privacy
 • Passwords, private keys, and API keys use protected credential storage
@@ -61,9 +61,9 @@ Security and privacy
   configure only while you hold the microphone button
 • No ads, analytics, or telemetry
 
-Website: https://termish.dev
-Privacy policy: https://termish.dev/privacy
-Source code (MIT): https://github.com/ttermish/termish
+Website: https://github.com/alfa-reza/Macodes
+Privacy policy: https://github.com/alfa-reza/Macodes/blob/main/docs/appstore/privacy-policy.md
+Source code (Apache-2.0): https://github.com/alfa-reza/Macodes
 ```
 
 ## App content form recommendations
@@ -81,7 +81,7 @@ Choose "Some functionality is restricted" because the core SSH/SFTP/remote-scree
 capabilities require server credentials.
 
 ```text
-Termish does not have an application account. To review its core functionality,
+Macodes does not have an application account. To review its core functionality,
 use the reusable SSH test server below.
 
 Host: <REVIEW_HOST>
@@ -90,7 +90,7 @@ Username: <REVIEW_USER>
 Password: <REVIEW_PASSWORD>
 
 Steps:
-1. Open Termish and tap Add host.
+1. Open Macodes and tap Add host.
 2. Enter the host, port, username, and password above.
 3. Save and tap the host card.
 4. Accept the displayed host fingerprint.
@@ -113,7 +113,7 @@ development/operations users, and declare that the app is not intended for child
 
 Complete the IARC questionnaire truthfully. The app itself contains no violence,
 sexual content, gambling, drugs, or public user interaction content; content on
-users' own servers is not provided by Termish.
+users' own servers is not provided by Macodes.
 
 ### Data safety
 
@@ -126,9 +126,9 @@ Recommend declaring as per the current implementation:
 General question recommendations:
 
 - Data encrypted in transit: `Yes`
-- Users can request deletion: Termish has no central account or its own server
+- Users can request deletion: Macodes has no central account or its own server
   data; third-party data deletion follows Volcano Engine's terms — confirm before selecting
-- Credentials, SSH content, SFTP files: not received by the Termish project;
+- Credentials, SSH content, SFTP files: not received by the Macodes project;
   traffic goes directly to the server the user specifies
 - Agent prompts and attachments: sent from the user's server to the provider they
   configured themselves; confirm against Google Play's definitions of
@@ -143,7 +143,7 @@ Closest purpose: `Continuous data transfer to an external device`
 Function description:
 
 ```text
-Termish is an interactive SSH and Mosh client. After the user explicitly connects
+Macodes is an interactive SSH and Mosh client. After the user explicitly connects
 to a remote computer, a connected-device foreground service maintains that active
 encrypted network session while the app is backgrounded. A persistent notification
 makes the activity visible and lets the user return to or stop the session.
@@ -189,8 +189,8 @@ Upload order and accessibility notes:
 ## Console execution order
 
 1. Complete developer identity, contact details, real-device, and payment profile verification.
-2. Create the app and confirm the package name `dev.termish.app`.
-3. Configure Play App Signing: import the existing Termish app signing key and create a separate upload key.
+2. Create the app and confirm the package name `dev.macodes.app`.
+3. Configure Play App Signing: import the existing Macodes app signing key and create a separate upload key.
 4. Upload the API 36 AAB to Internal testing.
 5. Complete Store listing, Privacy policy, Ads, App access, Target audience,
    Content rating, Data safety, and Foreground service declarations.

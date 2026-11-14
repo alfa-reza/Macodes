@@ -1,4 +1,4 @@
-# Termish local workflow entry point (thin shell)
+# Macodes local workflow entry point (thin shell)
 #
 # All process knowledge lives in Gradle tasks (root build.gradle.kts); these are just quick aliases;
 # calling ./gradlew <task> directly is equivalent, and CI reuses the same set of tasks.

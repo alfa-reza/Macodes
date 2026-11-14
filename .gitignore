@@ -13,7 +13,7 @@ build/
 .DS_Store
 __pycache__/
 *.py[cod]
-composeApp/src/commonMain/composeResources/files/termish-screen/
+composeApp/src/commonMain/composeResources/files/macodes-screen/
 
 # Android
 local.properties
@@ -34,7 +34,7 @@ DerivedData/
 *.hprof
 
 # Test keys / temp files
-/tmp/termish_test/
+/tmp/macodes_test/
 
 # AI adb local test assets (cases/artifacts never committed — contain demo credentials and intranet test hosts)
 .aiadb/
@@ -45,4 +45,4 @@ DerivedData/
 # Local agent task notes
 .agents/
 
-composeApp/src/commonMain/composeResources/files/termish-agent/
+composeApp/src/commonMain/composeResources/files/macodes-agent/

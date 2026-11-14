@@ -1,25 +1,25 @@
-<h1 align="center">Termish</h1>
+<h1 align="center">Macodes</h1>
 
 <p align="center"><strong>Your remote workspace, in your pocket.</strong></p>
-<p align="center">A terminal-first mobile workspace for the way you actually work: Termish → Herdr → Codex.</p>
+<p align="center">A terminal-first mobile workspace for the way you actually work: Macodes → Herdr → Codex.</p>
 
 <p align="center">
-  <a href="https://download.termish.dev/downloads/termish.apk"><strong>Download Android</strong></a> ·
-  <a href="https://termish.dev">Website</a> ·
+  <a href="https://github.com/alfa-reza/Macodes/releases/latest"><strong>Download Android</strong></a> ·
+  <a href="https://github.com/alfa-reza/Macodes">Website</a> ·
   <a href="#quick-start">Quick start</a> ·
 </p>
 <p align="center">
-  <a href="https://github.com/ttermish/termish/releases/latest"><img src="https://img.shields.io/github/v/release/ttermish/termish?color=10b981" alt="Latest release" /></a>
+  <a href="https://github.com/alfa-reza/Macodes/releases/latest"><img src="https://img.shields.io/github/v/release/alfa-reza/Macodes?color=10b981" alt="Latest release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="Apache 2.0 license" /></a>
 </p>
 
 ## Download
 
-| Platform | Get Termish |
+| Platform | Get Macodes |
 | --- | --- |
-| Android 8.0+ | [Download the signed APK](https://download.termish.dev/downloads/termish.apk). Allow installation from this source when prompted. |
+| Android 8.0+ | [Download the signed APK](https://github.com/alfa-reza/Macodes/releases/latest). Allow installation from this source when prompted. |
 
-[Release notes and all assets](https://github.com/ttermish/termish/releases/latest) · [SHA-256 checksums](https://download.termish.dev/downloads/SHA256SUMS)
+[Release notes and all assets](https://github.com/alfa-reza/Macodes/releases/latest) · [SHA-256 checksums](https://github.com/alfa-reza/Macodes/releases/latest)
 
 ## Quick start
 
@@ -27,7 +27,7 @@
    password or private key. Verify the server's host key fingerprint on first connection.
    Each host menu opens Terminal, Herdr, Files, remote screen or Agent chat.
 2. **Open Herdr.** Use the **Herdr** entry from the host. If it is not on the
-   remote yet, Termish offers guided installation, then opens the workspace in
+   remote yet, Macodes offers guided installation, then opens the workspace in
    the SSH or Mosh terminal.
 3. **Keep coding in your terminal workflow.** Start Codex from Herdr, give it a
    task, follow its output, upload a screenshot or file when useful, inspect the
@@ -38,36 +38,36 @@
 
 For Agent chat, the remote host needs the agent's own login or a
 supported API provider configuration. Missing supported CLIs can be installed
-from the app. You do not need a Termish account.
+from the app. You do not need a Macodes account.
 
 For Mosh, choose **Mosh** in the host's connection settings. The remote needs
-`mosh-server` and a reachable UDP port; Termish offers guided installation when
+`mosh-server` and a reachable UDP port; Macodes offers guided installation when
 the server is missing. Use a startup command such as `tmux new -A -s main` when
 you want terminal programs to survive client disconnects.
 
-## Why Termish?
+## Why Macodes?
 
 | Capability | What you can do |
 | --- | --- |
 | **Host list and sessions** | Keep direct SSH and Mosh hosts in one place. From a host, open Terminal, Herdr, Files, remote screen or Agent chat, and see active sessions before you reconnect. |
-| **Terminal-first Herdr workspace** | Keep the familiar terminal workflow: enter Herdr, run Codex or Pi, switch workspaces and inspect live task output. Termish starts Herdr through SSH or Mosh and can guide its remote installation. |
+| **Terminal-first Herdr workspace** | Keep the familiar terminal workflow: enter Herdr, run Codex or Pi, switch workspaces and inspect live task output. Macodes starts Herdr through SSH or Mosh and can guide its remote installation. |
 | **Remote screen** | View the remote desktop in a floating window or full screen; use touch or a virtual mouse to check and operate desktop apps alongside the terminal or Herdr. |
 | **Mobile development loop** | Give an agent a task, upload a screenshot or file, inspect diffs and remote files, then continue in the same terminal. |
 | **SSH + Mosh sessions** | Open multiple terminal tabs and run tmux, vim, htop or any TUI. Mosh supports network roaming and local echo prediction for typing over slower connections. |
 | **Optional native Agent chat** | Use Codex, Claude Code, Gemini CLI, OpenCode and Pi in a phone-native conversation. Follow streaming replies and tool calls, attach files, stop a task and resume conversations. |
 | **Files and input built for phones** | Upload, download, search and organize files through SFTP; preview images including SVG, and stream videos with native playback controls and seeking. Use a CTRL / ALT / ESC toolbar, touch gestures and Chinese IME support in the terminal. |
-| **Your hosts, your credentials** | Connect directly to your servers. Store saved secrets with Android Keystore. No Termish account, telemetry or hosted relay is required. |
+| **Your hosts, your credentials** | Connect directly to your servers. Store saved secrets with Android Keystore. No Macodes account, telemetry or hosted relay is required. |
 
 Also included: Chinese and English UI, light and dark themes, terminal palettes and quick commands.
 
 ## How the main workflow works
 
-Termish connects your phone directly to the development machine over SSH or
+Macodes connects your phone directly to the development machine over SSH or
 Mosh. Begin in the **Hosts** list, then take the primary path:
-**Termish → Herdr → Codex**. Herdr and the coding tool run on the remote
+**Macodes → Herdr → Codex**. Herdr and the coding tool run on the remote
 machine, while the phone provides the terminal, input, file transfer and a
 remote-screen view. A missing Herdr installation can be prepared from the app.
-No Termish relay or account sits in the connection.
+No Macodes relay or account sits in the connection.
 
 Native Agent chat is a separate option. It uploads the bundled Rust Bridge
 over SFTP and starts it for your remote user; the Bridge runs the selected agent
@@ -95,13 +95,13 @@ approval types and remote storage layout.
 
 ## Privacy and connection behavior
 
-- **Direct connection:** Termish checks SSH host keys and stores saved credentials
+- **Direct connection:** Macodes checks SSH host keys and stores saved credentials
   using platform security facilities. Agent conversations are persisted on your remote host.
 - **Optional services:** configured AI and speech-recognition providers receive
-  the content required for those features and may charge for usage. Termish's
+  the content required for those features and may charge for usage. The Macodes
   license does not include a model subscription or API credits.
 - **Background limits:** Some Android devices restrict background connections.
-  Termish reconnects on return.
+  Macodes reconnects on return.
   Use tmux or Mosh for terminal continuity; the Agent Bridge owns its remote tasks.
 - **Approvals:** availability depends on the agent's protocol. Unsupported
   interactive operations return an error rather than being silently approved.
@@ -114,8 +114,8 @@ For Android, install JDK 17, the Android SDK and Rust via rustup, then set `ANDR
 SDK path in `local.properties`:
 
 ```bash
-git clone https://github.com/ttermish/termish.git
-cd termish
+git clone https://github.com/alfa-reza/Macodes.git
+cd macodes
 ./gradlew :composeApp:assembleDebug
 ```
 
@@ -130,8 +130,8 @@ for unit and integration tests and development conventions.
 | Agent Bridge | [Rust companion and protocol](agentBridge/README.md) |
 | Terminal and input | [Terminal emulator](docs/terminal-emulator.md) · [Input pipeline](docs/input-pipeline.md) |
 | Connections and files | [SSH](docs/ssh-transport.md) · [Mosh](docs/mosh.md) · [SFTP](docs/sftp.md) |
-| Cryptography | [Implementation and threat model](composeApp/src/commonMain/kotlin/dev/termish/crypto/README.md) |
-| Website | [termish.dev](https://termish.dev) · [Website repository](https://github.com/ttermish/termish-website) |
+| Cryptography | [Implementation and threat model](composeApp/src/commonMain/kotlin/dev/macodes/crypto/README.md) |
+| Website | [github.com/alfa-reza/Macodes](https://github.com/alfa-reza/Macodes) |
 
 Built with Kotlin and Compose Multiplatform, a pure-Kotlin terminal and Mosh
 client, and sshj on Android.
@@ -142,8 +142,8 @@ Bug reports, documentation improvements and pull requests are welcome in English
 or Chinese. Read the [contribution guide](CONTRIBUTING.md) and
 [code of conduct](CODE_OF_CONDUCT.md).
 
-[Report a bug or request a feature](https://github.com/ttermish/termish/issues) ·
-[Changelog](CHANGELOG.md) · [Contact](mailto:ttermish@gmail.com)
+[Report a bug or request a feature](https://github.com/alfa-reza/Macodes/issues) ·
+[Changelog](CHANGELOG.md) · [Contact](mailto:research@alfareza.my.id)
 
 ## License
 

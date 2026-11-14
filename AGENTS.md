@@ -1,8 +1,8 @@
-# AGENTS.md — Termish
+# AGENTS.md — Macodes
 
 Kotlin Multiplatform SSH client with an Android development focus. It uses a
 pure-Kotlin terminal emulator, Compose Multiplatform UI, sshj + BouncyCastle for
-Android SSH, and a pure-Kotlin Mosh client (`dev.termish.mosh`).
+Android SSH, and a pure-Kotlin Mosh client (`dev.macodes.mosh`).
 Stack: Kotlin 2.1.21 · Compose Multiplatform 1.8.1 · AGP 8.9.2 · Gradle 8.14.2.
 
 The README introduces the app; full build/test docs live in `CONTRIBUTING.md`
@@ -26,7 +26,7 @@ Intel Arc A380 GPU and `-gpu host` to avoid CPU-heavy software rendering. Choose
 an emulator GPU mode appropriate for the current machine.
 
 Test sshd: `./scripts/test-sshd.sh` (127.0.0.1:22222, generates ephemeral ed25519 keys).
-The previous development environment used a `termish-demo` Docker container;
+The previous development environment used a `macodes-demo` Docker container;
 credentials and ports were kept in local, gitignored `.aiadb/` assets. The Android
 emulator reaches the host at `10.0.2.2`.
 
@@ -37,7 +37,7 @@ emulator reaches the host at `10.0.2.2`.
   APIs or Compose dependencies into it.
 - **`commonMain/mosh/` protocol layer is term-free**: `MoshTransport` /
   `UserStream` / `Fragmentation` / `Messages` / `Ocb` / `Aes` / `MoshCrypto` /
-  `KmpMoshSession` must never `import dev.termish.term` — only the shadow
+  `KmpMoshSession` must never `import dev.macodes.term` — only the shadow
   layer (`ShadowTerminal`, `PredictionLayer`) may use the emulator. This keeps
   the protocol layer extractable as a standalone library.
 - Platform code lives behind expect/actual seams: `ssh/SshSession`, `util/`,

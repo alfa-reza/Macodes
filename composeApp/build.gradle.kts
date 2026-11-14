@@ -12,7 +12,7 @@ plugins {
 
 // Built into the terminal: monospaced font (composeResources/font): Set the package name for the Res generation class
 compose.resources {
-    packageOfResClass = "dev.termish.generated.resources"
+    packageOfResClass = "dev.macodes.generated.resources"
 }
 
 kotlin {
@@ -83,7 +83,7 @@ kotlin {
 }
 
 android {
-    namespace = "dev.termish.app"
+    namespace = "dev.macodes.app"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     testOptions {
@@ -93,7 +93,7 @@ android {
     signingConfigs {
         // Release signature source (by priority):
         //   1. Process environment variables (CI: Direct injection via GitHub Secrets, zero files in the cloud)
-        //   2. Project root .env (gitignore, standard frontend location) + project root termish-release.jks (*.jks files are already ignored)
+        //   2. Project root .env (gitignore, standard frontend location) + project root macodes-release.jks (*.jks files are already ignored)
         //   3. keystore.properties (backward compatibility)
         // If the jks file does not exist, decode it from ANDROID_KEYSTORE_BASE64 and place it in build/signing/.
         // If none of these are present, skip the signature; this does not affect debug builds.
@@ -114,12 +114,14 @@ android {
         fun secret(envKey: String, propKey: String): String? =
             System.getenv(envKey)?.takeIf { it.isNotEmpty() } ?: fileEnv[envKey] ?: props.getProperty(propKey)
         create("release") {
-            var jks = file(secret("ANDROID_KEYSTORE_FILE", "storeFile") ?: "termish-release.jks")
+            var jks = file(secret("ANDROID_KEYSTORE_FILE", "storeFile") ?: "macodes-release.jks")
+            // The published releases were signed with termish-release.jks; keep the old name as a fallback so existing keys still work.
+            if (!jks.isFile) jks = rootProject.file("macodes-release.jks")
             if (!jks.isFile) jks = rootProject.file("termish-release.jks")
             val b64 = secret("ANDROID_KEYSTORE_BASE64", "keystoreBase64")
             if (!jks.isFile && b64 != null) {
                 val out = layout.buildDirectory.dir("signing").get().asFile.apply { mkdirs() }
-                    .resolve("termish-release.jks")
+                    .resolve("macodes-release.jks")
                 if (!out.isFile) out.writeBytes(Base64.getDecoder().decode(b64))
                 jks = out
             }
@@ -131,7 +133,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "dev.termish.app"
+        applicationId = "dev.macodes.app"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 52

@@ -1,4 +1,4 @@
-# Termish Agent Bridge
+# Macodes Agent Bridge
 
 > **Summary:** a bundled Rust companion runs Agent CLIs behind the user's SSH connection. It provides persistent sessions, streaming events, bounded history and native approval forwarding without a public listening port.
 
@@ -11,7 +11,7 @@ still needs a login or provider configuration, and a missing CLI can be installe
 into the user directory with npm, without sudo.
 
 ```text
-Termish → SSH exec → termish-agent connect → private Unix socket → Rust daemon → Agent CLI
+Macodes → SSH exec → macodes-agent connect → private Unix socket → Rust daemon → Agent CLI
 ```
 
 Build and test:
@@ -25,15 +25,15 @@ sh scripts/service-test.sh agentBridge        # the same tests without Gradle
 
 Binaries and manifests live in `agentBridge/build/binaries/`; generated Kotlin lives in
 `composeApp/build/generated/agentBridge/kotlin/`; Compose file resources live in
-`composeApp/src/commonMain/composeResources/files/termish-agent/`. Generated artifacts are not
+`composeApp/src/commonMain/composeResources/files/macodes-agent/`. Generated artifacts are not
 committed.
 
 ## Storage and lifecycle
 
 ```text
-~/.local/share/termish-agent/
-├── current/termish-agent
-├── current/termish-agent.NOTICE
+~/.local/share/macodes-agent/
+├── current/macodes-agent
+├── current/macodes-agent.NOTICE
 ├── data/sessions/<id>.json
 ├── npm/                         # optional user-directory CLI installation
 └── runtime/rust/{agent.sock,agent.pid,agent.log,agent.version}
@@ -47,7 +47,7 @@ The native runtime directory is separate from the old service, so an old socket 
 the Rust service.
 After installing and successfully starting the native service, the phone checks the account that owns
 the process, the full command line and the Python interpreter, stops that account's old Python
-companion, and deletes `current/termish-agent.pyz`.
+companion, and deletes `current/macodes-agent.pyz`.
 If the old process does not exit, the old files are kept and the installation is reported as failed;
 old SQLite data and current Rust sessions are not deleted.
 
@@ -79,7 +79,7 @@ CLI/model behavior still needs verification in an account environment.
 
 Native history can discover and import sessions from Codex, Claude, Gemini, OpenCode and Pi, keeping
 the native resume ID and leaving the original files untouched. Attachments come from the workspace's
-`.termish/attachments/`; out-of-tree paths and symlink escapes are rejected. Records are deleted with
+`.macodes/attachments/`; out-of-tree paths and symlink escapes are rejected. Records are deleted with
 the session, shared attachments are not removed early, and expired unreferenced files are reclaimed at
 startup.
 

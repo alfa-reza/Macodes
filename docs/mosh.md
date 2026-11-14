@@ -1,4 +1,4 @@
-# Mosh Implementation Notes (dev.termish.mosh)
+# Mosh Implementation Notes (dev.macodes.mosh)
 
 > **Summary:** implementation notes for the pure-Kotlin Mosh client —
 > AES-128-OCB wire crypto, the SSP transport state machine (fragmentation,
@@ -7,7 +7,7 @@
 
 ## Why We Built Our Own
 
-To keep the protocol implementation platform-independent, `dev.termish.mosh`
+To keep the protocol implementation platform-independent, `dev.macodes.mosh`
 implements the SSP protocol, AES-128-OCB, zlib fragmentation and direct UDP in
 pure Kotlin, without depending on the official client's native binary.
 The implementation is based on the publicly documented protocol behavior and
@@ -27,7 +27,7 @@ mosh has two layers, with a deliberately clean boundary:
 
 - **Protocol layer (zero dependencies, extractable as a standalone library)**:
   `MoshTransport` / `UserStream` / `Fragmentation` / `Messages` / `Ocb` / `Aes` /
-  `MoshCrypto` / `KmpMoshSession` — does not import `dev.termish.term`, and depends
+  `MoshCrypto` / `KmpMoshSession` — does not import `dev.macodes.term`, and depends
   only on the Kotlin standard library and kotlinx. To reuse it in other projects,
   this layer can be split into its own module.
 - **Shadow layer (necessarily depends on the terminal emulator)**:
@@ -37,7 +37,7 @@ mosh has two layers, with a deliberately clean boundary:
   is a deliberate decision (same behavioral origin + the benefit of line-level
   incremental sync), not a coupling defect.
 
-Discipline: the protocol layer must not `import dev.termish.term` (see AGENTS.md).
+Discipline: the protocol layer must not `import dev.macodes.term` (see AGENTS.md).
 
 ## Component Inventory
 

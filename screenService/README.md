@@ -1,4 +1,4 @@
-# Termish Screen Service
+# Macodes Screen Service
 
 > **Summary:** macOS uses a Python session relay with native ScreenCaptureKit/CoreGraphics capture, VideoToolbox encoding, and session-scoped power assertions. Linux keeps the Rust X11/Wayland service. Both stream authenticated H.264 video through loopback TCP over SSH.
 
