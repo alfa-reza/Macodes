@@ -83,8 +83,8 @@ import dev.macodes.ssh.SftpSession
 import dev.macodes.ssh.SshCallbacks
 import dev.macodes.ssh.SshConnection
 import dev.macodes.ssh.createSftpSession
-import dev.macodes.ui.theme.TerminalThemes
 import dev.macodes.ui.theme.MacodesTheme
+import dev.macodes.ui.theme.TerminalThemes
 import dev.macodes.util.BackgroundProtectionVendor
 import dev.macodes.util.LocalTerminalFont
 import dev.macodes.util.SessionKeepAlive
