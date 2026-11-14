@@ -71,12 +71,6 @@ import dev.macodes.notify.NotificationCenter
 import dev.macodes.notify.NotificationEvent
 import dev.macodes.notify.NotificationPermissionState
 import dev.macodes.notify.rememberNotificationPermissionController
-import dev.macodes.screen.MAX_SCREEN_RECONNECT_ATTEMPTS
-import dev.macodes.screen.ScreenSession
-import dev.macodes.screen.ScreenSessionMessages
-import dev.macodes.screen.ScreenUiState
-import dev.macodes.screen.fallbackScreenQuality
-import dev.macodes.screen.isUnstableScreenStream
 import dev.macodes.ssh.AuthPrompt
 import dev.macodes.ssh.HostKeyInfo
 import dev.macodes.ssh.SftpSession
@@ -98,40 +92,13 @@ import dev.macodes.util.observeAppLifecycle
 import dev.macodes.util.observeNetworkChange
 import dev.macodes.util.openApplicationSettings
 import dev.macodes.util.shouldShowBackgroundProtectionGuide
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.datetime.Clock
 
 private enum class HomeTab { HOSTS, CONNECTIONS, SETTINGS }
 
 private const val AGENT_IDLE_TIMEOUT_MS = 60_000L
-
-private fun ScreenStrings.toSessionMessages(): ScreenSessionMessages =
-    ScreenSessionMessages(
-        connectionFailed = connectionFailed,
-        readChannelFailed = readChannelFailed,
-        tcpPortMissing = tcpPortMissing,
-        tcpChannelFailed = tcpChannelFailed,
-        tcpDisconnected = tcpDisconnected,
-        screenInUse = screenInUse,
-        screenRecordingPermissionMissing = screenRecordingPermissionMissing,
-        ffmpegMissing = ffmpegMissing,
-        unsupportedOs = unsupportedOs,
-        relayUpgradeRequired = relayUpgradeRequired,
-        displayMissing = displayMissing,
-        serviceNotRunning = serviceNotRunning,
-        waylandHint = waylandHint,
-        waylandDependenciesMissing = waylandDependenciesMissing,
-        screenAsleepHint = screenAsleepHint,
-        screenLockedHint = screenLockedHint,
-        firstFrameTimeout = firstFrameTimeout,
-        decoderInitializationFailed = decoderInitializationFailed,
-        decoderNoOutput = decoderNoOutput,
-        decodingFailed = decodingFailed,
-        playerUnsupported = playerUnsupported,
-    )
 
 /** Minimalist bottom bar items: icon + small monospace font tag; when selected, the item turns the theme’s green color; no capsule indicator. */
 @Composable
@@ -200,17 +167,6 @@ enum class SettingsSubPage {
     VOICE,
     PRIVACY,
 }
-
-/** Screen session entries (remote screen streaming). */
-data class ScreenSessionEntry(
-    val host: Host,
-    /** Terminal tab session ID that creates this screen session: The floating window is shown only in that tab. */
-    val ownerSessionId: String,
-    val session: ScreenSession?,
-    val uiState: ScreenUiState,
-    /** Time when the entry was first created; remains unchanged during streaming reconnection and parameter toggling. */
-    val createdAt: Long = Clock.System.now().toEpochMilliseconds(),
-)
 
 @Composable
 fun AppRoot(repository: HostRepository) {
@@ -305,15 +261,6 @@ fun AppRoot(repository: HostRepository) {
 
     /** Terminal + Menu “Favorites” dialog: host + list of favorite paths (null = disabled). */
     var favoritesDialog by remember { mutableStateOf<Pair<Host, List<String>>?>(null) }
-
-    /** Screen session entries (remote screen streaming). */
-    val screenSessions = remember { mutableStateListOf<ScreenSessionEntry>() }
-
-    /** Limit each host to one task to reconnect the screen to prevent newly established channels from being closed after an old task is completed. */
-    val screenReconnectJobs = remember { mutableMapOf<String, Job>() }
-
-    // When the user taps “Screen” on the host card, automatically expand to fullscreen once the first frame arrives; normal terminal-menu launches are unaffected.
-    var screenFullscreenRequestHostId by remember { mutableStateOf<String?>(null) }
 
     /** SFTP: Select host overlay / Current session / Authentication and host key dialog. */
     var sftpPickerVisible by remember { mutableStateOf(false) }
@@ -417,8 +364,6 @@ fun AppRoot(repository: HostRepository) {
             }
         }
 
-    lateinit var applyScreenStreamConfig: (Host, Int, String, Boolean) -> Unit
-
     /**
      * Establish an SFTP session (authentication/host key confirmation via a global dialog); call the [onEstablished] callback upon success.
      * Reusable for initial connection and reconnection after a disconnection; failure is handled by the caller (initial connection = Snackbar, reconnection = keep banner).
@@ -500,331 +445,6 @@ fun AppRoot(repository: HostRepository) {
         onEstablished(session, connectionToken)
     }
 
-    /**
-     * Establish a screen streaming session (authentication and host key confirmation are handled via a global dialog, similar to the SFTP mode).
-     * Upon success, register the entry and switch to the screen tab; in case of failure, the caller should display a tooltip.
-     */
-    suspend fun establishScreen(
-        host: Host,
-        uiState: ScreenUiState = ScreenUiState(),
-        refreshPermissionsBeforeStart: Boolean = false,
-        onEstablished: (ScreenSession, ScreenUiState) -> Unit,
-    ) {
-        val (pw, key) = resolveCredentials(host)
-        val callbacks =
-            object : SshCallbacks {
-                override suspend fun onOutput(data: ByteArray) {}
-
-                override suspend fun onStderr(data: ByteArray) {}
-
-                override fun onExitStatus(status: Int) {}
-
-                override fun onClosed(reason: String?) {}
-
-                override suspend fun onPrompt(prompt: AuthPrompt): List<String>? {
-                    val req = AuthPromptRequest(prompt)
-                    sftpAuth = req
-                    return req.deferred.await()
-                }
-
-                override fun verifyHostKey(hostKey: HostKeyInfo): Boolean {
-                    val known =
-                        repository.getHost(host.id)?.knownHostFingerprint
-                            ?: host.knownHostFingerprint
-                    if (known != null) {
-                        if (known == hostKey.fingerprintSha256) return true
-                        val req = HostKeyRequest(hostKey, changed = true, previousFingerprint = known)
-                        sftpHostKey = req
-                        val accepted = awaitHostKeyPromptAnswer(req.deferred)
-                        if (accepted) repository.touchConnected(host.id, hostKey.fingerprintSha256)
-                        return accepted
-                    }
-                    if (!repository.loadSettings().verifyHostKeyOnFirstUse) return true
-                    val req = HostKeyRequest(hostKey)
-                    sftpHostKey = req
-                    val accepted = awaitHostKeyPromptAnswer(req.deferred)
-                    if (accepted) repository.touchConnected(host.id, hostKey.fingerprintSha256)
-                    return accepted
-                }
-            }
-        val conn =
-            SshConnection(
-                host = host.hostname,
-                port = host.port,
-                username = host.username,
-                password = pw,
-                privateKeyPem = key,
-                connectTimeoutMillis = 10_000,
-                keepAliveSeconds = 0,
-            )
-        val session =
-            ScreenSession(
-                conn,
-                callbacks,
-                scope,
-                uiState,
-                messages = currentStrings.value.screen.toSessionMessages(),
-                refreshPermissionsBeforeStart = refreshPermissionsBeforeStart,
-                // Automatic reconnect on stream loss: only one task per host, and re-verify the session generation before replacing.
-                // Otherwise, concurrency will cause old tasks to take turns closing the newly created channel, creating a cycle of disconnections at fixed intervals.
-                onStreamLost = {
-                    scope.launch schedule@{
-                        // Installing or upgrading Relay will automatically restart remote services; it is expected that old video channels will be disconnected.
-                        // Lifecycle; the install-complete callback owns the single rebuild — do not also schedule a concurrent
-                        // 3-second auto-reconnect that would close the brand-new channel.
-                        if (uiState.installing) {
-                            TermLog.i("screen") { "skip reconnect while installing ${host.name}" }
-                            return@schedule
-                        }
-                        if (screenReconnectJobs[host.id]?.isActive == true) {
-                            TermLog.i("screen") { "skip duplicate reconnect ${host.name}" }
-                            return@schedule
-                        }
-                        val sourceUiState = uiState
-                        val reconnectJob =
-                            scope.launch reconnect@{
-                                delay(3_000)
-                                val current = screenSessions.firstOrNull { it.host.id == host.id }
-                                if (current?.uiState !== sourceUiState) return@reconnect
-
-                                val now = Clock.System.now().toEpochMilliseconds()
-                                val unstable = isUnstableScreenStream(now, sourceUiState.videoReadyAtMillis)
-                                val attempt = if (unstable) sourceUiState.streamReconnectAttempts + 1 else 1
-                                if (attempt > MAX_SCREEN_RECONNECT_ATTEMPTS) {
-                                    TermLog.w("screen") {
-                                        "auto-reconnect stopped ${host.name} after $MAX_SCREEN_RECONNECT_ATTEMPTS attempts"
-                                    }
-                                    return@reconnect
-                                }
-
-                                // If the original image or high-resolution version cuts off immediately after the frame appears, roll back step by step; the actual width of the original image must not exceed
-                                // when actual width ≤ 1920, do not upscale in reverse. Keep the user's quality setting on occasional drops after a stable run.
-                                val readyWidth =
-                                    sourceUiState.player
-                                        ?.videoDims
-                                        ?.value
-                                        ?.first ?: 0
-                                val currentQuality = sourceUiState.streamQuality
-                                val fallbackQuality = fallbackScreenQuality(currentQuality, readyWidth, unstable)
-                                if (fallbackQuality != currentQuality) {
-                                    val fallbackScale = ScreenSession.scaleForQuality(fallbackQuality)
-                                    current.session?.setStreamConfig(sourceUiState.streamFps, fallbackScale)
-                                    sourceUiState.streamQuality = fallbackQuality
-                                    TermLog.w("screen") {
-                                        "unstable stream fallback ${host.name}: quality=$currentQuality->$fallbackQuality"
-                                    }
-                                }
-
-                                val owner = current.ownerSessionId
-                                TermLog.i("screen") { "auto-reconnect ${host.name} attempt=$attempt" }
-                                try {
-                                    establishScreen(host) { newSession, newUi ->
-                                        val latest = screenSessions.firstOrNull { it.host.id == host.id }
-                                        if (latest?.uiState !== sourceUiState) {
-                                            newSession.close()
-                                            return@establishScreen
-                                        }
-                                        latest.session?.close()
-                                        screenSessions.removeAll { it.host.id == host.id }
-                                        newUi.streamReconnectAttempts = attempt
-                                        newUi.streamFps = sourceUiState.streamFps
-                                        newUi.streamQuality = sourceUiState.streamQuality
-                                        newUi.preferredStreamFps = sourceUiState.preferredStreamFps
-                                        newUi.adaptiveFpsChangedAtMillis = sourceUiState.adaptiveFpsChangedAtMillis
-                                        screenSessions.add(
-                                            ScreenSessionEntry(host, owner, newSession, newUi, current.createdAt),
-                                        )
-                                    }
-                                } catch (e: Exception) {
-                                    TermLog.w("screen") { "auto-reconnect failed ${host.name}: $e" }
-                                }
-                            }
-                        screenReconnectJobs[host.id] = reconnectJob
-                    }
-                },
-                onAdaptiveFpsRequested = { fps ->
-                    applyScreenStreamConfig(
-                        host,
-                        fps,
-                        ScreenSession.scaleForQuality(uiState.streamQuality),
-                        false,
-                    )
-                },
-            )
-        withContext(ioDispatcher()) { session.start() }
-        onEstablished(session, uiState)
-    }
-
-    // Terminal + Menu “Screen”: Create a streaming session, **stay in the current tab**—a floating window appears on the terminal screen,
-    // Click the fullscreen button to expand the floating window on the current page (without switching tabs).
-    val openScreen: (Host) -> Unit = { host ->
-        screenReconnectJobs.remove(host.id)?.cancel()
-        val ownerId = (currentTab as? SessionTab.Terminal)?.controller?.sessionId ?: ""
-        // Register placeholder entries upon connection: so that when a screen is opened for the first time on a different host, the host’s
-        // Fullscreen connection feedback—there’s no need to wait until SSH and streaming are set up before the terminal button and system status bar are hidden.
-        val pendingUiState = ScreenUiState()
-        screenSessions.firstOrNull { it.host.id == host.id }?.session?.close()
-        screenSessions.removeAll { it.host.id == host.id }
-        screenSessions.add(ScreenSessionEntry(host, ownerId, null, pendingUiState))
-        scope.launch {
-            try {
-                establishScreen(host, pendingUiState) { session, uiState ->
-                    // If an update request was already initiated on the same host, the old request must not overwrite the new entry once it completes.
-                    val pending = screenSessions.firstOrNull { it.host.id == host.id }
-                    if (pending?.uiState !== pendingUiState) {
-                        session.close()
-                        return@establishScreen
-                    }
-                    screenSessions.removeAll { it.host.id == host.id }
-                    screenSessions.add(ScreenSessionEntry(host, ownerId, session, uiState, pending.createdAt))
-                }
-            } catch (e: Exception) {
-                screenSessions.removeAll {
-                    it.host.id == host.id && it.uiState === pendingUiState
-                }
-                if (screenFullscreenRequestHostId == host.id) screenFullscreenRequestHostId = null
-                snackbarHostState.showSnackbar(appStrings.screen.connecting + " " + (e.message ?: ""))
-            }
-        }
-    }
-
-    // Screen Streaming Service Installation (Wizard Card Button): Reuse an authenticated session to run the installation script (streaming logs),
-    // After installation, rebuild the streaming session to reconnect. This follows the same mode as the herdr installation guide.
-    val installScreenService: (Host, String?) -> Unit = { host, sudoPassword ->
-        screenReconnectJobs.remove(host.id)?.cancel()
-        val entry = screenSessions.firstOrNull { it.host.id == host.id && it.session != null }
-        if (entry != null) {
-            entry.session?.installService(
-                sudoPassword = sudoPassword,
-                onLog = { log -> entry.uiState.installLog = log },
-                onComplete = { ok ->
-                    if (ok) {
-                        screenReconnectJobs.remove(host.id)?.cancel()
-                        // After installation, rebuild the streaming session (reconnect the read stream).
-                        scope.launch {
-                            try {
-                                establishScreen(host) { session, uiState ->
-                                    val latest = screenSessions.firstOrNull { it.host.id == host.id }
-                                    if (latest?.uiState !== entry.uiState) {
-                                        session.close()
-                                        return@establishScreen
-                                    }
-                                    latest.session?.close()
-                                    screenSessions.removeAll { it.host.id == host.id }
-                                    uiState.preferredStreamFps = entry.uiState.preferredStreamFps
-                                    uiState.adaptiveFpsChangedAtMillis = entry.uiState.adaptiveFpsChangedAtMillis
-                                    screenSessions.add(
-                                        ScreenSessionEntry(host, entry.ownerSessionId, session, uiState, entry.createdAt),
-                                    )
-                                }
-                            } catch (e: Exception) {
-                                snackbarHostState.showSnackbar(appStrings.screen.connecting + " " + (e.message ?: ""))
-                            }
-                        }
-                    } else {
-                        entry.uiState.installing = false
-                        scope.launch {
-                            snackbarHostState.showSnackbar(appStrings.screen.installService + " 失败，查看日志")
-                        }
-                    }
-                },
-            )
-        }
-    }
-
-    // Screen Reconnect (Fullscreen In Place / Reconnect Button): Rebuild the streaming session (close the old session to prevent leaks)
-    val reconnectScreenForHost: (Host) -> Unit = { host ->
-        screenReconnectJobs.remove(host.id)?.cancel()
-        val existingEntry = screenSessions.firstOrNull { it.host.id == host.id }
-        val ownerId = existingEntry?.ownerSessionId ?: ""
-        val refreshPermissions = existingEntry?.uiState?.let { it.recordingPermissionMissing || it.controlPermissionMissing } == true
-        scope.launch {
-            try {
-                existingEntry?.session?.close()
-                establishScreen(host, refreshPermissionsBeforeStart = refreshPermissions) { session, uiState ->
-                    screenSessions.firstOrNull { it.host.id == host.id }?.session?.close()
-                    screenSessions.removeAll { it.host.id == host.id }
-                    uiState.preferredStreamFps = existingEntry?.uiState?.preferredStreamFps ?: 0
-                    uiState.adaptiveFpsChangedAtMillis = existingEntry?.uiState?.adaptiveFpsChangedAtMillis ?: 0
-                    screenSessions.add(
-                        ScreenSessionEntry(
-                            host,
-                            ownerId,
-                            session,
-                            uiState,
-                            existingEntry?.createdAt ?: Clock.System.now().toEpochMilliseconds(),
-                        ),
-                    )
-                }
-            } catch (e: Exception) {
-                snackbarHostState.showSnackbar(appStrings.screen.connecting + " " + (e.message ?: ""))
-            }
-        }
-    }
-
-    // Close the screen session and remove the entry (fullscreen ✕ / Close button on the Agent page)
-    val closeScreenForHost: (Host) -> Unit = { host ->
-        screenReconnectJobs.remove(host.id)?.cancel()
-        screenSessions.firstOrNull { it.host.id == host.id }?.session?.close()
-        screenSessions.removeAll { it.host.id == host.id }
-    }
-
-    // Frame rate/image quality toggle: Write the remote relay configuration via SSH → The changes take effect after rebuilding the session.
-    // When `userInitiated=false`, retain the user limit; it can be gradually resumed in subsequent stability windows.
-    // ⚠️ The quality tier must be set on the new uiState after rebuild: Rebuild (establishScreen)
-    // It will create a new ScreenUiState (default state); if set on an existing object, it will be replaced,
-    // The number in the upper-right corner never changes (user feedback)
-    applyScreenStreamConfig = { host, fps, scale, userInitiated ->
-        screenReconnectJobs.remove(host.id)?.cancel()
-        lateinit var configJob: Job
-        configJob =
-            scope.launch {
-                // When switching frame rate/quality rapidly in the menu, only the last choice is applied. Previously each tap started
-                // an independent SSH + direct-tcpip; a slow request, though superseded, can still arrive late and kick out the
-                // The current screen repeatedly disconnects for a fixed number of seconds.
-                delay(250)
-                val entry = screenSessions.firstOrNull { it.host.id == host.id }
-                // The old entry `uiState` has also been synced: Automatic reconnection upon stream loss (`onStreamLost`)
-                // When rebuilding with the old `uiState`, the new settings are retained and not overwritten by `30` (user feedback:
-                // The frame rate is still showing 30 in the upper-right corner after adjustment—(automatic reconnection and rebuild race condition)
-                entry?.uiState?.streamFps = fps
-                entry?.uiState?.streamQuality = ScreenSession.qualityIndexFor(scale)
-                if (userInitiated) entry?.uiState?.preferredStreamFps = fps
-                entry?.session?.setStreamConfig(fps, scale)
-                establishScreen(host) { session, uiState ->
-                    if (screenReconnectJobs[host.id] !== configJob) {
-                        session.close()
-                        return@establishScreen
-                    }
-                    screenSessions.firstOrNull { it.host.id == host.id }?.session?.close()
-                    screenSessions.removeAll { it.host.id == host.id }
-                    uiState.streamFps = fps
-                    uiState.streamQuality = ScreenSession.qualityIndexFor(scale)
-                    uiState.preferredStreamFps =
-                        if (userInitiated) {
-                            fps
-                        } else {
-                            entry?.uiState?.preferredStreamFps?.takeIf { it > 0 } ?: fps
-                        }
-                    uiState.adaptiveFpsChangedAtMillis =
-                        entry?.uiState?.adaptiveFpsChangedAtMillis ?: 0
-                    screenSessions.add(
-                        ScreenSessionEntry(
-                            host,
-                            entry?.ownerSessionId ?: "",
-                            session,
-                            uiState,
-                            entry?.createdAt ?: Clock.System.now().toEpochMilliseconds(),
-                        ),
-                    )
-                }
-            }
-        screenReconnectJobs[host.id] = configJob
-    }
-    val streamConfigChange: (Host, Int, String) -> Unit = { host, fps, scale ->
-        applyScreenStreamConfig(host, fps, scale, true)
-    }
-
     // After the host is selected in the overlay layer: Establish an SFTP session (authentication/host key dialogs use the global `sftpAuth` and `sftpHostKey`).
     // If [initialPath] is not empty, open the file and navigate directly to that directory (Terminal “File Management” menu: Current Working Directory).
     val connectSftp: (Host, String?) -> Unit = { host, initialPath ->
@@ -870,44 +490,6 @@ fun AppRoot(repository: HostRepository) {
             sessionManager.open(host, settings.autoReconnect, launchMode) {
                 hosts = repository.listHosts()
             }
-    }
-
-    /** The host screen entry point requires a terminal screen host; the screen SSH itself still uses an independent connection. */
-    val openScreenFromHost: (Host) -> Unit = { host ->
-        val signature = sessionManager.signatureFor(host)
-        val owner =
-            sessionManager.sessions.lastOrNull {
-                it.host.id == host.id && it.credentialKey == signature
-            } ?: sessionManager.open(host, settings.autoReconnect, TerminalLaunchMode.SHELL) {
-                hosts = repository.listHosts()
-            }
-        currentTab = SessionTab.Terminal(owner)
-        screenFullscreenRequestHostId = host.id
-        navigate(Screen.Terminal)
-        openScreen(host)
-    }
-
-    /** Re-enter an existing screen session: Reuse the streaming, only update the terminal screen host, and expand to fullscreen. */
-    val showScreenSession: (ScreenSessionEntry) -> Unit = { entry ->
-        val signature = sessionManager.signatureFor(entry.host)
-        val owner =
-            sessionManager.sessions.firstOrNull { it.sessionId == entry.ownerSessionId }
-                ?: sessionManager.sessions.lastOrNull {
-                    it.host.id == entry.host.id && it.credentialKey == signature
-                } ?: sessionManager.open(
-                entry.host,
-                settings.autoReconnect,
-                TerminalLaunchMode.SHELL,
-            ) {
-                hosts = repository.listHosts()
-            }
-        if (entry.ownerSessionId != owner.sessionId) {
-            val index = screenSessions.indexOfFirst { it.uiState === entry.uiState }
-            if (index >= 0) screenSessions[index] = entry.copy(ownerSessionId = owner.sessionId)
-        }
-        currentTab = SessionTab.Terminal(owner)
-        screenFullscreenRequestHostId = entry.host.id
-        navigate(Screen.Terminal)
     }
 
     LaunchedEffect(pendingNavigate) {
@@ -1027,7 +609,6 @@ fun AppRoot(repository: HostRepository) {
     val activeSessionCount =
         sessionManager.sessions.count { isActiveStatus(it.status) } +
             sessionManager.sftpSessions.count { it.session != null } +
-            screenSessions.size +
             agentSessionItems.count { it.isActive }
     val hasConnectedSshSession =
         sessionManager.sessions.any { it.status == ConnStatus.CONNECTED && it.moshSession == null }
@@ -1183,7 +764,6 @@ fun AppRoot(repository: HostRepository) {
                                                                         it.createdAt,
                                                                     )
                                                                 } +
-                                                                screenSessions.map { HostSessionItem.Screen(it) } +
                                                                 agentSessionItems
                                                         ).groupBy { it.hostId },
                                                     onAdd = { navigate(Screen.Edit(null)) },
@@ -1205,7 +785,6 @@ fun AppRoot(repository: HostRepository) {
                                                     onDisconnect = { host ->
                                                         // Disconnect all sessions from this host: Keep terminal connections open + release SFTP connections (same as “Close All”)
                                                         sessionManager.closeAllForHost(host.id)
-                                                        closeScreenForHost(host)
                                                         agentControllerPool.remove(host.id)
                                                     },
                                                     onOpenSession = { controller ->
@@ -1239,18 +818,14 @@ fun AppRoot(repository: HostRepository) {
                                                             SessionTab.Sftp(host, session, entry?.uiState ?: SftpUiState())
                                                         navigate(Screen.Terminal)
                                                     },
-                                                    onOpenScreenSession = showScreenSession,
                                                     onStartSftp = { host -> connectSftp(host, null) },
-                                                    onOpenScreen = openScreenFromHost,
                                                     onCloseAllSessions = { host ->
                                                         // Close all sessions on this host: Disconnect terminal session + Release SFTP connection
                                                         sessionManager.closeAllForHost(host.id)
-                                                        closeScreenForHost(host)
                                                         agentControllerPool.remove(host.id)
                                                     },
                                                     onDelete = { host ->
                                                         sessionManager.closeForHost(host.id)
-                                                        closeScreenForHost(host)
                                                         agentControllerPool.remove(host.id)
                                                         SecretStore.delete(
                                                             SECRET_SERVICE,
@@ -1277,7 +852,6 @@ fun AppRoot(repository: HostRepository) {
                                                                     it.createdAt,
                                                                 )
                                                             } +
-                                                            screenSessions.map { HostSessionItem.Screen(it) } +
                                                             agentSessionItems,
                                                     onOpen = { item ->
                                                         when (item) {
@@ -1300,7 +874,6 @@ fun AppRoot(repository: HostRepository) {
                                                                     )
                                                                 navigate(Screen.Terminal)
                                                             }
-                                                            is HostSessionItem.Screen -> showScreenSession(item.entry)
                                                             is HostSessionItem.Agent ->
                                                                 navigate(Screen.Agents(item.controller.host.id))
                                                         }
@@ -1335,7 +908,6 @@ fun AppRoot(repository: HostRepository) {
                                                                     else -> sessionManager.closeSftp(entry)
                                                                 }
                                                             }
-                                                            is HostSessionItem.Screen -> closeScreenForHost(item.entry.host)
                                                             is HostSessionItem.Agent ->
                                                                 agentControllerPool.remove(item.controller.host.id)
                                                         }
@@ -1406,15 +978,6 @@ fun AppRoot(repository: HostRepository) {
                                     initialContext = s.context,
                                     onRelease = { agentControllerPool.release(host.id) },
                                     onBack = ::navigateBack,
-                                    // Remote Screen Control (Reusing Terminal Screen Streaming Infrastructure): Session Entries/Callbacks
-                                    // Owned by AppRoot; fullscreen playback, close/reconnect/install/tier on the Agent page
-                                    // Follow the same establishScreen workflow (the agent connection is not interrupted when switching pages)
-                                    screenEntry = screenSessions.firstOrNull { it.host.id == host.id },
-                                    onStartScreen = openScreen,
-                                    onCloseScreen = closeScreenForHost,
-                                    onReconnectScreen = reconnectScreenForHost,
-                                    onInstallScreenService = installScreenService,
-                                    onScreenConfigChange = streamConfigChange,
                                 )
                             }
                         }
@@ -1442,14 +1005,6 @@ fun AppRoot(repository: HostRepository) {
                                     when (current) {
                                         is SessionTab.Terminal -> current.controller.host
                                         is SessionTab.Sftp -> current.host
-                                        is SessionTab.Screen -> current.host
-                                    }
-                                // Screen session entries (same-origin for floating window/fullscreen hostnames: no dependency on the current tab)
-                                val pipEntry =
-                                    (current as? SessionTab.Terminal)?.let { termTab ->
-                                        screenSessions.firstOrNull {
-                                            it.ownerSessionId == termTab.controller.sessionId
-                                        }
                                     }
                                 TerminalScreen(
                                     tabs = tabs,
@@ -1458,7 +1013,7 @@ fun AppRoot(repository: HostRepository) {
                                     settings = settings,
                                     repository = repository,
                                     onBack = {
-                                        // When going back, prioritize switching to the tab in history (SFTP/screen → Return to the previous terminal tab),
+                                        // When going back, prioritize switching to the tab in history (SFTP → Return to the previous terminal tab),
                                         // only when the stack is empty does it return home
                                         val prevId = tabHistory.removeLastOrNull()
                                         val target = prevId?.let { id -> allTabs.firstOrNull { it.id == id } }
@@ -1493,13 +1048,6 @@ fun AppRoot(repository: HostRepository) {
                                                     .firstOrNull { it.session === tab.session }
                                                     ?.let { sessionManager.closeSftp(it) }
                                             }
-                                            is SessionTab.Screen -> {
-                                                val entry = screenSessions.firstOrNull { it.session === tab.session }
-                                                if (entry != null) {
-                                                    entry.session?.close()
-                                                    screenSessions.remove(entry)
-                                                }
-                                            }
                                         }
                                         // Clean up invalid tab IDs from the history stack (closed sessions)
                                         val liveIds =
@@ -1507,15 +1055,7 @@ fun AppRoot(repository: HostRepository) {
                                                 sessionManager.sessions
                                                     .map { SessionTab.Terminal(it) } +
                                                     sessionManager.sftpSessions
-                                                        .map { SessionTab.Sftp(it.host, it.session, it.uiState) } +
-                                                    screenSessions.map {
-                                                        SessionTab.Screen(
-                                                            it.host,
-                                                            it.ownerSessionId,
-                                                            it.session,
-                                                            it.uiState,
-                                                        )
-                                                    }
+                                                        .map { SessionTab.Sftp(it.host, it.session, it.uiState) }
                                             ).map { it.id }
                                                 .toSet()
                                         tabHistory.removeAll { it !in liveIds }
@@ -1547,63 +1087,6 @@ fun AppRoot(repository: HostRepository) {
                                             }
                                         } else {
                                             favoritesDialog = host to favs
-                                        }
-                                    },
-                                    // Screen: Create a streaming session and switch to the Screen tab
-                                    onOpenScreen = openScreen,
-                                    // Screen Streaming Service Installation (Guide Card Button): Streaming Log → Reconnect after installation and session rebuild
-                                    onInstallScreenService = installScreenService,
-                                    // Screen Reconnect (Fullscreen In-Place): Rebuild the session on the host
-                                    onReconnectScreenForHost = reconnectScreenForHost,
-                                    // Fullscreen frame rate/image quality toggle: Write the remote relay configuration via SSH → Rebuild the session for the changes to take effect.
-                                    // ⚠️ The quality tier must be set on the new uiState after rebuild: Rebuild (establishScreen)
-                                    // It will create a new ScreenUiState (default state); if set on an existing object, it will be replaced,
-                                    // The number in the upper-right corner never changes (user feedback)
-                                    onStreamConfigChange = streamConfigChange,
-                                    // Reconnection after a screen disconnect: Rebuild the session and replace the tab
-                                    onReconnectScreen = { tab ->
-                                        scope.launch {
-                                            try {
-                                                establishScreen(tab.host) { session, uiState ->
-                                                    val existingEntry =
-                                                        screenSessions.firstOrNull { it.host.id == tab.host.id }
-                                                    existingEntry?.session?.close()
-                                                    screenSessions.removeAll { it.host.id == tab.host.id }
-                                                    screenSessions.add(
-                                                        ScreenSessionEntry(
-                                                            tab.host,
-                                                            tab.ownerSessionId,
-                                                            session,
-                                                            uiState,
-                                                            existingEntry?.createdAt
-                                                                ?: Clock.System.now().toEpochMilliseconds(),
-                                                        ),
-                                                    )
-                                                }
-                                            } catch (e: Exception) {
-                                                snackbarHostState.showSnackbar(
-                                                    appStrings.screen.connecting + " " + (e.message ?: ""),
-                                                )
-                                            }
-                                        }
-                                    },
-                                    // Terminal-screen floating window: only show screen sessions **belonging to the current terminal tab** (hidden when switching away)
-                                    screenPip = pipEntry?.uiState,
-                                    screenFullscreenRequestHostId = screenFullscreenRequestHostId,
-                                    onScreenFullscreenRequestConsumed = {
-                                        screenFullscreenRequestHostId = null
-                                    },
-                                    // Screen session on your own host (shown in the fullscreen header, independent of the current tab)
-                                    pipHost = pipEntry?.host,
-                                    // Floating window ✕: Close the current screen session (destroy the streaming + remove the entry)
-                                    onCloseScreenPip = {
-                                        val ownerId = (current as? SessionTab.Terminal)?.controller?.sessionId
-                                        if (ownerId != null) {
-                                            val entry = screenSessions.firstOrNull { it.ownerSessionId == ownerId }
-                                            if (entry != null) {
-                                                entry.session?.close()
-                                                screenSessions.remove(entry)
-                                            }
                                         }
                                     },
                                     // Bookmark Changes: Adding or removing bookmarks on the SFTP page is now saved to disk immediately

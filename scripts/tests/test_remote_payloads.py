@@ -3,9 +3,6 @@ import importlib.util
 import io
 import json
 from pathlib import Path
-import shutil
-import subprocess
-import sys
 import tarfile
 import tempfile
 import unittest
@@ -35,7 +32,7 @@ class ArchiveTest(unittest.TestCase):
                 info.size = len(body)
                 output.addfile(info, io.BytesIO(body))
 
-    def test_round_trip_preserves_signed_payload_bytes(self):
+    def test_round_trip_preserves_agent_payload_bytes(self):
         source = self.root / "source"
         for name in payloads.FILES:
             target = source / name
@@ -71,7 +68,7 @@ class ArchiveTest(unittest.TestCase):
     def test_symlink_destination_is_rejected(self):
         self.write_archive()
         self.destination.mkdir()
-        (self.destination / "screenService").symlink_to(self.root / "outside")
+        (self.destination / "agentBridge").symlink_to(self.root / "outside")
         with self.assertRaisesRegex(ValueError, "Symlink"):
             payloads.unpack(self.archive, self.destination, COMMIT)
         self.assertFalse((self.root / "outside").exists())
@@ -82,30 +79,14 @@ class ArchiveTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Incomplete"):
             payloads.unpack(self.archive, self.destination, COMMIT)
 
-    def test_bundle_rejects_links_and_traversal_before_writing(self):
-        for name, kind in (("../outside", tarfile.REGTYPE), ("Contents/Info.plist", tarfile.SYMTYPE)):
-            with tarfile.open(self.archive, "w:gz") as output:
-                info = tarfile.TarInfo(name)
-                info.type = kind
-                info.linkname = "/tmp/outside" if kind == tarfile.SYMTYPE else ""
-                output.addfile(info)
-            with self.assertRaises(ValueError):
-                payloads.unpack_bundle(self.archive, self.destination)
-            self.assertFalse(self.destination.exists())
+    def test_only_agent_bridge_payloads_are_allowed(self):
+        self.assertEqual(len(payloads.FILES), 1 + len(payloads.TARGETS))
+        self.assertTrue(all(name.startswith("agentBridge/build/binaries/") for name in payloads.FILES))
+        self.write_archive(("screenService/build/binaries/manifest.json", b"{}"))
+        with self.assertRaisesRegex(ValueError, "Unexpected"):
+            payloads.unpack(self.archive, self.destination, COMMIT)
+        self.assertFalse(self.destination.exists())
 
-    @unittest.skipUnless(sys.platform == "darwin", "macOS signature verification")
-    def test_wrong_certificate_cannot_pass_real_signature_verification(self):
-        source = Path(__file__).parents[2] / "screenService/build/binaries/macodes-screen-Darwin-arm64"
-        if not source.is_file():
-            self.skipTest("Build a signed macOS service payload first")
-        certificate = self.destination / ".github/macos-signing-certificate.sha1"
-        certificate.parent.mkdir(parents=True)
-        certificate.write_text("0" * 40)
-        binary = self.destination / "screenService/build/binaries" / source.name
-        binary.parent.mkdir(parents=True)
-        shutil.copyfile(source, binary)
-        with self.assertRaises(subprocess.CalledProcessError):
-            payloads.verify_macos(self.destination)
 
 
 if __name__ == "__main__":

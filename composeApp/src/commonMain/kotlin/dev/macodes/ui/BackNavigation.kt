@@ -1,7 +1,6 @@
 package dev.macodes.ui
 
 internal enum class TerminalBackTarget {
-    CLOSE_SCREEN,
     CANCEL_VOICE,
     CLOSE_GIT,
     CLOSE_TOOL_MENU,
@@ -11,7 +10,6 @@ internal enum class TerminalBackTarget {
 }
 
 internal fun terminalBackTarget(
-    screenFullscreen: Boolean,
     voiceActive: Boolean,
     gitOpen: Boolean,
     toolMenuOpen: Boolean,
@@ -19,7 +17,6 @@ internal fun terminalBackTarget(
     selectionActive: Boolean,
 ): TerminalBackTarget =
     when {
-        screenFullscreen -> TerminalBackTarget.CLOSE_SCREEN
         voiceActive -> TerminalBackTarget.CANCEL_VOICE
         gitOpen -> TerminalBackTarget.CLOSE_GIT
         toolMenuOpen -> TerminalBackTarget.CLOSE_TOOL_MENU
@@ -29,7 +26,6 @@ internal fun terminalBackTarget(
     }
 
 internal enum class AgentBackTarget {
-    CLOSE_SCREEN,
     CLOSE_FILE_BROWSER,
     CLOSE_GIT,
     SHOW_CHAT,
@@ -38,14 +34,12 @@ internal enum class AgentBackTarget {
 }
 
 internal fun agentBackTarget(
-    screenOpen: Boolean,
     fileBrowserOpen: Boolean,
     gitOpen: Boolean,
     childPageOpen: Boolean,
     sessionOpen: Boolean,
 ): AgentBackTarget =
     when {
-        screenOpen -> AgentBackTarget.CLOSE_SCREEN
         fileBrowserOpen -> AgentBackTarget.CLOSE_FILE_BROWSER
         gitOpen -> AgentBackTarget.CLOSE_GIT
         childPageOpen -> AgentBackTarget.SHOW_CHAT

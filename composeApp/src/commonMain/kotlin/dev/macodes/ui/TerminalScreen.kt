@@ -1,7 +1,5 @@
 package dev.macodes.ui
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,7 +22,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,7 +35,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.Monitor
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Terminal
@@ -59,7 +56,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -80,7 +76,6 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -105,19 +100,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import dev.macodes.data.AppSettings
 import dev.macodes.data.Host
 import dev.macodes.data.HostRepository
 import dev.macodes.data.SECRET_SERVICE
 import dev.macodes.data.SecretStore
 import dev.macodes.data.asrKeyAccount
-import dev.macodes.screen.ScreenSession
-import dev.macodes.screen.ScreenUiState
 import dev.macodes.ssh.SftpSession
 import dev.macodes.term.argbToRgb
-import dev.macodes.ui.PIP_DEFAULT_H
-import dev.macodes.ui.PIP_DEFAULT_W
 import dev.macodes.ui.theme.Sizes
 import dev.macodes.ui.theme.Spacing
 import dev.macodes.ui.theme.StatusColors
@@ -149,17 +139,6 @@ sealed interface SessionTab {
         val uiState: SftpUiState = SftpUiState(),
     ) : SessionTab {
         override val id: String get() = "sftp:${host.id}:${session?.hashCode() ?: "restored"}"
-    }
-
-    /** Remote Screen (H.264 streaming) — Now displayed as a floating window or in fullscreen mode within a terminal tab; it is no longer displayed as a standalone window. */
-    data class Screen(
-        val host: Host,
-        /** The ID of the terminal session to which it belongs (the floating window is shown only in that tab). */
-        val ownerSessionId: String,
-        val session: ScreenSession?,
-        val uiState: ScreenUiState = ScreenUiState(),
-    ) : SessionTab {
-        override val id: String get() = "screen:${host.id}:${session?.hashCode() ?: "restored"}"
     }
 }
 
@@ -201,25 +180,6 @@ fun TerminalScreen(
     onAskAgent: (Host, AgentLaunchContext) -> Unit = { _, _ -> },
     /** SFTP reconnection: Replace the session in the tab after rebuilding the connection (implemented by AppRoot). */
     onReconnectSftp: (SessionTab.Sftp) -> Unit = {},
-    /** Screen (menu item): Opens the remote screen for the current host. */
-    onOpenScreen: (Host) -> Unit = {},
-    /** Screen reconnection: rebuild the streaming session and replace the tab's session. */
-    onReconnectScreen: (SessionTab.Screen) -> Unit = {},
-    /** Screen reconnection (for fullscreen mode; uses the host to locate the session). */
-    onReconnectScreenForHost: (Host) -> Unit = {},
-    /** Screen streaming service installation (guide card button; locate session by host). */
-    onInstallScreenService: (Host, String?) -> Unit = { _, _ -> },
-    /** Fullscreen streaming parameter toggling (frame rate/image quality): Changes take effect after saving the remote configuration and rebuilding the session. */
-    onStreamConfigChange: (Host, Int, String) -> Unit = { _, _, _ -> },
-    /** Terminal screen: The uiState of the active terminal session on the current host (null = does not show); tap = go fullscreen in place. */
-    screenPip: ScreenUiState? = null,
-    /** Fullscreen request when the host card opens the screen directly; null when launched from the standard terminal menu. */
-    screenFullscreenRequestHostId: String? = null,
-    onScreenFullscreenRequestConsumed: () -> Unit = {},
-    /** Host of the screen session (shown in the fullscreen header; independent of the current tab). */
-    pipHost: Host? = null,
-    /** Floating window ✕: Close the current screen session (AppRoot destroys the session and removes the entry). */
-    onCloseScreenPip: () -> Unit = {},
 ) {
     val s = LocalAppStrings.current
     // Confirm before closing a tab: The “x” is too easy to click by accident
@@ -227,77 +187,11 @@ fun TerminalScreen(
     // Background: Before `statusBarsPadding` was applied, the status bar/Dynamic Island region shared the same color as the screen,
     // Avoid exposing the app’s light background at the top when the terminal is black (or exposing a dark background when the terminal is white).
     val (pageBackground, pageForeground) = tabColors(current, theme)
-    // Make a floating window fullscreen in place (elevate it to the TerminalScreen root layer): The fullscreen view should cover the tab bar and
-    // The status bar region, when placed inside `TerminalBody`, is enclosed by `statusBarsPadding` and `TabBar`, making it fullscreen on the canvas (feedback from v1.5.1).
-    var pipFullscreen by remember { mutableStateOf(false) }
-    val setPipFullscreen: (Boolean) -> Unit = { fullscreen ->
-        // The host card “Remote Screen” posts a one-shot auto-expand request; when the user actively collapses it, the request is consumed synchronously,
-        // otherwise the screenPip recomposition would set pipFullscreen back to true, making the back action look ineffective.
-        if (!fullscreen) onScreenFullscreenRequestConsumed()
-        pipFullscreen = fullscreen
-    }
-    LaunchedEffect(screenPip, pipHost, screenFullscreenRequestHostId) {
-        if (screenPip == null) {
-            // Exit immersive mode when the linked entry closes or the connection fails, and resume the terminal and system status bar.
-            pipFullscreen = false
-        } else if (pipHost?.id == screenFullscreenRequestHostId) {
-            pipFullscreen = true
-            onScreenFullscreenRequestConsumed()
-        }
-    }
-    // Screen size (px): Used for geometric mapping of the fullscreen expansion animation from a floating window
-    var screenSize by remember { mutableStateOf(IntSize.Zero) }
-    // Floating window position/size (when expanding to TerminalScreen: the fullscreen expansion animation requires scaling up from the floating window’s geometry,
-    // and in fullscreen the floating window must not reset when it leaves composition — same root cause as the v1.4.0 regression)
-    val pipDrag = remember { mutableStateOf(Offset.Zero) }
-    val pipSizeW = remember { mutableStateOf(PIP_DEFAULT_W) }
-    val pipSizeH = remember { mutableStateOf(PIP_DEFAULT_H) }
-    // Fullscreen expand/collapse animation progress (0 = floating window geometry, 1 = fullscreen): Zoom in from the floating window’s position and dimensions,
-    // The screen is seamlessly updated by `setOutputSurface` (User feedback: The center expansion does not look like a floating window being enlarged).
-    val expandAnim = remember { Animatable(0f) }
-    LaunchedEffect(pipFullscreen) {
-        if (pipFullscreen) {
-            expandAnim.snapTo(0f)
-            expandAnim.animateTo(1f, animationSpec = tween(240))
-        } else {
-            expandAnim.animateTo(0f, animationSpec = tween(200))
-        }
-    }
-    // Exit fullscreen only when the tab id actually changes. Do not run this on the first entry into TerminalScreen: the host card
-    // When automatically expanding, if `true` is just written and `false` immediately follows in the initial `effect`, it will cause the state and animation to become out of sync,
-    // the screen ends up in fullscreen but the back button can never collapse it.
-    var fullscreenTabId by remember { mutableStateOf(current.id) }
-    LaunchedEffect(current.id) {
-        if (fullscreenTabId != current.id) setPipFullscreen(false)
-        fullscreenTabId = current.id
-    }
-    // Reset the inset after the status bar is hidden in immersive mode: Record the status bar height when not in fullscreen mode,
-    // Move the fullscreen header content down to achieve alignment with the terminal screen tab bar (user feedback: buttons are positioned higher).
-    val screenDensity = LocalDensity.current
-    var lastStatusBarTop by remember { mutableIntStateOf(0) }
-    // Update the status bar height only after the collapse animation is complete (expandAnim reaches zero): During the animation, the fullscreen layer
-    // It’s still there—at this point, Immersive Mode has just exited, and `inset` might still be 0—updating early would cause the hostname in the header to
-    // Appears in the status bar region (user feedback).
-    // ⚠️ Take the maximum value: When the status bar resume animation first starts, `getTop` is still 0; assigning a value directly would
-    // Set lastStatusBarTop to 0—this will disable the mock status bar padding in the next fullscreen header.
-    // (User feedback: The status bar I wrote is gone.)
-    if (!pipFullscreen && expandAnim.value <= 0f) {
-        lastStatusBarTop =
-            maxOf(lastStatusBarTop, WindowInsets.statusBars.getTop(screenDensity))
-    }
-    // Fullscreen immersive mode: The system status bar is hidden, and the display fills the entire screen.
-    // Remain hidden during the collapse animation (expandAnim > 0 remains immersive): animation ends (fullscreen layer
-    // The status bar only resumes after exiting or returning to the terminal screen—otherwise, it suddenly appears while the animation is playing.
-    // (User feedback: Tap the back button to refresh.)
-    PlatformImmersiveMode(pipFullscreen || expandAnim.value > 0f)
-    // Fixed status bar height (px): When the status bar is hidden in immersive mode, `statusBarsPadding` is set to zero,
-    // from nothing to present in an instant → the tab page content jumps (root cause identified by the user). Use the recorded value to pin
-    val statusBarTopPx = maxOf(lastStatusBarTop, WindowInsets.statusBars.getTop(screenDensity))
-    Box(Modifier.fillMaxSize().background(pageBackground).onSizeChanged { screenSize = it }) {
+    Box(Modifier.fillMaxSize().background(pageBackground)) {
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(top = with(screenDensity) { statusBarTopPx.toDp() }),
+                .statusBarsPadding(),
         ) {
             TerminalTabBar(
                 tabs = tabs,
@@ -319,26 +213,11 @@ fun TerminalScreen(
                         settings = settings,
                         repository = repository,
                         onBack = onBack,
-                        pipFullscreen = pipFullscreen,
-                        onPipFullscreenChange = setPipFullscreen,
-                        // Collapse animation in progress (fullscreen layer still retracting): the floating window appears after a delay to avoid flickering
-                        pipCollapsing = !pipFullscreen && expandAnim.value > 0f,
-                        pipDrag = pipDrag,
-                        pipSizeW = pipSizeW,
-                        pipSizeH = pipSizeH,
                         onOpenSftpForHost = onOpenSftpForHost,
                         onOpenFavorites = onOpenFavorites,
                         onFavoritesChanged = onFavoritesChanged,
                         onSftpPathChanged = onSftpPathChanged,
                         onAskAgent = onAskAgent,
-                        onOpenScreen = onOpenScreen,
-                        screenPip = screenPip,
-                        onCloseScreenPip = onCloseScreenPip,
-                        onInstallScreenService = onInstallScreenService,
-                        onReconnectScreenForHost = onReconnectScreenForHost,
-                        onStreamConfigChange = { host, fps, scale ->
-                            onStreamConfigChange(host, fps, scale)
-                        },
                     )
                 is SessionTab.Sftp ->
                     SftpContent(
@@ -351,14 +230,6 @@ fun TerminalScreen(
                         onPathChanged = { p -> onSftpPathChanged(tab.host, p) },
                         onAskAgent = { context -> onAskAgent(tab.host, context) },
                     )
-                is SessionTab.Screen ->
-                    ScreenContent(
-                        host = tab.host,
-                        session = tab.session,
-                        state = tab.uiState,
-                        onBack = onBack,
-                        onReconnect = { onReconnectScreen(tab) },
-                    )
             }
         }
 
@@ -367,7 +238,6 @@ fun TerminalScreen(
                 when (tab) {
                     is SessionTab.Terminal -> tab.controller.host
                     is SessionTab.Sftp -> tab.host
-                    is SessionTab.Screen -> tab.host
                 }
             AlertDialog(
                 onDismissRequest = { pendingClose = null },
@@ -390,59 +260,6 @@ fun TerminalScreen(
                 },
             )
         }
-
-        // Fullscreen overlay: Root layer (above the TabBar), truly fullscreen;
-        // Immersive mode (hidden status bar) is handled by PlatformImmersiveMode(pipFullscreen).
-        // Expand/collapse animation: Enlarge from a floating window [position + size] to fullscreen (similar to ToDesk),
-        // The screen is seamlessly refreshed by `setOutputSurface`; minimizing it shrinks it back to a floating window.
-        // Remain in the composition during the animation (progress > 0); remove only after the exit animation has finished playing.
-        val expandP = expandAnim.value
-        if ((pipFullscreen || expandP > 0f) && screenPip != null) {
-            val fullHost = pipHost ?: (current as? SessionTab.Terminal)?.controller?.host
-            if (fullHost != null) {
-                // Floating window dimensions (px): Initial top-right corner (TopEnd + 8dp padding) + drag offset
-                val edge = with(screenDensity) { 8.dp.toPx() }
-                val pipW = pipSizeW.value * screenDensity.density
-                val pipH = pipSizeH.value * screenDensity.density
-                val sw = screenSize.width.toFloat()
-                val sh = screenSize.height.toFloat()
-                val pipCx = sw - pipW - edge + pipW / 2f + pipDrag.value.x
-                val pipCy = edge + pipH / 2f + pipDrag.value.y
-                ScreenContent(
-                    host = fullHost,
-                    session = null,
-                    state = screenPip,
-                    onBack = { setPipFullscreen(false) },
-                    onReconnect = { onReconnectScreenForHost(fullHost) },
-                    onInstallService = { password -> onInstallScreenService(fullHost, password) },
-                    onClose = { setPipFullscreen(false) },
-                    statusBarInsetTop = lastStatusBarTop,
-                    // ⚠️ Previously omitted (default empty implementation) — the fullscreen gear-selection callback never reached AppRoot
-                    onStreamConfigChange = { fps, scale ->
-                        onStreamConfigChange(fullHost, fps, scale)
-                    },
-                    onFpsIndex = { fps -> screenPip?.streamFps = fps },
-                    // Do not display the actual video during the expand/collapse animation (use a black background placeholder): The animation covers the entire
-                    // The `graphicsLayer` container scales, but the `SurfaceView` surface does not follow on some devices
-                    // Scale → the picture freezes as a floating-window-sized “bright spot” / black screen (user feedback).
-                    // After the animation ends (expandP=1), create a new surface; the surface is always created at full size.
-                    videoEnabled = expandP >= 1f,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .zIndex(100f)
-                            // Transform between floating windows and fullscreen modes: set `scale` from the floating window/screen ratio to 1,
-                            // translation goes from the floating-window center offset to 0 (content stays continuous)
-                            .graphicsLayer {
-                                val p = expandP
-                                scaleX = (pipW / sw) + (1f - pipW / sw) * p
-                                scaleY = (pipH / sh) + (1f - pipH / sh) * p
-                                translationX = (pipCx - sw / 2f) * (1f - p)
-                                translationY = (pipCy - sh / 2f) * (1f - p)
-                            },
-                )
-            }
-        }
     }
 }
 
@@ -455,16 +272,6 @@ private fun TerminalBody(
     settings: AppSettings,
     repository: HostRepository,
     onBack: () -> Unit,
-    /** Floating window to fullscreen state in place (elevated to TerminalScreen: fullscreen layer at the root level). */
-    pipFullscreen: Boolean,
-    /** Fullscreen state change callback. */
-    onPipFullscreenChange: (Boolean) -> Unit,
-    /** Collapse animation while it is playing (a floating window appears with latency while the fullscreen layer is collapsing to prevent flickering). */
-    pipCollapsing: Boolean = false,
-    /** Floating window position/size (held by `TerminalScreen`: required for fullscreen expansion animation). */
-    pipDrag: MutableState<Offset>,
-    pipSizeW: MutableState<Float>,
-    pipSizeH: MutableState<Float>,
     /** File Management (menu item): Opens the SFTP file management view for the current host and navigates to the specified directory. */
     onOpenSftpForHost: (Host, String?) -> Unit = { _, _ -> },
     /** Favorites (menu item): Lists the current host’s favorites directory and navigates to it. */
@@ -475,18 +282,6 @@ private fun TerminalBody(
     onSftpPathChanged: (Host, String) -> Unit = { _, _ -> },
     /** Pass the selected terminal output and the current directory to an Agent on the same host. */
     onAskAgent: (Host, AgentLaunchContext) -> Unit = { _, _ -> },
-    /** Screen (menu item): Opens the remote screen for the current host. */
-    onOpenScreen: (Host) -> Unit = {},
-    /** Terminal screen: The uiState of the current host’s active screen session (tap = fullscreen in place). */
-    screenPip: ScreenUiState? = null,
-    /** Floating window ✕: Close the current screen session (AppRoot destroys the session and removes the entry). */
-    onCloseScreenPip: () -> Unit = {},
-    /** Screen streaming service installation (guide card button; use current host for fullscreen mode). */
-    onInstallScreenService: (Host, String?) -> Unit = { _, _ -> },
-    /** Screen reconnection (for fullscreen mode; uses the host to locate the session). */
-    onReconnectScreenForHost: (Host) -> Unit = {},
-    /** Fullscreen streaming parameter toggling (frame rate/image quality): Changes take effect after saving the remote configuration and rebuilding the session. */
-    onStreamConfigChange: (Host, Int, String) -> Unit = { _, _, _ -> },
 ) {
     val s = LocalAppStrings.current
     val clipboard = LocalClipboardManager.current
@@ -526,9 +321,6 @@ private fun TerminalBody(
                 }
             },
         )
-
-    // ---- Floating Window: fullscreen mode (Tap to expand; Back/✕ to collapse)----
-    // Status has been elevated to TerminalScreen (the fullscreen layer is at the root level; see TerminalScreen)
 
     // ---- Voice Input (Floating Microphone FAB on the canvas; press and hold to speak, release to send)----
     val micPermission = rememberMicPermissionRequester()
@@ -819,7 +611,6 @@ private fun TerminalBody(
     PlatformBackHandler(enabled = true) {
         when (
             terminalBackTarget(
-                screenFullscreen = pipFullscreen,
                 voiceActive = voiceState != VoiceUiState.IDLE,
                 gitOpen = gitPanelOpen,
                 toolMenuOpen = toolMenuOpen,
@@ -827,7 +618,6 @@ private fun TerminalBody(
                 selectionActive = controller.selection.isActive,
             )
         ) {
-            TerminalBackTarget.CLOSE_SCREEN -> onPipFullscreenChange(false)
             TerminalBackTarget.CANCEL_VOICE -> {
                 voiceSession?.abort()
                 recorder.stop()
@@ -938,22 +728,6 @@ private fun TerminalBody(
                     controller.moshNeedsInstall || controller.moshInstalling -> {
                         MoshInstallGuide(controller, with(density) { (toolbarHeightPx + navBarsBottomPx).toDp() })
                     }
-                    // Screen streaming service missing: Installation guide shown in the center of the terminal canvas (with a floating window showing the same content in sync)
-                    // Tooltip: Visible as soon as you open the screen; no need to go to fullscreen first—(v1.6.0 user feedback)
-                    screenPip?.serviceMissing == true -> {
-                        ScreenServiceGuide(
-                            installing = screenPip.installing,
-                            installLog = screenPip.installLog,
-                            ffmpegMissing = screenPip.ffmpegMissing,
-                            needsUpgrade = screenPip.relayNeedsUpgrade,
-                            needsSudoPassword = screenPip.needsSudoPassword,
-                            onInstall = { password -> onInstallScreenService(controller.host, password) },
-                            modifier =
-                                Modifier.padding(
-                                    bottom = with(density) { (toolbarHeightPx + navBarsBottomPx).toDp() },
-                                ),
-                        )
-                    }
                     else -> {
                         TerminalView(
                             controller = controller,
@@ -1058,31 +832,9 @@ private fun TerminalBody(
                     modifier = Modifier.align(Alignment.Center).fillMaxSize(),
                 )
 
-                // Floating Window (Picture-in-Picture): A remote screen floats in the upper-right corner; tap = to go fullscreen in place
-                // (The fullscreen overlay is located in the TerminalScreen root layer; see TerminalScreen.)
-                // ⚠️ Do not show the floating window during the collapse animation (wait until `expandAnim` reaches zero): otherwise, the floating window will overlap with
-                // Fullscreen animation layers exist simultaneously, causing the screen to flicker briefly when toggling between them (user feedback).
-                if (!pipFullscreen && !pipCollapsing) {
-                    screenPip?.let { pipState ->
-                        ScreenPiP(
-                            state = pipState,
-                            onClick = { onPipFullscreenChange(true) },
-                            onClose = onCloseScreenPip,
-                            drag = pipDrag,
-                            pipW = pipSizeW,
-                            pipH = pipSizeH,
-                            canvasSize = canvasSize,
-                            modifier =
-                                Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(top = 8.dp, end = 8.dp),
-                        )
-                    }
-                }
-
                 // Function menu in the lower-right corner: + Expand (Upload / File Management / Git; expandable).
-                // The voice feature has been moved to a permanent button in the center of the screen and does not appear in the menu. It is hidden when the screen is in fullscreen mode.
-                if (!pipFullscreen && voiceState == VoiceUiState.IDLE) {
+                // The voice feature has been moved to a permanent button in the center of the screen and does not appear in the menu.
+                if (voiceState == VoiceUiState.IDLE) {
                     CanvasToolMenu(
                         menuOpen = toolMenuOpen,
                         onMenuOpenChange = { toolMenuOpen = it },
@@ -1149,15 +901,6 @@ private fun TerminalBody(
                                     },
                                 ),
                                 CanvasMenuAction(
-                                    id = "screen",
-                                    label = s.screen.menuLabel,
-                                    icon = Icons.Filled.Monitor,
-                                    onClick = {
-                                        toolMenuOpen = false
-                                        onOpenScreen(controller.host)
-                                    },
-                                ),
-                                CanvasMenuAction(
                                     id = "favorites",
                                     label = s.sftpExt.favoritesTitle,
                                     icon = Icons.Filled.Star,
@@ -1201,8 +944,7 @@ private fun TerminalBody(
                 // (Do not obscure the output in the middle of the terminal.) Standby = the big green button (click once to start);
                 // Recording/Recognition in Progress = Red button at the same location + overlay (transcription/sound wave/timer); the entire group is draggable
                 // (Drag up to the top; do not enter the toolbar). The two states are in the same position; tapping toggles between them in place without jumping.
-                // Hide when in fullscreen mode (pipFullscreen) to avoid obscuring the remote screen.
-                if (!pipFullscreen && settings.voiceInputEnabled && voiceState == VoiceUiState.IDLE) {
+                if (settings.voiceInputEnabled && voiceState == VoiceUiState.IDLE) {
                     var startSize by remember { mutableStateOf(IntSize.Zero) }
                     val density = LocalDensity.current
                     Box(
@@ -1256,7 +998,7 @@ private fun TerminalBody(
                             )
                         }
                     }
-                } else if (!pipFullscreen &&
+                } else if (
                     (voiceState == VoiceUiState.LISTENING || voiceState == VoiceUiState.RECOGNIZING)
                 ) {
                     var recordGroupSize by remember { mutableStateOf(IntSize.Zero) }
@@ -1588,7 +1330,6 @@ private fun TerminalTabBar(
                             when (tab) {
                                 is SessionTab.Terminal -> tab.controller.host
                                 is SessionTab.Sftp -> tab.host
-                                is SessionTab.Screen -> tab.host
                             }
                         // Terminal sessions on the same host are numbered according to the **order of the current tab list** (1, 2, 3…):
                         // Consider only the currently active tabs; automatically reorder after deletion (if the second one is deleted, the original third becomes the second).
@@ -1616,7 +1357,6 @@ private fun TerminalTabBar(
                                         s.hostsActionTerminal
                                     }
                                 is SessionTab.Sftp -> s.hostsActionFiles
-                                is SessionTab.Screen -> s.hostsActionScreen
                             }
                         SessionTabChip(
                             host = host,

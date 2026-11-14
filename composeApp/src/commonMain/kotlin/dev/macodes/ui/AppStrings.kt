@@ -93,7 +93,6 @@ data class AppStrings(
     val hostsActionTerminal: String,
     val hostsActionHerdr: String,
     val hostsActionFiles: String,
-    val hostsActionScreen: String,
     val hostsActionAgents: String,
     // 主机编辑
     val editAddTitle: String,
@@ -312,8 +311,6 @@ data class AppStrings(
     val voice: VoiceStrings,
     // 终端文件上传
     val upload: UploadStrings,
-    // 远程屏幕（视频推流）
-    val screen: ScreenStrings,
     // 原生 Agent 对话（远端 Rust Bridge）
     val nativeAgents: NativeAgentStrings,
     // SFTP 文件管理器扩展（多选/收藏/删除/分组等）
@@ -597,93 +594,6 @@ data class VoiceStrings(
     val timeout: String,
 )
 
-/** 远程屏幕文案（H.264 推流播放，嵌套子类防 JVM 255 上限）。 */
-@Immutable
-data class ScreenStrings(
-    /** 功能菜单入口标签（终端「+」菜单项）。 */
-    val menuLabel: String,
-    /** 连接中。 */
-    val connecting: String,
-    /** 重连按钮。 */
-    val reconnect: String,
-    /** 会话/协议错误与运行时提示（由 ScreenSession 注入使用）。 */
-    val connectionFailed: String,
-    val readChannelFailed: String,
-    val tcpPortMissing: String,
-    val tcpChannelFailed: (Int) -> String,
-    val tcpDisconnected: String,
-    val screenInUse: String,
-    val screenRecordingPermissionMissing: String,
-    val ffmpegMissing: String,
-    val unsupportedOs: (String) -> String,
-    val relayUpgradeRequired: String,
-    val displayMissing: String,
-    val serviceNotRunning: String,
-    val waylandHint: String,
-    val waylandDependenciesMissing: String,
-    val screenAsleepHint: String,
-    val screenLockedHint: String,
-    val firstFrameTimeout: String,
-    val decoderInitializationFailed: (String?) -> String,
-    val decoderNoOutput: (Int) -> String,
-    val decodingFailed: (String) -> String,
-    val playerUnsupported: String,
-    /** 远端缺 ffmpeg 的引导提示。 */
-    val ffmpegHint: String,
-    /** 推流服务安装引导卡片标题。 */
-    val serviceTitle: String,
-    /** 服务未运行（端口无监听）时的引导说明。 */
-    val serviceHintNotRunning: String,
-    /** 远端缺 ffmpeg 时的引导说明（SSH PATH 受限检测不到 brew 安装）。 */
-    val serviceHintFfmpeg: String,
-    /** 安装服务按钮。 */
-    val installService: String,
-    /** 安装中。 */
-    val installingService: String,
-    /** Linux 安装屏幕推流依赖需要交互式 sudo 时的密码引导。 */
-    val serviceSudoPasswordLabel: String,
-    val serviceSudoPasswordHint: String,
-    /** 安装失败提示（日志尾巴上方）。 */
-    val installFailed: String,
-    /** 小窗服务缺失提示（点击进全屏看安装引导）。 */
-    val pipNeedInstall: String,
-    /** relay 版本过旧时的升级提示。 */
-    val serviceUpgradeHint: String,
-    /** 远程操作模式按钮（未开启）。 */
-    val controlLabel: String,
-    /** 远程操作模式按钮（已开启）。 */
-    val controlActive: String,
-    /** 虚拟鼠标及其无文字控件的无障碍描述。 */
-    val virtualMouse: String,
-    val virtualMouseClose: String,
-    val virtualMouseLeftClick: String,
-    val virtualMouseRightClick: String,
-    val virtualMouseMove: String,
-    val virtualMouseScrollUp: String,
-    val virtualMouseScrollDown: String,
-    val virtualMouseMovePanel: String,
-    /** 观看模式按钮（纯观看，无键盘）。 */
-    val viewMode: String,
-    /** 被控端缺辅助功能权限的引导提示。 */
-    val controlPermissionHint: String,
-    /** 被控端当前图形会话没有可用的远程控制后端。 */
-    val controlUnsupportedHint: String,
-    /** 画质档位：流畅。 */
-    val qualityLow: String,
-    /** 画质档位：标清。 */
-    val qualityMid: String,
-    /** 画质档位：高清。 */
-    val qualityHigh: String,
-    /** 画质档位：超清。 */
-    val qualityUltra: String,
-    /** 推流实时诊断：实收帧率、码率、抖动和丢帧。 */
-    val streamDiagnostics: (fps: Int, bitrateKbps: Int, jitterMillis: Int, droppedPermille: Int) -> String,
-    /** 全屏返回按钮：就地全屏（小窗展开）时收起回终端。 */
-    val collapse: String,
-    /** 全屏返回按钮：屏幕 tab 模式返回上一 tab。 */
-    val back: String,
-)
-
 /** 终端文件上传文案（嵌套子类，同 GitStrings）。 */
 @Immutable
 data class UploadStrings(
@@ -865,7 +775,6 @@ private val EnStrings =
         hostsActionTerminal = "Terminal",
         hostsActionHerdr = "Herdr",
         hostsActionFiles = "Files",
-        hostsActionScreen = "Screen",
         hostsActionAgents = "Agents",
         editAddTitle = "Add host",
         editEditTitle = "Edit host",
@@ -1093,76 +1002,6 @@ private val EnStrings =
                 sent = { "Sent: $it" },
                 error = { "Voice recognition failed: $it" },
                 timeout = "Speaking time limit reached — sending what was recognized",
-            ),
-        screen =
-            ScreenStrings(
-                menuLabel = "Remote screen",
-                connecting = "Connecting to screen…",
-                reconnect = "Reconnect",
-                connectionFailed = "Screen connection failed",
-                readChannelFailed = "Unable to inspect the remote screen service",
-                tcpPortMissing = "Unable to get the remote screen service port",
-                tcpChannelFailed = { port -> "Unable to open the encrypted screen channel (remote port $port)" },
-                tcpDisconnected = "Screen channel disconnected — reconnecting",
-                screenInUse = "This screen is in use on another device. Close it there, then reconnect.",
-                screenRecordingPermissionMissing = "On the Mac, allow Macodes Helper in System Settings → Privacy & Security → Screen Recording, then reconnect.",
-                ffmpegMissing = "ffmpeg is not installed on the remote host",
-                unsupportedOs = { os -> "Screen streaming supports macOS and Linux desktop hosts (remote: $os)" },
-                relayUpgradeRequired = "The screen service needs an upgrade — tap install to update it",
-                displayMissing =
-                    "Screen streaming needs the remote user to be signed in to a graphical desktop; the login screen cannot be controlled",
-                serviceNotRunning = "The remote screen service is not running",
-                waylandHint =
-                    "Wayland desktop: approve the Remote Desktop permission on the remote host the first time you connect",
-                waylandDependenciesMissing =
-                    "Wayland screen capture dependencies are missing — tap install to add them",
-                screenAsleepHint = "The Mac display is asleep; streaming resumes when it wakes",
-                screenLockedHint = "The Mac is locked; the desktop returns after it is unlocked",
-                firstFrameTimeout = "No screen frames arrived — check the remote service and ffmpeg",
-                decoderInitializationFailed = { detail ->
-                    "Video decoder initialization failed" + detail?.let { ": $it" }.orEmpty()
-                },
-                decoderNoOutput = { fed -> "The video decoder produced no output after $fed frames" },
-                decodingFailed = { detail -> "Video decoding failed: $detail" },
-                playerUnsupported = "Remote screen playback is not supported on this platform yet",
-                ffmpegHint =
-                    "The remote host needs ffmpeg. On macOS use `brew install ffmpeg`; on Ubuntu/Debian use `sudo apt install ffmpeg`, then reconnect.",
-                serviceTitle = "Install screen streaming service",
-                serviceHintNotRunning =
-                    "The remote streaming service isn't running. Tap install to start it again — your existing settings are kept.",
-                serviceHintFfmpeg =
-                    "ffmpeg wasn't found. Tap install: macOS installs it automatically; Linux installs it with root/sudo and asks for the sudo password only when needed.",
-                installService = "Install service",
-                installingService = "Installing…",
-                serviceSudoPasswordLabel = "sudo password",
-                serviceSudoPasswordHint =
-                    "Installing Linux screen capture and control dependencies needs root access. The password is sent only through this encrypted SSH connection for this installation and is never saved.",
-                installFailed = "Installation failed — check the log below and retry.",
-                pipNeedInstall = "Service not installed",
-                serviceUpgradeHint = "The streaming service is outdated — tap install to upgrade it (your settings are kept).",
-                controlLabel = "Control",
-                controlActive = "Controlling",
-                virtualMouse = "Virtual mouse",
-                virtualMouseClose = "Close virtual mouse",
-                virtualMouseLeftClick = "Mouse left button",
-                virtualMouseRightClick = "Mouse right button",
-                virtualMouseMove = "Move mouse",
-                virtualMouseScrollUp = "Scroll up",
-                virtualMouseScrollDown = "Scroll down",
-                virtualMouseMovePanel = "Move virtual mouse panel",
-                viewMode = "View",
-                controlPermissionHint = "Allow Python (python3) in System Settings → Privacy & Security → Accessibility, then tap Reconnect. If it is already enabled, reconnect to apply the permission.",
-                controlUnsupportedHint =
-                    "Remote control is unavailable in this graphical session. On Wayland, approve the Remote Desktop permission; on Xorg, check the desktop session and reinstall the service if needed.",
-                qualityLow = "Smooth",
-                qualityMid = "Standard",
-                qualityHigh = "HD",
-                qualityUltra = "Original",
-                streamDiagnostics = { fps, bitrate, jitter, dropped ->
-                    "$fps fps · $bitrate kbps · $jitter ms jitter · ${dropped / 10f}% drop"
-                },
-                collapse = "Collapse",
-                back = "Back",
             ),
         nativeAgents =
             NativeAgentStrings(
@@ -1504,7 +1343,6 @@ private val ZhStrings =
         hostsActionTerminal = "远程终端",
         hostsActionHerdr = "Herdr",
         hostsActionFiles = "文件管理",
-        hostsActionScreen = "远程画面",
         hostsActionAgents = "Agent",
         editAddTitle = "添加主机",
         editEditTitle = "编辑主机",
@@ -1730,68 +1568,6 @@ private val ZhStrings =
                 sent = { "已发送：$it" },
                 error = { "语音识别失败：$it" },
                 timeout = "说话时间到，已发送识别到的内容",
-            ),
-        screen =
-            ScreenStrings(
-                menuLabel = "远程画面",
-                connecting = "正在连接画面…",
-                reconnect = "重新连接",
-                connectionFailed = "画面连接失败",
-                readChannelFailed = "无法探测远端屏幕服务",
-                tcpPortMissing = "无法获取远端屏幕服务端口",
-                tcpChannelFailed = { port -> "无法建立加密画面通道（远端端口 $port）" },
-                tcpDisconnected = "画面通道已断开，正在重连",
-                screenInUse = "画面正在被其他设备使用。请先在另一台设备关闭画面，再重新连接。",
-                screenRecordingPermissionMissing = "请在 Mac 的“系统设置 → 隐私与安全性 → 屏幕录制”中允许 Macodes Helper，然后重新连接。",
-                ffmpegMissing = "远端未安装 ffmpeg",
-                unsupportedOs = { os -> "屏幕推流仅支持 macOS / Linux 桌面主机（当前远端为 $os）" },
-                relayUpgradeRequired = "推流服务需要升级，点安装更新",
-                displayMissing = "屏幕推流需要被控用户登录图形桌面；系统登录界面无法远程控制",
-                serviceNotRunning = "远端推流服务未运行",
-                waylandHint = "Wayland 桌面：首次连接请在被控端确认系统“远程控制”授权框",
-                waylandDependenciesMissing = "缺少 Wayland 画面捕获依赖，点安装补齐",
-                screenAsleepHint = "Mac 屏幕已关闭，唤醒后画面自动恢复",
-                screenLockedHint = "Mac 处于锁屏状态，解锁后恢复桌面画面",
-                firstFrameTimeout = "画面数据未到达，请检查远端推流服务和 ffmpeg",
-                decoderInitializationFailed = { detail ->
-                    "解码器初始化失败" + detail?.let { "：$it" }.orEmpty()
-                },
-                decoderNoOutput = { fed -> "解码器在输入 $fed 帧后仍无输出" },
-                decodingFailed = { detail -> "解码失败：$detail" },
-                playerUnsupported = "当前平台暂不支持远程画面播放",
-                ffmpegHint = "远端需要 ffmpeg：macOS 可执行 `brew install ffmpeg`；Ubuntu/Debian 可执行 `sudo apt install ffmpeg`，安装后重新连接。",
-                serviceTitle = "安装屏幕推流服务",
-                serviceHintNotRunning = "远端推流服务未运行。点安装重新拉起，已有配置会保留。",
-                serviceHintFfmpeg = "远端检测不到 ffmpeg。点安装后，macOS 会自动补装；Linux 通过 root/sudo 安装，仅在需要时询问 sudo 密码。",
-                installService = "安装服务",
-                installingService = "正在安装…",
-                serviceSudoPasswordLabel = "sudo 密码",
-                serviceSudoPasswordHint = "安装 Linux 画面捕获与控制依赖需要 root 权限。密码仅通过加密 SSH 连接用于本次安装，不会保存。",
-                installFailed = "安装失败——查看下方日志后重试。",
-                pipNeedInstall = "服务未安装",
-                serviceUpgradeHint = "推流服务版本过旧——点安装升级到最新（已有配置保留）。",
-                controlLabel = "操作",
-                controlActive = "操作中",
-                virtualMouse = "虚拟鼠标",
-                virtualMouseClose = "关闭虚拟鼠标",
-                virtualMouseLeftClick = "鼠标左键",
-                virtualMouseRightClick = "鼠标右键",
-                virtualMouseMove = "移动鼠标",
-                virtualMouseScrollUp = "向上滚动",
-                virtualMouseScrollDown = "向下滚动",
-                virtualMouseMovePanel = "移动虚拟鼠标面板",
-                viewMode = "观看",
-                controlPermissionHint = "请在系统设置 → 隐私与安全性 → 辅助功能中允许 Python（python3），然后点击「重新连接」。若已开启，直接重新连接以使权限生效。",
-                controlUnsupportedHint = "当前图形会话无法远程控制。Wayland 请确认系统“远程控制”授权；Xorg 请检查桌面会话，必要时重装服务。",
-                qualityLow = "流畅",
-                qualityMid = "标清",
-                qualityHigh = "高清",
-                qualityUltra = "原画",
-                streamDiagnostics = { fps, bitrate, jitter, dropped ->
-                    "实收 $fps fps · $bitrate kbps · 抖动 $jitter ms · 丢帧 ${dropped / 10f}%"
-                },
-                collapse = "收起",
-                back = "返回",
             ),
         nativeAgents =
             NativeAgentStrings(

@@ -71,7 +71,6 @@ fun ConnectionsScreen(
                 when (item) {
                     is HostSessionItem.Terminal -> item.controller.host
                     is HostSessionItem.Sftp -> item.host
-                    is HostSessionItem.Screen -> item.entry.host
                     is HostSessionItem.Agent -> item.controller.host
                 }
             query.isBlank() ||
@@ -150,7 +149,6 @@ fun ConnectionsScreen(
                         when (it) {
                             is HostSessionItem.Terminal -> it.controller.sessionId
                             is HostSessionItem.Sftp -> "sftp:${it.host.id}:${it.session.hashCode()}"
-                            is HostSessionItem.Screen -> "screen:${it.entry.host.id}:${it.entry.uiState.hashCode()}"
                             is HostSessionItem.Agent -> "agent:${it.controller.host.id}"
                         }
                     }) { item ->
@@ -158,13 +156,12 @@ fun ConnectionsScreen(
                             when (item) {
                                 is HostSessionItem.Terminal -> item.controller.host
                                 is HostSessionItem.Sftp -> item.host
-                                is HostSessionItem.Screen -> item.entry.host
                                 is HostSessionItem.Agent -> item.controller.host
                             }
                         val title =
                             when (item) {
                                 is HostSessionItem.Terminal -> item.controller.title
-                                is HostSessionItem.Sftp, is HostSessionItem.Screen ->
+                                is HostSessionItem.Sftp ->
                                     host.name.ifBlank { host.hostname }
                                 is HostSessionItem.Agent ->
                                     item.controller.currentSession?.title ?: host.name.ifBlank { host.hostname }
@@ -186,8 +183,6 @@ fun ConnectionsScreen(
                                         when (item) {
                                             is HostSessionItem.Sftp ->
                                                 "${host.username}@${host.hostname} · SFTP"
-                                            is HostSessionItem.Screen ->
-                                                "${host.username}@${host.hostname} · ${s.hostsActionScreen}"
                                             is HostSessionItem.Agent -> {
                                                 val stateLabel =
                                                     when {
@@ -245,7 +240,6 @@ fun ConnectionsScreen(
                                                             } else {
                                                                 StatusColors.Neutral
                                                             }
-                                                        is HostSessionItem.Screen -> StatusColors.Connected
                                                         is HostSessionItem.Agent ->
                                                             when {
                                                                 item.controller.pendingApprovals.isNotEmpty() ->

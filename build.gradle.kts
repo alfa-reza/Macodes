@@ -72,7 +72,7 @@ tasks.register<StartTestSshdTask>("startTestSshd") {
 tasks.register("testIntegration") {
     group = "verification"
     description = "SSH/Mosh 集成测试（自动起 sshd；单测一拼跑）"
-    dependsOn("startTestSshd", "screenServiceTest", ":composeApp:testDebugUnitTest")
+    dependsOn("startTestSshd", ":composeApp:testDebugUnitTest")
 }
 
 project(":composeApp").tasks.configureEach {
@@ -80,7 +80,7 @@ project(":composeApp").tasks.configureEach {
         mustRunAfter(":startTestSshd")
         // Integration tests depend on the external sshd status and cannot reuse test results from when the service was previously unavailable.
         outputs.upToDateWhen { false }
-        outputs.doNotCacheIf("Tests depend on local SSH and screen servers") { true }
+        outputs.doNotCacheIf("Tests depend on local SSH servers") { true }
     }
 }
 
@@ -116,39 +116,10 @@ val agentBridgeBuild = tasks.register<ExecTask>("agentBridgeBuild") {
     outputs.dir(layout.projectDirectory.dir("composeApp/src/commonMain/composeResources/files/macodes-agent"))
     doLast { run("sh", "scripts/service-build.sh", "pack-agent") }
 }
-val screenServiceRustBuild = tasks.register<ExecTask>("screenServiceRustBuild") {
-    group = "build"
-    inputs.property("macosSigningIdentity", providers.environmentVariable("MACODES_SCREEN_MACOS_SIGN_IDENTITY").orElse(""))
-    inputs.files(fileTree("screenService/rust") { exclude("target/**", ".gitignore") })
-    inputs.dir("screenService/macos")
-    inputs.dir("screenService/linux")
-    inputs.files(fileTree("tools/service-build") { exclude("target/**", ".gitignore") })
-    inputs.files("screenService/service.properties", "LICENSES/MacodesScreen-Rust.txt", "scripts/service-build.sh")
-    outputs.dir(layout.projectDirectory.dir("screenService/build/binaries"))
-    doLast { run("sh", "scripts/service-build.sh", "build-screen") }
-}
-val screenServiceBuild = tasks.register<ExecTask>("screenServiceBuild") {
-    group = "build"
-    dependsOn(screenServiceRustBuild)
-    inputs.files("screenService/native-install.sh", "screenService/install.sh", "screenService/service.properties")
-    inputs.files(fileTree("tools/service-build") { exclude("target/**", ".gitignore") })
-    inputs.dir(layout.projectDirectory.dir("screenService/build/binaries"))
-    outputs.file(layout.projectDirectory.file("composeApp/build/generated/screenService/kotlin/dev/macodes/screen/ScreenServiceAssets.kt"))
-    outputs.dir(layout.projectDirectory.dir("composeApp/src/commonMain/composeResources/files/macodes-screen"))
-    doLast { run("sh", "scripts/service-build.sh", "pack-screen") }
-}
 project(":composeApp").tasks.configureEach {
     if ((name.startsWith("compile") && name.contains("Kotlin")) || name.startsWith("copyNonXmlValueResourcesFor") || name == "generateComposeResClass") {
-        dependsOn(screenServiceBuild, agentBridgeBuild)
+        dependsOn(agentBridgeBuild)
     }
-}
-tasks.register<ExecTask>("screenServiceRustTest") {
-    group = "verification"
-    doLast { run("sh", "scripts/service-test.sh", "screenService") }
-}
-tasks.register("screenServiceTest") {
-    group = "verification"
-    dependsOn("screenServiceRustTest")
 }
 tasks.register<ExecTask>("agentBridgeTest") {
     group = "verification"

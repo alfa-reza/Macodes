@@ -42,8 +42,7 @@ make run                                     # Build, install and launch on a de
 ```bash
 ./gradlew :composeApp:testDebugUnitTest         # Kotlin unit tests
 ./gradlew agentBridgeTest                      # Rust Bridge protocol and adapter tests
-./gradlew screenServiceTest                    # Rust screen protocol, configuration and lifecycle tests
-./gradlew screenServiceRustBuild               # Build precompiled remote Rust payloads
+./gradlew agentBridgeRustBuild                 # Build precompiled Agent Bridge payloads
 make test-integration                         # Start local sshd and run transport tests
 ```
 
@@ -52,11 +51,9 @@ Transport tests detect a local sshd on `127.0.0.1:22222` and skip when it is abs
 For manual transport checks, `./scripts/test-sshd.sh` starts the test server with
 ephemeral keys. Bridge tests can also run without Gradle:
 `sh scripts/service-test.sh agentBridge`.
-Screen service tests can also run with
-`sh scripts/service-test.sh screenService`.
 Mobile builds now need Rust via rustup and at least one supported service target.
 For example, Linux builders use `rustup target add x86_64-unknown-linux-musl`;
-macOS builders can build all four targets as described in the screen service guide.
+See the [Bridge guide](agentBridge/README.md) for supported targets.
 
 Run `make help` for other tasks. Release signing is only needed for release
 builds; [`.env.example`](.env.example) documents the optional configuration.
@@ -74,9 +71,6 @@ Maintainers can find Android release mirroring configuration in the
 - Platform code belongs behind the existing SSH, storage and utility interfaces.
 - `agentBridge/rust/` contains the Rust companion and its tests. Target binaries are
   built into the mobile app; see [the Bridge guide](agentBridge/README.md).
-- `screenService/` contains the standalone remote-screen service and installer.
-  Gradle generates the bundled Kotlin installer before compilation; see the
-  [screen service guide](docs/screen-service.md).
 
 ## Validate your change
 

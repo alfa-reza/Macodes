@@ -7,20 +7,16 @@ class BackNavigationTest {
     @Test
     fun terminalClosesTopLayerBeforeExiting() {
         assertEquals(
-            TerminalBackTarget.CLOSE_SCREEN,
-            terminalBackTarget(true, true, true, true, true, true),
-        )
-        assertEquals(
             TerminalBackTarget.CANCEL_VOICE,
-            terminalBackTarget(false, true, true, true, true, true),
+            terminalBackTarget(true, true, true, true, true),
         )
         assertEquals(
             TerminalBackTarget.CLEAR_SELECTION,
-            terminalBackTarget(false, false, false, false, false, true),
+            terminalBackTarget(false, false, false, false, true),
         )
         assertEquals(
             TerminalBackTarget.EXIT,
-            terminalBackTarget(false, false, false, false, false, false),
+            terminalBackTarget(false, false, false, false, false),
         )
     }
 
@@ -28,19 +24,19 @@ class BackNavigationTest {
     fun agentReturnsThroughWorkspaceHierarchy() {
         assertEquals(
             AgentBackTarget.CLOSE_FILE_BROWSER,
-            agentBackTarget(false, true, true, true, true),
+            agentBackTarget(true, true, true, true),
         )
         assertEquals(
             AgentBackTarget.SHOW_CHAT,
-            agentBackTarget(false, false, false, true, true),
+            agentBackTarget(false, false, true, true),
         )
         assertEquals(
             AgentBackTarget.SHOW_AGENT_HOME,
-            agentBackTarget(false, false, false, false, true),
+            agentBackTarget(false, false, false, true),
         )
         assertEquals(
             AgentBackTarget.EXIT,
-            agentBackTarget(false, false, false, false, false),
+            agentBackTarget(false, false, false, false),
         )
     }
 
