@@ -13,6 +13,40 @@ import org.junit.Assume.assumeTrue
 
 class ScreenInstallScriptSyntaxTest {
     @Test
+    fun `legacy service registration survives a failed migration`() {
+        val home = Files.createTempDirectory("macodes-legacy-service-").toFile()
+        try {
+            val unit = File(home, ".config/systemd/user/dev.termish.screen.service")
+            checkNotNull(unit.parentFile).mkdirs()
+            unit.writeText("legacy unit")
+            val script = ScreenSession.INSTALL_SCRIPT
+            val functions = script.substringAfter("LEGACY_NATIVE=").substringBefore("# ---- ffmpeg")
+            val command =
+                """
+                OS=Linux
+                PORT=17321
+                LEGACY_NATIVE=$functions
+                systemctl() {
+                  printf '%s\n' "${'$'}*" >> "${'$'}HOME/calls"
+                  case "${'$'}*" in *is-active*|*is-enabled*) return 0 ;; esac
+                }
+                launchctl() { return 1; }
+                lsof() { return 1; }
+                cleanup_legacy_service_names
+                exit 1
+                """.trimIndent()
+            val process = ProcessBuilder("/bin/sh", "-c", command).apply { environment()["HOME"] = home.absolutePath }.start()
+            assertEquals(1, process.waitFor())
+            assertEquals("legacy unit", unit.readText())
+            val calls = File(home, "calls").readText()
+            assertTrue(calls.contains("enable dev.termish.screen.service"))
+            assertTrue(calls.contains("start dev.termish.screen.service"))
+        } finally {
+            home.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `macOS migration starts system Python and failed bootstrap restores prior service`() {
         assumeTrue("macOS payload verification required", System.getProperty("os.name").orEmpty().startsWith("Mac"))
         val root = File(checkNotNull(System.getProperty("user.dir"))).let { if (it.name == "composeApp") it.parentFile else it }

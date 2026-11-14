@@ -19,13 +19,23 @@ LEGACY_NATIVE="$HOME/Library/Application Support/termish/screen-service"
 LEGACY_RUNNER="$HOME/.termish-screen-launch.sh"
 LEGACY_RELAY="$HOME/Library/Application Support/termish/screen-relay.py"
 cleanup_legacy_service_names() {
+  LEGACY_PLIST="$HOME/Library/LaunchAgents/dev.termish.screen.plist"
+  LEGACY_UNIT="$HOME/.config/systemd/user/dev.termish.screen.service"
+  LEGACY_DESKTOP="$HOME/.config/autostart/dev.termish.screen.desktop"
+  LEGACY_ACTIVE=0
+  LEGACY_ENABLED=0
+  if [ "$OS" = "Darwin" ]; then
+    launchctl print "gui/$(id -u)/dev.termish.screen" >/dev/null 2>&1 && LEGACY_ACTIVE=1
+  elif command -v systemctl >/dev/null 2>&1; then
+    systemctl --user is-active --quiet dev.termish.screen.service && LEGACY_ACTIVE=1
+    systemctl --user is-enabled --quiet dev.termish.screen.service && LEGACY_ENABLED=1
+  fi
+  trap restore_legacy_service EXIT
   launchctl bootout "gui/$(id -u)/dev.termish.screen" 2>/dev/null || true
   launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/dev.termish.screen.plist" 2>/dev/null || true
-  rm -f "$HOME/Library/LaunchAgents/dev.termish.screen.plist"
   if command -v systemctl >/dev/null 2>&1; then
     systemctl --user disable --now dev.termish.screen.service 2>/dev/null || true
   fi
-  rm -f "$HOME/.config/systemd/user/dev.termish.screen.service" "$HOME/.config/autostart/dev.termish.screen.desktop"
   # Only the process that currently listens on the port is inspected; the installer's own
   # command line contains the script text, so a pattern match over all processes is unsafe.
   LEGACY_PID=""
@@ -37,9 +47,33 @@ cleanup_legacy_service_names() {
   [ -n "$LEGACY_PID" ] || return 0
   LEGACY_CMD="$(ps -p "$LEGACY_PID" -o command= 2>/dev/null || true)"
   case "$LEGACY_CMD" in
-    *"$LEGACY_NATIVE"*|*"$LEGACY_RUNNER"*|*"$LEGACY_RELAY"*) kill "$LEGACY_PID" 2>/dev/null || true ;;
+    *"$LEGACY_NATIVE"*|*"$LEGACY_RUNNER"*|*"$LEGACY_RELAY"*) LEGACY_ACTIVE=1; kill "$LEGACY_PID" 2>/dev/null || true ;;
   esac
   return 0
+}
+restore_legacy_service() {
+  if [ "$OS" = "Darwin" ]; then
+    if [ "$LEGACY_ACTIVE" = 1 ] && [ -f "$LEGACY_PLIST" ]; then
+      launchctl bootstrap "gui/$(id -u)" "$LEGACY_PLIST" 2>/dev/null || true
+    fi
+  else
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl --user disable --now dev.macodes.screen.service 2>/dev/null || true
+    fi
+    if command -v stop_macodes_relay_pid >/dev/null 2>&1 && [ -f "$HOME/.macodes-screen.pid" ]; then
+      stop_macodes_relay_pid "$(cat "$HOME/.macodes-screen.pid" 2>/dev/null)"
+    fi
+    if command -v systemctl >/dev/null 2>&1 && [ -f "$LEGACY_UNIT" ]; then
+      [ "$LEGACY_ENABLED" != 1 ] || systemctl --user enable dev.termish.screen.service 2>/dev/null || true
+      [ "$LEGACY_ACTIVE" != 1 ] || systemctl --user start dev.termish.screen.service 2>/dev/null || true
+    elif [ "$LEGACY_ACTIVE" = 1 ] && [ -x "$LEGACY_RUNNER" ]; then
+      nohup "$LEGACY_RUNNER" >/dev/null 2>&1 &
+    fi
+  fi
+}
+finish_legacy_service_migration() {
+  trap - EXIT
+  rm -f "$LEGACY_PLIST" "$LEGACY_UNIT" "$LEGACY_DESKTOP"
 }
 # ---- ffmpeg: Install if missing (find the path that matches the stream-reading script to avoid non-interactive errors after installation)
 # (PATH false positive missing). macOS uses brew/static packages; Linux requires apt (sudo) ——
@@ -290,6 +324,7 @@ if launchctl print gui/$(id -u)/dev.macodes.screen 2>/dev/null | grep -q "state 
   rm -f "$RELAY_BACKUP"
   rm -f "$BACKEND_BACKUP"
   rm -f "$APP_DIR/screen-service"
+  finish_legacy_service_migration
   echo "==> MACODES_SCREEN_OK"
 else
   restore_macos_service
@@ -480,6 +515,7 @@ if (lsof -nP -iTCP:$PORT -sTCP:LISTEN >/dev/null 2>&1 || ss -ltn 2>/dev/null | g
   echo @RELAY_VERSION@ > "$HOME/.macodes-screen.version"
   "$NATIVE" --install-desktop
   cleanup_legacy_screen_files
+  finish_legacy_service_migration
   echo "==> MACODES_SCREEN_OK"
 else
   echo "==> Service did not start (check $LOG)" >&2
