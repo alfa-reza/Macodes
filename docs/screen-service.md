@@ -104,8 +104,8 @@ identity and upgrade authorisation; never pass the certificate private key to Gi
 
 Linux needs only the matching musl target and uses Rust's bundled linker, with no cross C compiler
 or X11 development libraries. By default it builds the targets that are installed and usable on the
-local machine; imported artifacts with the same source fingerprint are kept. CI builds all four
-targets on the Mac first, then passes them to the Android build as an artifact. Source changes
+local machine; imported artifacts with the same source fingerprint are kept. CI builds the Linux
+musl payloads on ubuntu-latest, then passes them to the Android job as an artifact. Source changes
 during the build, or manifest and binary SHA mismatches, all fail the build.
 
 `screenServiceBuild` depends on `screenServiceRustBuild` and packages before Kotlin compilation and

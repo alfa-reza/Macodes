@@ -709,7 +709,7 @@ internal class SessionConnector(
                 ) { "mosh install ${c.host.name}: $installCmd${if (sudoNeedsPassword) "（sudo -S）" else ""}" }
                 val log = StringBuilder()
                 withContext(ioDispatcher()) {
-                    // Streaming exec (JVM): Read install output block by block and log it; iOS: Fall back to `runCommand` if `startExec` is not available
+                    // Streaming exec (JVM): Read install output block by block and log it; fall back to `runCommand` if `startExec` is not available
                     val exec = s.startExec(fullCmd, c.lastCols, c.lastRows)
                     if (exec != null) {
                         try {
@@ -725,8 +725,11 @@ internal class SessionConnector(
                             exec.close()
                         }
                     } else {
-                        // iOS has no exec channel: POSIX printf pipe feeds the password (single quotes escaped; no cross-platform
-                        // base64 -d flag quirks); on a wrong password `sudo` prints “Sorry, try again”
+                        // Fallback for when the exec channel is unavailable (e.g. the connection dropped just before
+                        // exec): POSIX printf pipe feeds the password (single quotes escaped; no cross-platform
+                        // base64 -d flag quirks); on a wrong password `sudo` prints "Sorry, try again".
+                        // Note: with this path the password travels inside the command string, briefly visible in the
+                        // remote process list; the streaming exec path above avoids that.
                         val piped =
                             if (sudoNeedsPassword) {
                                 "printf '%s' ${shSingleQuote(password!!)} | $fullCmd"
