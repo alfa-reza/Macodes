@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 
 /** Streaming read handle for the selected file: Each call to [readChunk] returns the next block; null indicates EOF. */
 data class PickedFile(
-    /** Platform stability identifier (Android URI / iOS URL), used for deduplication across batches. */
+    /** Platform stability identifier (Android URI), used for deduplication across batches. */
     val sourceId: String,
     val name: String,
     val size: Long,
@@ -49,7 +49,7 @@ internal fun closePickedFiles(files: List<PickedFile>) {
 /**
  * Platform file selector (**multiple selection**): Returns a function that "opens the selector"; after selection, **each file
  * Callback once **[onPicked]** (name + total size + block retrieval function—streamed uploads of large files do not keep the entire file in memory).
- * Android SAF (OpenMultipleDocuments) / iOS UIDocumentPicker (multiple selection).
+ * Android SAF (OpenMultipleDocuments).
  */
 @Composable
 expect fun rememberFilePicker(onPicked: (PickedFile) -> Unit): () -> Unit

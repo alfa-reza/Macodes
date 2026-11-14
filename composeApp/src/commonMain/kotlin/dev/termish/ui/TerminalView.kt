@@ -105,11 +105,9 @@ private fun StringBuilder.appendUnicodeCodePoint(cp: Int) {
 }
 
 /**
- * Code points → String. Do not depend on the JVM-specific `StringBuilder.appendCodePoint(cp)`:
- * Kotlin/Native’s `StringBuilder` does not have a public `appendCodePoint` member (the stdlib only contains
- * (internal implementation), it will parse to the private extension of the `Unit` returned by this file → `Unit.toString()`,
- * On iOS, each wide character is rendered as the literal string "kotlin.Unit" (the root cause of Chinese garbled characters); on the JVM, however, due to
- * The `java.lang.StringBuilder` member shadows the private extension and is exactly right — a platform-semantics fork; disabled.
+ * Code points → String. Kotlin multiplatform common code cannot rely on the JVM-specific
+ * `StringBuilder.appendCodePoint(cp)` (the common stdlib does not expose it), so surrogate
+ * pairs are built explicitly here; this keeps the code identical on every target.
  */
 private fun codePointToString(cp: Int): String =
     when {
@@ -257,7 +255,7 @@ fun TerminalView(
     val fontSize = effectiveFontSizeSp.sp
     val style = TextStyle(fontFamily = fontFamily, fontSize = fontSize)
     // JetBrains Mono does not include CJK glyphs: Use cjkFontFamily() for wide characters (Chinese/Japanese/Korean/full-width/emoji).
-    // (Explicitly load PingFang SC on iOS; use the system fallback on other platforms) to prevent missing characters from showing as blank blocks or garbled text.
+    // Android relies on the system fallback fonts (FontFamily.Default) for missing glyphs; wide characters render at 2 cells.
     // Character width is still measured using the JetBrains Mono standard, with wide characters naturally occupying 2 spaces.
     val wideStyle = style.copy(fontFamily = cjkFont)
     // Use a longer sample string to test single-cell width: Avoid cumulative errors caused by rounding the pixel width of a single character at small font sizes.

@@ -312,7 +312,7 @@ fun AppRoot(repository: HostRepository) {
     /** Limit each host to one task to reconnect the screen to prevent newly established channels from being closed after an old task is completed. */
     val screenReconnectJobs = remember { mutableMapOf<String, Job>() }
 
-    /*When the user taps “Screen” on the host card, automatically expand to fullscreen once the first frame arrives; normal terminal-menu launches are unaffected. */
+    // When the user taps “Screen” on the host card, automatically expand to fullscreen once the first frame arrives; normal terminal-menu launches are unaffected.
     var screenFullscreenRequestHostId by remember { mutableStateOf<String?>(null) }
 
     /** SFTP: Select host overlay / Current session / Authentication and host key dialog. */
@@ -320,7 +320,7 @@ fun AppRoot(repository: HostRepository) {
     var sftpAuth by remember { mutableStateOf<AuthPromptRequest?>(null) }
     var sftpHostKey by remember { mutableStateOf<HostKeyRequest?>(null) }
 
-    /*The Agent control connection persists across pages; dialogs must also be owned by AppRoot and cannot capture the state of a destroyed screen. */
+    // The Agent control connection persists across pages; dialogs must also be owned by AppRoot and cannot capture the state of a destroyed screen.
     var agentAuth by remember { mutableStateOf<Pair<String, AuthPromptRequest>?>(null) }
     var agentHostKey by remember { mutableStateOf<Pair<String, HostKeyRequest>?>(null) }
     val agentControllers = remember { mutableStateMapOf<String, AgentBridgeController>() }
@@ -949,8 +949,7 @@ fun AppRoot(repository: HostRepository) {
         sessionsRestored = true
     }
 
-    // iOS: When returning to the home screen, the system suspends the process and closes the socket; when returning to the foreground, it automatically reconnects to active sessions (retaining the buffer).
-    // Android is kept alive by a foreground service, which has a null implementation.
+    // Android is kept alive by a foreground service and a wakelock; network changes are observed so dropped sessions reconnect.
     val disposeNetwork =
         observeNetworkChange { kind ->
             // Network events: SSH first detects changes in the default network before deciding whether to reconnect; mosh relies on UDP roaming for self-healing.

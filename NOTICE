@@ -13,7 +13,6 @@ text of their licenses is in the LICENSES/ directory.
 | Component | License | Purpose | Full license text |
 |-----------|---------|---------|-------------------|
 | JetBrains Mono | OFL-1.1 | Bundled terminal font | LICENSES/JetBrainsMono-OFL.txt |
-| Noto Sans SC | OFL-1.1 | Bundled CJK font (iOS Chinese fallback) | LICENSES/Noto-OFL.txt |
 | Fira Code | OFL-1.1 | Bundled terminal font (optional) | LICENSES/FiraCode-OFL.txt |
 | Source Code Pro | OFL-1.1 | Bundled terminal font (optional) | LICENSES/SourceCodePro-OFL.txt |
 | PT Mono | OFL-1.1 | Bundled terminal font (optional) | LICENSES/PTMono-OFL.txt |
@@ -21,8 +20,6 @@ text of their licenses is in the LICENSES/ directory.
 | sshj | Apache-2.0 | JVM-side SSH engine (Android) | LICENSES/Apache-2.0.txt |
 | AndroidSVG (Copyright 2013 Paul LeBeau, Cave Rock Software Ltd.) | Apache-2.0 | Android SVG static image preview | LICENSES/Apache-2.0.txt |
 | BouncyCastle | MIT-style | JVM-side cryptography | LICENSES/BouncyCastle-MIT.txt |
-| libssh2 | BSD-3-Clause | iOS-side SSH engine | LICENSES/libssh2-BSD.txt |
-| OpenSSL | Apache-2.0 | iOS-side TLS/cryptography (statically linked) | LICENSES/Apache-2.0.txt |
 | Kotlin | Apache-2.0 | Programming language and standard library | LICENSES/Apache-2.0.txt |
 | Jetpack Compose / Compose Multiplatform | Apache-2.0 | Declarative UI framework | LICENSES/Apache-2.0.txt |
 | Kotlin Gradle Plugin / Compose Compiler | Apache-2.0 | Build plugins | LICENSES/Apache-2.0.txt |

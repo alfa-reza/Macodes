@@ -126,7 +126,7 @@ interface SshCallbacks {
 }
 
 /**
- * Platform-independent SSH session abstraction. The engine is subjected to platform injection (JVM: sshj; iOS: libssh2/NTermish).
+ * Platform-independent SSH session abstraction. The engine is subjected to platform injection (JVM: sshj).
  */
 interface SshSession {
     /** Blocking: Connection + Authentication + Open session channel + Launch shell. */

@@ -8,7 +8,7 @@ interface DirectorySink {
     fun openFile(relativePath: String): FileSink
 
     /**
-     * Call this function after all files have been written (on iOS, this will bring up the export panel).
+     * Called after all files have been written (finalizes the SAF-written directory).
      * Call only when all files succeed; never on failure paths (to avoid exporting a half-finished directory).
      */
     fun close()

@@ -13,7 +13,7 @@ The algorithm implementations in this directory are for research and test refere
 
 | File | Implementation | Used in production | Notes |
 |------|----------------|--------------------|-------|
-| `Sha256.kt` | SHA-256 | ✅ **yes** | host fingerprints (libssh2 blob SHA-256), session credential digest (`credentialSignature`) |
+| `Sha256.kt` | SHA-256 | ✅ **yes** | host fingerprints, session credential digest (`credentialSignature`) |
 | `Aes.kt` + `Ocb.kt` | AES-128-OCB | ✅ **explicit exception** | mosh transport encryption, see below |
 | `Sha512.kt` | SHA-512 | ❌ tests only | RFC vector verification |
 | `Hmac.kt` | HMAC-SHA256/512 | ❌ tests only | |
@@ -28,7 +28,6 @@ When curve or ChaCha capability is needed, prefer the platform provider:
 - Android: the full BouncyCastle bundled with the app (`installFullBouncyCastle` in
   `TermishApplication.kt` — the cut-down BouncyCastle that ships with Android lacks X25519 /
   Ed25519)
-- iOS: the system security frameworks
 
 ## Exception: mosh transport encryption (`dev.termish.mosh`)
 
@@ -44,7 +43,7 @@ which is an **explicit exception** to this directory's policy:
 - Limitation: table-driven software AES has **no constant-time guarantee** and implies a theoretical
   timing side channel; under the threat model (the attacker must already be able to observe the
   device's CPU caches at close range) the risk is acceptable, but it is recorded here
-- Direction: if a platform AEAD (JVM BouncyCastle / iOS CommonCrypto) is adopted later and the cost of
+- Direction: if a platform AEAD (such as JVM BouncyCastle) is adopted later and the cost of
   per-platform source variants is acceptable, the in-house OCB should be replaced
 
 ## Testing

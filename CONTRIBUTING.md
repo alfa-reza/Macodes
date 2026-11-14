@@ -15,7 +15,6 @@ cd termish
 | Component | Development requirements |
 | --- | --- |
 | Android | JDK 17, Android SDK, and an emulator or device for UI checks |
-| iOS | macOS and Xcode; build native dependencies with `make ios-native` |
 | Remote services and build tool | Rust via rustup; supported target libraries; Xcode SDK for macOS payloads; Python 3 for macOS relay tests |
 | R2 release tools | Node.js 22 and curl with `--aws-sigv4` support |
 
@@ -58,25 +57,9 @@ macOS builders can build all four targets as described in the screen service gui
 
 ### iOS
 
-Requires macOS and Xcode. Build OpenSSL and libssh2 on first setup or after
-changing their versions, then compile the shared frameworks:
-
-```bash
-make ios-native                               # Native dependencies for simulator and device
-make ios-framework                            # Kotlin simulator and device debug frameworks
-open iosApp/iosApp.xcodeproj                    # Select the iosApp scheme and run in Xcode
-```
-
-The framework tasks can also be run directly:
-
-```bash
-./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64
-./gradlew :composeApp:linkDebugFrameworkIosArm64
-```
-
-Choose a simulator or configure your own signing team for a physical device.
-iOS builds are checked locally or through the configured Apple distribution
-workflow; GitHub Actions does not compile iOS frameworks. Check UI behavior locally.
+iOS is not built in this repository. The shared KMP code retains platform
+seams that may help contributors add iOS support later, though restoring it
+will require platform implementations, build tooling, and testing.
 
 Run `make help` for other tasks. Release signing is only needed for release
 builds; [`.env.example`](.env.example) documents the optional configuration.

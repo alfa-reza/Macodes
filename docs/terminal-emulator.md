@@ -145,7 +145,7 @@ OSC / OSC_ESC / DCS / DCS_ESC).
   `TextLayoutResult`, skipping text measurement — full-screen text layout is the most expensive part of every frame, and during scrolling almost all of the full-screen translation hits the cache.
 - Style cache: TextStyle cached by (ARGB, bold, narrow/wide font); BOLD + the basic 8 colors brightened to 8–15 (xterm convention).
 - Cells with only a background color and the default foreground pick black/white foreground automatically by background luminance (deep background + dark text no longer becomes a black block in light themes).
-- Fonts: JetBrains Mono (bundled, consistent metrics on every platform); CJK fallback (explicit PingFang SC on iOS).
+- Fonts: JetBrains Mono is bundled; Android provides the CJK fallback.
 - Cursor: DECSCUSR steady styles (2/4/6) are always on, blinking styles alternate on a 530ms phase; under a block cursor the character is redrawn inverted.
 - Target column-count mode: back-computes the font size from a 12sp reference measurement and corrects the column count by measuring each time (see `effectiveFontSizeSp`).
 

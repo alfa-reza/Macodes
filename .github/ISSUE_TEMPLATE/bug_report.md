@@ -8,7 +8,7 @@ labels: bug
 ## Environment
 
 - Version (Settings page or APK file name, e.g. 1.0.0):
-- Platform: Android / iOS (including OS version):
+- Platform: Android (including OS version):
 - Feature: terminal / Agent chat / SFTP / remote screen / voice / other
 - Connection: SSH / Mosh
 - Agent and Bridge version (if relevant):
@@ -27,7 +27,7 @@ labels: bug
 ## Logs / screenshots
 
 <!--
-Terminal output, logcat (Android), the iOS termish-diag.log (in the app's temporary directory).
+Terminal output and Android logcat.
 Remove passwords, private keys, API keys, access tokens and any host details you do not want to make
 public. Report security vulnerabilities privately as described in SECURITY.md.
 -->

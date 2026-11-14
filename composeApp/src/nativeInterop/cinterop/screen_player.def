@@ -1,4 +1,0 @@
-headers = screen_player.h
-headerFilter = screen_player.h
-language = Objective-C
-linkerOpts = -framework AVFoundation -framework CoreMedia -framework VideoToolbox

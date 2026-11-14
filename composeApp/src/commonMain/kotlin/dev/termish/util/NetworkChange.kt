@@ -11,6 +11,6 @@ enum class NetworkChangeKind {
     DEFAULT_NETWORK_CHANGED,
 }
 
-/** A network change listener; returns a cancellation function. Currently a no-op on iOS. */
+/** A network change listener; returns a cancellation function. */
 @Composable
 expect fun observeNetworkChange(onChange: (NetworkChangeKind) -> Unit): () -> Unit
