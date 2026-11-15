@@ -1,6 +1,7 @@
 package dev.macodes.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -24,9 +25,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Workspaces
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -42,6 +43,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -64,6 +66,9 @@ import dev.macodes.data.AgentProviderType
 import dev.macodes.data.AppSettings
 import dev.macodes.data.AsrProvider
 import dev.macodes.data.AsrProviderType
+import dev.macodes.data.ConnectionLogEntry
+import dev.macodes.data.ConnectionLogEvent
+import dev.macodes.data.ConnectionLogProtocol
 import dev.macodes.data.ConnectionMode
 import dev.macodes.data.Host
 import dev.macodes.data.HostAuthMethod
@@ -113,9 +118,53 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 
-private enum class HomeTab { HOSTS, CONNECTIONS, SETTINGS }
+internal enum class HomeTab { WORKSPACE, CONNECTIONS, SETTINGS }
 
 private const val AGENT_IDLE_TIMEOUT_MS = 60_000L
+
+@Composable
+internal fun HomeBottomBar(
+    selectedTab: HomeTab,
+    activeSessionCount: Int,
+    badgeAlert: Boolean = false,
+    onSelectTab: (HomeTab) -> Unit,
+) {
+    val appStrings = LocalAppStrings.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .navigationBarsPadding()
+            .padding(vertical = Spacing.Xs),
+    ) {
+        HomeTabItem(
+            label = appStrings.appTabWorkspace,
+            icon = Icons.Default.Workspaces,
+            selected = selectedTab == HomeTab.WORKSPACE,
+            modifier = Modifier.weight(1f),
+        ) {
+            onSelectTab(HomeTab.WORKSPACE)
+        }
+        HomeTabItem(
+            label = appStrings.appTabConnections,
+            icon = Icons.Default.Terminal,
+            selected = selectedTab == HomeTab.CONNECTIONS,
+            modifier = Modifier.weight(1f),
+            badge = activeSessionCount,
+            badgeAlert = badgeAlert,
+        ) {
+            onSelectTab(HomeTab.CONNECTIONS)
+        }
+        HomeTabItem(
+            label = appStrings.appTabSettings,
+            icon = Icons.Default.Settings,
+            selected = selectedTab == HomeTab.SETTINGS,
+            modifier = Modifier.weight(1f),
+        ) {
+            onSelectTab(HomeTab.SETTINGS)
+        }
+    }
+}
 
 /** Termius-style bottom bar item: rounded pill indicator behind active icon + clean sans-serif label. */
 @Composable
@@ -464,6 +513,17 @@ fun AppRoot(repository: HostRepository) {
                         sessionManager.sftpSessions
                             .firstOrNull { it.host.id == host.id && it.session != null }
                     if (entry == null || entry.connectionToken !== connectionToken) return
+                    repository.appendConnectionLog(
+                        ConnectionLogEntry(
+                            id = newId(),
+                            hostLabel = host.name.ifBlank { host.hostname },
+                            endpoint = "${host.username}@${host.hostname}:${host.port}",
+                            protocol = ConnectionLogProtocol.SFTP,
+                            event = ConnectionLogEvent.DISCONNECTED,
+                            detail = reason.orEmpty(),
+                            timestamp = Clock.System.now().toEpochMilliseconds(),
+                        ),
+                    )
                     scope.launch {
                         TermLog.w("sftp") { "sftp closed ${host.name}: ${reason ?: "unknown"}" }
                         entry.uiState.disconnected = true
@@ -523,7 +583,35 @@ fun AppRoot(repository: HostRepository) {
                 privateKeyPem = key,
                 keepAliveSeconds = repository.loadSettings().keepaliveSeconds,
             )
-        val session = withContext(ioDispatcher()) { createSftpSession(conn, callbacks) }
+        val session =
+            try {
+                withContext(ioDispatcher()) { createSftpSession(conn, callbacks) }
+            } catch (e: Exception) {
+                if (e !is CancellationException) {
+                    repository.appendConnectionLog(
+                        ConnectionLogEntry(
+                            id = newId(),
+                            hostLabel = host.name.ifBlank { host.hostname },
+                            endpoint = "${host.username}@${host.hostname}:${host.port}",
+                            protocol = ConnectionLogProtocol.SFTP,
+                            event = ConnectionLogEvent.FAILED,
+                            detail = e.message.orEmpty(),
+                            timestamp = Clock.System.now().toEpochMilliseconds(),
+                        ),
+                    )
+                }
+                throw e
+            }
+        repository.appendConnectionLog(
+            ConnectionLogEntry(
+                id = newId(),
+                hostLabel = host.name.ifBlank { host.hostname },
+                endpoint = "${host.username}@${host.hostname}:${host.port}",
+                protocol = ConnectionLogProtocol.SFTP,
+                event = ConnectionLogEvent.CONNECTED,
+                timestamp = Clock.System.now().toEpochMilliseconds(),
+            ),
+        )
         TermLog.i("sftp") { "connected ${host.name} ${host.hostname}:${host.port}" }
         onEstablished(session, connectionToken)
     }
@@ -878,21 +966,26 @@ fun AppRoot(repository: HostRepository) {
         }
     }
 
-    // Global back stack: on the first-level screen, pop back to the actual source; on the second-level screen, back to settings; on the home screen, if not on the "Host" tab, switch to the "Host" tab.
-    // If a subpage fails to intercept Back, the root layer pops only one level; the target is no longer hardcoded to home.
-    var homeTab by remember { mutableStateOf(HomeTab.HOSTS) }
+    // Global back stack: on first-level screen, pop back to actual source; on second-level screen, back to Settings/Workspace hub; on home screen, return to Workspace tab.
+    var homeTab by remember { mutableStateOf(HomeTab.WORKSPACE) }
+    var workspaceSubPage by remember { mutableStateOf<WorkspaceSubPage?>(null) }
     var settingsSubPage by remember { mutableStateOf<SettingsSubPage?>(null) }
-    val homeHasBackTarget = screen == Screen.Home && (settingsSubPage != null || homeTab != HomeTab.HOSTS)
+    var workspaceRevision by remember { mutableIntStateOf(0) }
+    val homeHasBackTarget =
+        screen == Screen.Home &&
+            (settingsSubPage != null || workspaceSubPage != null || homeTab != HomeTab.WORKSPACE)
     PlatformBackHandler(enabled = navigation.canPop || homeHasBackTarget) {
         when {
             navigation.canPop -> navigateBack()
             settingsSubPage != null -> settingsSubPage = null
-            homeTab != HomeTab.HOSTS -> homeTab = HomeTab.HOSTS
+            workspaceSubPage != null -> workspaceSubPage = null
+            homeTab != HomeTab.WORKSPACE -> homeTab = HomeTab.WORKSPACE
         }
     }
 
     fun refreshHosts() {
         hosts = repository.listHosts()
+        workspaceRevision++
     }
 
     val terminalTheme = TerminalThemes.ALL.getOrElse(settings.terminalThemeIndex) { TerminalThemes.ALL[0] }
@@ -1014,44 +1107,16 @@ fun AppRoot(repository: HostRepository) {
                                 contentWindowInsets = WindowInsets(0, 0, 0, 0),
                                 bottomBar = {
                                     // In fullscreen mode, set subpages to open: the bottom tab is hidden (subpages are closed uniformly via the back button).
-                                    if (settingsSubPage == null) {
-                                        Row(
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                                                .navigationBarsPadding()
-                                                .padding(vertical = Spacing.Xs),
-                                        ) {
-                                            HomeTabItem(
-                                                label = appStrings.appTabHosts,
-                                                icon = Icons.Default.Dns,
-                                                selected = homeTab == HomeTab.HOSTS,
-                                                modifier = Modifier.weight(1f),
-                                            ) {
-                                                homeTab = HomeTab.HOSTS
-                                            }
-                                            HomeTabItem(
-                                                label = appStrings.appTabConnections,
-                                                icon = Icons.Default.Terminal,
-                                                selected = homeTab == HomeTab.CONNECTIONS,
-                                                modifier = Modifier.weight(1f),
-                                                badge = activeSessionCount,
-                                                badgeAlert =
-                                                    agentSessionItems.any {
-                                                        it.controller.pendingApprovals.isNotEmpty()
-                                                    },
-                                            ) {
-                                                homeTab = HomeTab.CONNECTIONS
-                                            }
-                                            HomeTabItem(
-                                                label = appStrings.appTabSettings,
-                                                icon = Icons.Default.Settings,
-                                                selected = homeTab == HomeTab.SETTINGS,
-                                                modifier = Modifier.weight(1f),
-                                            ) {
-                                                homeTab = HomeTab.SETTINGS
-                                            }
-                                        }
+                                    if (settingsSubPage == null && workspaceSubPage == null) {
+                                        HomeBottomBar(
+                                            selectedTab = homeTab,
+                                            activeSessionCount = activeSessionCount,
+                                            badgeAlert =
+                                                agentSessionItems.any {
+                                                    it.controller.pendingApprovals.isNotEmpty()
+                                                },
+                                            onSelectTab = { homeTab = it },
+                                        )
                                     }
                                 },
                             ) { padding ->
@@ -1062,95 +1127,177 @@ fun AppRoot(repository: HostRepository) {
                                         label = "home-tab-transition",
                                     ) { targetHomeTab ->
                                         when (targetHomeTab) {
-                                            HomeTab.HOSTS ->
-                                                HostListScreen(
-                                                    hosts = hosts,
-                                                    hostSessions =
-                                                        (
-                                                            sessionManager.sessions.map { HostSessionItem.Terminal(it) } +
-                                                                sessionManager.sftpSessions.map {
-                                                                    HostSessionItem.Sftp(
-                                                                        it.host,
-                                                                        it.session,
-                                                                        it.createdAt,
-                                                                    )
-                                                                } +
-                                                                agentSessionItems
-                                                        ).groupBy { it.hostId },
-                                                    onAdd = { navigate(Screen.Edit(null)) },
-                                                    onEdit = { navigate(Screen.Edit(it.id)) },
-                                                    onConnect = { host ->
-                                                        openHostTerminal(host, TerminalLaunchMode.SHELL)
-                                                    },
-                                                    onOpenHerdr = { host ->
-                                                        openHostTerminal(host, TerminalLaunchMode.HERDR)
-                                                    },
-                                                    onConnectBatch = { batch ->
-                                                        // Batch connection: Establish sessions one by one (run in the background) without redirecting to the terminal screen
-                                                        batch.forEach { host ->
-                                                            sessionManager.open(host, settings.autoReconnect) {
-                                                                hosts = repository.listHosts()
-                                                            }
-                                                        }
-                                                    },
-                                                    onDisconnect = { host ->
-                                                        // Disconnect all sessions from this host: Keep terminal connections open + release SFTP connections (same as “Close All”)
-                                                        sessionManager.closeAllForHost(host.id)
-                                                        agentControllerPool.remove(host.id)
-                                                    },
-                                                    onOpenSession = { controller ->
-                                                        // Tap the card = Connect to this host using the current configuration: Old sessions with changed configurations or credentials will not be reused,
-                                                        // Create a new session using the current configuration (previous sessions remain on the Connections page and can be manually closed or re-entered).
-                                                        if (controller.credentialKey !=
-                                                            sessionManager.signatureFor(controller.host)
-                                                        ) {
-                                                            val fresh =
-                                                                sessionManager.open(
-                                                                    controller.host,
-                                                                    settings.autoReconnect,
-                                                                    controller.launchMode,
-                                                                ) {
-                                                                    hosts = repository.listHosts()
+                                            HomeTab.WORKSPACE -> {
+                                                val credentialsCount =
+                                                    remember(workspaceRevision, workspaceSubPage, screen) {
+                                                        repository.listCredentials().size
+                                                    }
+                                                val snippetsCount =
+                                                    remember(workspaceRevision, workspaceSubPage, screen) {
+                                                        repository.listSnippets().size
+                                                    }
+                                                val knownHostsCount =
+                                                    remember(hosts, workspaceRevision, workspaceSubPage, screen) {
+                                                        repository.listKnownHosts().size
+                                                    }
+                                                val logsCount =
+                                                    remember(workspaceRevision, workspaceSubPage, screen) {
+                                                        repository.listConnectionLogs().size
+                                                    }
+                                                Box(Modifier.fillMaxSize()) {
+                                                    WorkspaceScreen(
+                                                        hostsCount = hosts.size,
+                                                        credentialsCount = credentialsCount,
+                                                        snippetsCount = snippetsCount,
+                                                        knownHostsCount = knownHostsCount,
+                                                        logsCount = logsCount,
+                                                        onOpenSub = { workspaceSubPage = it },
+                                                    )
+                                                    AnimatedVisibility(
+                                                        visible = workspaceSubPage == WorkspaceSubPage.HOSTS,
+                                                        enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(tween(240)),
+                                                        exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(tween(200)),
+                                                    ) {
+                                                        HostListScreen(
+                                                            hosts = hosts,
+                                                            hostSessions =
+                                                                (
+                                                                    sessionManager.sessions.map { HostSessionItem.Terminal(it) } +
+                                                                        sessionManager.sftpSessions.map {
+                                                                            HostSessionItem.Sftp(
+                                                                                it.host,
+                                                                                it.session,
+                                                                                it.createdAt,
+                                                                            )
+                                                                        } +
+                                                                        agentSessionItems
+                                                                ).groupBy { it.hostId },
+                                                            onAdd = { navigate(Screen.Edit(null)) },
+                                                            onEdit = { navigate(Screen.Edit(it.id)) },
+                                                            onConnect = { host ->
+                                                                openHostTerminal(host, TerminalLaunchMode.SHELL)
+                                                            },
+                                                            onOpenHerdr = { host ->
+                                                                openHostTerminal(host, TerminalLaunchMode.HERDR)
+                                                            },
+                                                            onConnectBatch = { batch ->
+                                                                // Batch connection: Establish sessions one by one (run in the background) without redirecting to the terminal screen
+                                                                batch.forEach { host ->
+                                                                    sessionManager.open(host, settings.autoReconnect) {
+                                                                        hosts = repository.listHosts()
+                                                                    }
                                                                 }
-                                                            pendingNavigate = fresh
-                                                        } else {
-                                                            currentTab = SessionTab.Terminal(controller)
-                                                            navigate(Screen.Terminal)
-                                                        }
-                                                    },
-                                                    onOpenSftp = { host, session ->
-                                                        // Use the entry's `uiState` (if available): re-enter without resetting the browser state/path
-                                                        val entry =
-                                                            sessionManager.sftpSessions.firstOrNull {
-                                                                it.host.id ==
-                                                                    host.id
-                                                            }
-                                                        currentTab =
-                                                            SessionTab.Sftp(host, session, entry?.uiState ?: SftpUiState())
-                                                        navigate(Screen.Terminal)
-                                                    },
-                                                    onStartSftp = { host -> connectSftp(host, null) },
-                                                    onCloseAllSessions = { host ->
-                                                        // Close all sessions on this host: Disconnect terminal session + Release SFTP connection
-                                                        sessionManager.closeAllForHost(host.id)
-                                                        agentControllerPool.remove(host.id)
-                                                    },
-                                                    onDelete = { host ->
-                                                        sessionManager.closeForHost(host.id)
-                                                        agentControllerPool.remove(host.id)
-                                                        SecretStore.delete(
-                                                            SECRET_SERVICE,
-                                                            secretAccountFor(host.id, "password"),
+                                                            },
+                                                            onDisconnect = { host ->
+                                                                // Disconnect all sessions from this host: Keep terminal connections open + release SFTP connections (same as “Close All”)
+                                                                sessionManager.closeAllForHost(host.id)
+                                                                agentControllerPool.remove(host.id)
+                                                            },
+                                                            onOpenSession = { controller ->
+                                                                // Tap the card = Connect to this host using the current configuration: Old sessions with changed configurations or credentials will not be reused,
+                                                                // Create a new session using the current configuration (previous sessions remain on the Connections page and can be manually closed or re-entered).
+                                                                if (controller.credentialKey !=
+                                                                    sessionManager.signatureFor(controller.host)
+                                                                ) {
+                                                                    val fresh =
+                                                                        sessionManager.open(
+                                                                            controller.host,
+                                                                            settings.autoReconnect,
+                                                                            controller.launchMode,
+                                                                        ) {
+                                                                            hosts = repository.listHosts()
+                                                                        }
+                                                                    pendingNavigate = fresh
+                                                                } else {
+                                                                    currentTab = SessionTab.Terminal(controller)
+                                                                    navigate(Screen.Terminal)
+                                                                }
+                                                            },
+                                                            onOpenSftp = { host, session ->
+                                                                // Use the entry's `uiState` (if available): re-enter without resetting the browser state/path
+                                                                val entry =
+                                                                    sessionManager.sftpSessions.firstOrNull {
+                                                                        it.host.id ==
+                                                                            host.id
+                                                                    }
+                                                                currentTab =
+                                                                    SessionTab.Sftp(host, session, entry?.uiState ?: SftpUiState())
+                                                                navigate(Screen.Terminal)
+                                                            },
+                                                            onStartSftp = { host -> connectSftp(host, null) },
+                                                            onCloseAllSessions = { host ->
+                                                                // Close all sessions on this host: Disconnect terminal session + Release SFTP connection
+                                                                sessionManager.closeAllForHost(host.id)
+                                                                agentControllerPool.remove(host.id)
+                                                            },
+                                                            onDelete = { host ->
+                                                                sessionManager.closeForHost(host.id)
+                                                                agentControllerPool.remove(host.id)
+                                                                SecretStore.delete(
+                                                                    SECRET_SERVICE,
+                                                                    secretAccountFor(host.id, "password"),
+                                                                )
+                                                                SecretStore.delete(
+                                                                    SECRET_SERVICE,
+                                                                    secretAccountFor(host.id, "privateKey"),
+                                                                )
+                                                                repository.deleteHost(host.id)
+                                                                refreshHosts()
+                                                            },
+                                                            onAgents = { host -> navigate(Screen.Agents(host.id)) },
+                                                            onBack = { workspaceSubPage = null },
                                                         )
-                                                        SecretStore.delete(
-                                                            SECRET_SERVICE,
-                                                            secretAccountFor(host.id, "privateKey"),
+                                                    }
+                                                    AnimatedVisibility(
+                                                        visible = workspaceSubPage == WorkspaceSubPage.KEYCHAIN,
+                                                        enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(tween(240)),
+                                                        exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(tween(200)),
+                                                    ) {
+                                                        KeychainScreen(
+                                                            repository = repository,
+                                                            hosts = hosts,
+                                                            onCredentialsChanged = { refreshHosts() },
+                                                            onBack = { workspaceSubPage = null },
                                                         )
-                                                        repository.deleteHost(host.id)
-                                                        refreshHosts()
-                                                    },
-                                                    onAgents = { host -> navigate(Screen.Agents(host.id)) },
-                                                )
+                                                    }
+                                                    AnimatedVisibility(
+                                                        visible = workspaceSubPage == WorkspaceSubPage.SNIPPETS,
+                                                        enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(tween(240)),
+                                                        exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(tween(200)),
+                                                    ) {
+                                                        SnippetManageScreen(
+                                                            repository = repository,
+                                                            onBack = {
+                                                                workspaceSubPage = null
+                                                                workspaceRevision++
+                                                            },
+                                                        )
+                                                    }
+                                                    AnimatedVisibility(
+                                                        visible = workspaceSubPage == WorkspaceSubPage.KNOWN_HOSTS,
+                                                        enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(tween(240)),
+                                                        exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(tween(200)),
+                                                    ) {
+                                                        KnownHostsScreen(
+                                                            repository = repository,
+                                                            hosts = hosts,
+                                                            onKnownHostsChanged = { refreshHosts() },
+                                                            onBack = { workspaceSubPage = null },
+                                                        )
+                                                    }
+                                                    AnimatedVisibility(
+                                                        visible = workspaceSubPage == WorkspaceSubPage.LOGS,
+                                                        enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(tween(240)),
+                                                        exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(tween(200)),
+                                                    ) {
+                                                        ConnectionLogsScreen(
+                                                            repository = repository,
+                                                            onLogsChanged = { workspaceRevision++ },
+                                                            onBack = { workspaceSubPage = null },
+                                                        )
+                                                    }
+                                                }
+                                            }
 
                                             HomeTab.CONNECTIONS ->
                                                 ConnectionsScreen(

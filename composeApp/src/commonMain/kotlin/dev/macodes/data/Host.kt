@@ -56,6 +56,8 @@ data class Host(
     val moshUdpPort: Int = 0,
     /** Custom remote mosh-server binary/command (`--server=COMMAND`); empty defaults to `mosh-server`. */
     val moshServerCommand: String = "",
+    /** Optional Keychain credential ID; when set, auth secrets resolve from Keychain first. */
+    val credentialId: String? = null,
 )
 
 @Serializable

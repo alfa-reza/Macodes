@@ -28,6 +28,8 @@ class HostRepository(
     private val settingsKey = "macodes.settings.v1"
     private val tagGroupsKey = "macodes.tag_groups.v1"
     private val snippetsKey = "macodes.snippets.v1"
+    private val credentialsKey = "macodes.keychain.v1"
+    private val connectionLogsKey = "macodes.connection_logs.v1"
     private val mutableAppSettings = MutableStateFlow(readSettings())
 
     /**
@@ -361,6 +363,156 @@ class HostRepository(
 
     private companion object {
         const val MAX_QUICK_CONNECT_HOST_KEYS = 100
+        const val MAX_CONNECTION_LOGS = 100
+    }
+
+    // ---------- Keychain Credentials (Global Library) ----------
+
+    fun listCredentials(): List<KeychainCredential> {
+        val raw = settings.getStringOrNull(credentialsKey) ?: return emptyList()
+        return try {
+            json
+                .decodeFromString<List<KeychainCredential>>(raw)
+                .sortedByDescending { it.updatedAt }
+        } catch (e: Exception) {
+            backupCorrupt(credentialsKey, raw)
+            emptyList()
+        }
+    }
+
+    fun getCredential(id: String): KeychainCredential? = listCredentials().firstOrNull { it.id == id }
+
+    fun upsertCredential(credential: KeychainCredential) {
+        withRepoLock(lock) {
+            val items = listCredentials().toMutableList()
+            val idx = items.indexOfFirst { it.id == credential.id }
+            if (idx >= 0) items[idx] = credential else items.add(0, credential)
+            settings.putString(credentialsKey, json.encodeToString(items))
+        }
+    }
+
+    fun deleteCredential(id: String) {
+        withRepoLock(lock) {
+            settings.putString(
+                credentialsKey,
+                json.encodeToString(listCredentials().filter { it.id != id }),
+            )
+            // Detach credential references from saved hosts without deleting the hosts themselves.
+            val before = listHosts()
+            val updated = before.map { h -> if (h.credentialId == id) h.copy(credentialId = null) else h }
+            if (updated != before) {
+                saveHosts(updated)
+            }
+        }
+    }
+
+    // ---------- Known Hosts (Saved Hosts + Quick Connect Fingerprints) ----------
+
+    data class KnownHostRecord(
+        val id: String,
+        val label: String,
+        val endpoint: String,
+        val fingerprint: String,
+        val isQuickConnect: Boolean,
+        val quickConnectKey: String? = null,
+    )
+
+    fun listKnownHosts(): List<KnownHostRecord> {
+        val saved =
+            listHosts().mapNotNull { host ->
+                val fp = host.knownHostFingerprint?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                KnownHostRecord(
+                    id = "host:${host.id}",
+                    label = host.name.ifBlank { host.hostname },
+                    endpoint = "${host.hostname}:${host.port}",
+                    fingerprint = fp,
+                    isQuickConnect = false,
+                )
+            }
+        val qcRaw = settings.getStringOrNull(quickConnectHostKeysKey)
+        val qcMap =
+            if (qcRaw == null) {
+                emptyMap()
+            } else {
+                try {
+                    json.decodeFromString<Map<String, String>>(qcRaw)
+                } catch (_: Exception) {
+                    emptyMap()
+                }
+            }
+        val quick =
+            qcMap.entries.map { (endpoint, fp) ->
+                KnownHostRecord(
+                    id = "qc:$endpoint",
+                    label = endpoint,
+                    endpoint = endpoint,
+                    fingerprint = fp,
+                    isQuickConnect = true,
+                    quickConnectKey = endpoint,
+                )
+            }
+        return saved + quick
+    }
+
+    fun forgetKnownHost(record: KnownHostRecord) {
+        withRepoLock(lock) {
+            if (record.isQuickConnect) {
+                val key = record.quickConnectKey ?: return@withRepoLock
+                val raw = settings.getStringOrNull(quickConnectHostKeysKey) ?: return@withRepoLock
+                val map =
+                    try {
+                        json.decodeFromString<Map<String, String>>(raw).toMutableMap()
+                    } catch (_: Exception) {
+                        return@withRepoLock
+                    }
+                if (map.remove(key) != null) {
+                    settings.putString(quickConnectHostKeysKey, json.encodeToString(map))
+                }
+            } else {
+                val hostId = record.id.removePrefix("host:")
+                val hosts = listHosts().map { h -> if (h.id == hostId) h.copy(knownHostFingerprint = null) else h }
+                saveHosts(hosts)
+            }
+        }
+    }
+
+    // ---------- Connection Logs ----------
+
+    fun listConnectionLogs(): List<ConnectionLogEntry> {
+        val raw = settings.getStringOrNull(connectionLogsKey) ?: return emptyList()
+        return try {
+            json
+                .decodeFromString<List<ConnectionLogEntry>>(raw)
+                .sortedByDescending { it.timestamp }
+        } catch (e: Exception) {
+            backupCorrupt(connectionLogsKey, raw)
+            emptyList()
+        }
+    }
+
+    fun appendConnectionLog(entry: ConnectionLogEntry) {
+        withRepoLock(lock) {
+            val updated = listConnectionLogs().toMutableList()
+            updated.add(0, entry)
+            settings.putString(
+                connectionLogsKey,
+                json.encodeToString(updated.take(MAX_CONNECTION_LOGS)),
+            )
+        }
+    }
+
+    fun clearConnectionLogs() {
+        withRepoLock(lock) {
+            settings.remove(connectionLogsKey)
+        }
+    }
+
+    fun deleteConnectionLogs(ids: Set<String>) {
+        if (ids.isEmpty()) return
+        withRepoLock(lock) {
+            val remaining = listConnectionLogs().filterNot { it.id in ids }
+            settings.putString(connectionLogsKey, json.encodeToString(remaining))
+        }
     }
 
     fun loadRecentSftpEntries(): List<RecentSftpEntry> {

@@ -1,6 +1,8 @@
 package dev.macodes.data
 
 import com.russhwolf.settings.MapSettings
+import dev.macodes.ui.formatConnectionLogTarget
+import dev.macodes.ui.formatDisplayEndpoint
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -239,5 +241,77 @@ class HostRepositoryTest {
 
         assertTrue(r.listSnippets().isEmpty())
         assertTrue(settings.keys.any { it.startsWith("macodes.snippets.v1.corrupt.") }, "损坏数据应备份")
+    }
+
+    @Test
+    fun credentialsCrudAndDeleteClearsHostReference() {
+        val r = repo()
+        val cred = KeychainCredential(id = "k1", name = "Prod Key", kind = CredentialKind.PRIVATE_KEY, usernameHint = "ubuntu", updatedAt = 10L)
+        r.upsertCredential(cred)
+        r.upsertHost(host(id = "h1").copy(credentialId = "k1"))
+        r.upsertHost(host(id = "h2").copy(credentialId = null))
+
+        assertEquals(listOf("k1"), r.listCredentials().map { it.id })
+        r.deleteCredential("k1")
+        assertTrue(r.listCredentials().isEmpty())
+        assertNull(r.getHost("h1")!!.credentialId)
+        assertNull(r.getHost("h2")!!.credentialId)
+    }
+
+    @Test
+    fun knownHostsMergesSavedAndQuickConnectAndForgetsBoth() {
+        val r = repo()
+        r.upsertHost(host(id = "h1", name = "Prod API").copy(hostname = "10.0.0.1", knownHostFingerprint = "SHA256:savedfp"))
+        r.recordQuickConnectFingerprint("192.168.1.50", 22, "SHA256:quickfp")
+
+        val list = r.listKnownHosts()
+        assertEquals(2, list.size)
+        val savedRec = list.first { !it.isQuickConnect }
+        val qcRec = list.first { it.isQuickConnect }
+        assertEquals("10.0.0.1:22", savedRec.endpoint)
+        assertEquals("SHA256:savedfp", savedRec.fingerprint)
+        assertEquals("SHA256:quickfp", qcRec.fingerprint)
+
+        r.forgetKnownHost(savedRec)
+        assertNull(r.getHost("h1")!!.knownHostFingerprint)
+        r.forgetKnownHost(qcRec)
+        assertNull(r.getQuickConnectFingerprint("192.168.1.50", 22))
+        assertTrue(r.listKnownHosts().isEmpty())
+    }
+
+    @Test
+    fun connectionLogsAppendCapAndClear() {
+        val r = repo()
+        repeat(105) { i ->
+            r.appendConnectionLog(
+                ConnectionLogEntry(
+                    id = "log-$i",
+                    hostLabel = "Host $i",
+                    endpoint = "root@10.0.0.$i:22",
+                    protocol = ConnectionLogProtocol.SSH,
+                    event = ConnectionLogEvent.CONNECTED,
+                    timestamp = i.toLong(),
+                ),
+            )
+        }
+        val logs = r.listConnectionLogs()
+        assertEquals(100, logs.size)
+        assertEquals(104L, logs.first().timestamp)
+
+        r.deleteConnectionLogs(setOf("log-104", "log-103"))
+        assertEquals(98, r.listConnectionLogs().size)
+        assertEquals(102L, r.listConnectionLogs().first().timestamp)
+
+        r.clearConnectionLogs()
+        assertTrue(r.listConnectionLogs().isEmpty())
+    }
+
+    @Test
+    fun formatsEndpointsAndLogTargetsWithoutRedundancy() {
+        assertEquals("10.0.1.20", formatDisplayEndpoint("10.0.1.20:22"))
+        assertEquals("10.0.1.20:2222", formatDisplayEndpoint("10.0.1.20:2222"))
+        assertEquals("ubuntu@10.0.1.20", formatConnectionLogTarget("Prod API", "ubuntu@10.0.1.20:22"))
+        assertNull(formatConnectionLogTarget("dev@10.0.0.5", "dev@10.0.0.5:22"))
+        assertEquals(":2222", formatConnectionLogTarget("dev@10.0.0.5", "dev@10.0.0.5:2222"))
     }
 }

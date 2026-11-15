@@ -1,6 +1,10 @@
 package dev.macodes.ui
 
+import dev.macodes.data.ConnectionLogEntry
+import dev.macodes.data.ConnectionLogEvent
+import dev.macodes.data.ConnectionLogProtocol
 import dev.macodes.data.ConnectionMode
+import dev.macodes.data.newId
 import dev.macodes.herdr.HerdrProbe
 import dev.macodes.mosh.MoshExitReason
 import dev.macodes.notify.NotificationCenter
@@ -262,6 +266,7 @@ internal class SessionConnector(
                     } else if (c.reconnectAttempts > 0) {
                         // All automatic attempts to reconnect failed: close the session and send a single notification only when the connection is finally exhausted.
                         c.status = ConnStatus.CLOSED
+                        logConnectionEvent(ConnectionLogProtocol.SSH, ConnectionLogEvent.FAILED, e.message.orEmpty())
                         TermLog.e("ssh") { "reconnect exhausted ${c.host.name} -> CLOSED" }
                         NotificationCenter.post(
                             NotificationEvent.RECONNECT_FAILED,
@@ -272,6 +277,7 @@ internal class SessionConnector(
                     } else {
                         // If there is a failure in the initial connection, display an error in the UI; do not enter the automatic reconnect loop.
                         c.status = ConnStatus.ERROR
+                        logConnectionEvent(ConnectionLogProtocol.SSH, ConnectionLogEvent.FAILED, e.message.orEmpty())
                     }
                 }
             }
@@ -494,6 +500,7 @@ internal class SessionConnector(
                 c.errorMessage = e.message
                 c.errorCode = (e as? SshException)?.code
                 c.stopKeepAlive()
+                logConnectionEvent(ConnectionLogProtocol.MOSH, ConnectionLogEvent.FAILED, e.message.orEmpty())
             }
         }
     }
@@ -839,6 +846,7 @@ internal class SessionConnector(
             return
         }
         c.status = ConnStatus.CONNECTED
+        logConnectionEvent(ConnectionLogProtocol.SSH, ConnectionLogEvent.CONNECTED)
         // Silent detection start point: Counting from the completion of the connection. MOTD has finished → Herdr injection after 250 ms;
         // Still processing → lastOutputAtMs is being continuously refreshed by the consumer loop; wait until it finishes processing before performing injection.
         c.lastOutputAtMs = c.nowMs()
@@ -951,13 +959,17 @@ internal class SessionConnector(
                 c.status = ConnStatus.CLOSED
                 // Session exceptions, timeouts, and other issues must be made visible (previously they were silently discarded,
                 // Users can only see “Disconnected” and do not know why)
-                moshExitMessage(reason)?.let { c.errorMessage = it }
+                val msg = moshExitMessage(reason)
+                msg?.let { c.errorMessage = it }
                 c.stopKeepAlive()
+                logConnectionEvent(ConnectionLogProtocol.MOSH, ConnectionLogEvent.DISCONNECTED, msg.orEmpty())
             }
         } else if (c.status == ConnStatus.CONNECTING) {
             c.status = ConnStatus.ERROR
-            c.errorMessage = moshExitMessage(reason) ?: strings().moshClientExited
+            val msg = moshExitMessage(reason) ?: strings().moshClientExited
+            c.errorMessage = msg
             c.stopKeepAlive()
+            logConnectionEvent(ConnectionLogProtocol.MOSH, ConnectionLogEvent.FAILED, msg)
         }
     }
 
@@ -988,6 +1000,7 @@ internal class SessionConnector(
         }
         c.status = ConnStatus.CONNECTED
         c.reconnectCount = 0
+        logConnectionEvent(ConnectionLogProtocol.MOSH, ConnectionLogEvent.CONNECTED)
         c.errorMessage = null
         c.errorCode = null
         c.linkLostSeconds = 0
@@ -1060,6 +1073,7 @@ internal class SessionConnector(
         c.status = ConnStatus.CLOSED
         c.stopKeepAlive()
         if (reason != null) c.errorMessage = reason
+        logConnectionEvent(ConnectionLogProtocol.SSH, ConnectionLogEvent.DISCONNECTED, reason.orEmpty())
         // Background Event Notification: Unexpected disconnection (without reconnect) reports CONNECTION_LOST;
         // Automatic reconnection attempts have exhausted all options but still resulted in failure, reporting RECONNECT_FAILED (user intervention required);
         // All include a “Reconnect” action (notification prompting the user to tap to reconnect using the hostId)
@@ -1168,6 +1182,24 @@ internal class SessionConnector(
             ConnStatus.CONNECTING, ConnStatus.AUTH -> {}
             else -> {}
         }
+    }
+
+    private fun logConnectionEvent(
+        protocol: ConnectionLogProtocol,
+        event: ConnectionLogEvent,
+        detail: String = "",
+    ) {
+        c.repository.appendConnectionLog(
+            ConnectionLogEntry(
+                id = newId(),
+                hostLabel = c.host.name.ifBlank { c.host.hostname },
+                endpoint = "${c.host.username}@${c.host.hostname}:${c.host.port}",
+                protocol = protocol,
+                event = event,
+                detail = detail,
+                timestamp = c.nowMs(),
+            ),
+        )
     }
 }
 

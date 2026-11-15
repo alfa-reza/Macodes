@@ -29,10 +29,41 @@ fun secretAccountFor(
     kind: String,
 ): String = "$hostId.$kind"
 
+fun keychainNamespaceFor(credentialId: String): String = "keychain.$credentialId"
+
+fun saveKeychainSecret(
+    credentialId: String,
+    kind: CredentialKind,
+    secret: String,
+) {
+    val ns = keychainNamespaceFor(credentialId)
+    when (kind) {
+        CredentialKind.PASSWORD -> {
+            SecretStore.set(SECRET_SERVICE, secretAccountFor(ns, "password"), secret)
+            SecretStore.delete(SECRET_SERVICE, secretAccountFor(ns, "privateKey"))
+        }
+        CredentialKind.PRIVATE_KEY -> {
+            SecretStore.set(SECRET_SERVICE, secretAccountFor(ns, "privateKey"), secret)
+            SecretStore.delete(SECRET_SERVICE, secretAccountFor(ns, "password"))
+        }
+    }
+}
+
+fun deleteKeychainSecret(credentialId: String) {
+    val ns = keychainNamespaceFor(credentialId)
+    SecretStore.delete(SECRET_SERVICE, secretAccountFor(ns, "password"))
+    SecretStore.delete(SECRET_SERVICE, secretAccountFor(ns, "privateKey"))
+}
+
 /** Parse the host authentication credentials from the platform's secure storage and return password / privateKey. */
 fun resolveCredentials(host: Host): Pair<String?, String?> {
-    val password = SecretStore.get(SECRET_SERVICE, secretAccountFor(host.id, "password"))
-    val privateKey = SecretStore.get(SECRET_SERVICE, secretAccountFor(host.id, "privateKey"))
+    val keychainNs = host.credentialId?.takeIf { it.isNotBlank() }?.let(::keychainNamespaceFor)
+    val password =
+        keychainNs?.let { SecretStore.get(SECRET_SERVICE, secretAccountFor(it, "password")) }
+            ?: SecretStore.get(SECRET_SERVICE, secretAccountFor(host.id, "password"))
+    val privateKey =
+        keychainNs?.let { SecretStore.get(SECRET_SERVICE, secretAccountFor(it, "privateKey")) }
+            ?: SecretStore.get(SECRET_SERVICE, secretAccountFor(host.id, "privateKey"))
     return when (host.authMethod) {
         HostAuthMethod.PASSWORD -> password to null
         HostAuthMethod.PRIVATE_KEY -> null to privateKey

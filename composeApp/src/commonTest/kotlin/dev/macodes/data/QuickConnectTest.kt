@@ -13,15 +13,20 @@ import dev.macodes.ui.buildQuickConnectSuggestions
 import dev.macodes.ui.createWizardState
 import dev.macodes.ui.extractTerminalPreviewText
 import dev.macodes.ui.formatQuickConnectConnectionError
+import dev.macodes.ui.formatQuickConnectHistoryMeta
 import dev.macodes.ui.formatQuickConnectHistorySubtitle
 import dev.macodes.ui.formatQuickConnectParseError
+import dev.macodes.ui.formatSessionCreatedAt
 import dev.macodes.ui.retreatQuickConnectWizard
+import dev.macodes.ui.splitSessionTimestamp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.datetime.Instant
+import kotlinx.datetime.TimeZone
 
 class QuickConnectTest {
     private val strings = appStringsFor("en").quickConnect
@@ -457,5 +462,56 @@ class QuickConnectTest {
         val remaining = repo.listQuickConnectHistory()
         assertEquals(1, remaining.size)
         assertFalse(remaining[0].openSftp)
+    }
+
+    @Test
+    fun formatsHistoryRowMetaAndAdaptiveTimestamps() {
+        val en = appStringsFor("en")
+        val zh = appStringsFor("zh")
+        val ssh = QuickConnectHistoryEntry(ConnectionMode.SSH, "192.168.0.10", 22, username = "ubuntu", lastConnectedAt = 0L)
+        val mosh =
+            QuickConnectHistoryEntry(
+                ConnectionMode.MOSH,
+                "10.0.0.25",
+                2222,
+                moshUdpPort = 60001,
+                username = "deploy",
+                lastConnectedAt = 0L,
+            )
+        val sftp =
+            QuickConnectHistoryEntry(
+                ConnectionMode.SSH,
+                "files.prod.internal",
+                22,
+                username = "backup",
+                lastConnectedAt = 0L,
+                openSftp = true,
+            )
+
+        assertEquals("SSH · Port 22", formatQuickConnectHistoryMeta(ssh, en.quickConnect))
+        assertEquals("MOSH · Port 2222", formatQuickConnectHistoryMeta(mosh, en.quickConnect))
+        assertEquals("SFTP · Port 22", formatQuickConnectHistoryMeta(sftp, en.quickConnect))
+
+        val tz = TimeZone.UTC
+        val now = Instant.parse("2026-11-15T18:00:00Z")
+        val todayMs = Instant.parse("2026-11-15T16:20:00Z").toEpochMilliseconds()
+        val yesterdayMs = Instant.parse("2026-11-14T10:26:00Z").toEpochMilliseconds()
+        val sameYearMs = Instant.parse("2026-11-12T08:15:00Z").toEpochMilliseconds()
+        val prevYearMs = Instant.parse("2025-11-14T21:30:00Z").toEpochMilliseconds()
+
+        assertEquals("Today · 16:20", formatSessionCreatedAt(todayMs, en.workspace, tz, now))
+        assertEquals("Yesterday · 10:26", formatSessionCreatedAt(yesterdayMs, en.workspace, tz, now))
+        assertEquals("12 Nov · 08:15", formatSessionCreatedAt(sameYearMs, en.workspace, tz, now))
+        assertEquals("14 Nov 2025 · 21:30", formatSessionCreatedAt(prevYearMs, en.workspace, tz, now))
+
+        val split = splitSessionTimestamp(sameYearMs, en.workspace, tz, now)
+        assertEquals("12 Nov", split.dateLabel)
+        assertEquals("08:15", split.timeLabel)
+
+        assertEquals("今天 · 16:20", formatSessionCreatedAt(todayMs, zh.workspace, tz, now))
+        assertEquals("昨天 · 10:26", formatSessionCreatedAt(yesterdayMs, zh.workspace, tz, now))
+        assertEquals("11月12日 · 08:15", formatSessionCreatedAt(sameYearMs, zh.workspace, tz, now))
+        assertEquals("2025年11月14日 · 21:30", formatSessionCreatedAt(prevYearMs, zh.workspace, tz, now))
+        assertEquals("--:--", formatSessionCreatedAt(0L, en.workspace, tz, now))
     }
 }

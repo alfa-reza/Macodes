@@ -74,6 +74,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.macodes.data.ConnectionMode
+import dev.macodes.data.CredentialKind
 import dev.macodes.data.Host
 import dev.macodes.data.HostAuthMethod
 import dev.macodes.data.HostRepository
@@ -97,6 +98,8 @@ fun HostEditScreen(
     var port by remember { mutableStateOf((existing?.port ?: 22).toString()) }
     var username by remember { mutableStateOf(existing?.username ?: "root") }
     var authMethod by remember { mutableStateOf(existing?.authMethod ?: HostAuthMethod.PASSWORD) }
+    val credentials = remember(repository) { repository.listCredentials() }
+    var credentialId by remember { mutableStateOf(existing?.credentialId?.takeIf { id -> credentials.any { it.id == id } }) }
     var connectionMode by remember { mutableStateOf(existing?.connectionMode ?: ConnectionMode.SSH) }
     var password by remember { mutableStateOf("") }
     var privateKey by remember { mutableStateOf("") }
@@ -142,6 +145,7 @@ fun HostEditScreen(
                                 startupCommand = startupCommand.trim(),
                                 moshThemeSync = moshThemeSync,
                                 moshUdpPort = moshUdpPort.toIntOrNull()?.takeIf { it in 1024..65535 } ?: 0,
+                                credentialId = credentialId,
                             )
                         onSave(host, password, privateKey)
                     }) { Text(s.editSave) }
@@ -258,50 +262,90 @@ fun HostEditScreen(
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    @OptIn(ExperimentalLayoutApi::class)
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
-                        verticalArrangement = Arrangement.spacedBy(Spacing.Xs),
-                    ) {
-                        FilterChip(
-                            selected = authMethod == HostAuthMethod.PASSWORD,
-                            onClick = { authMethod = HostAuthMethod.PASSWORD },
-                            label = { Text(s.editAuthPassword) },
-                            colors = chipColors,
+                    if (credentials.isNotEmpty()) {
+                        Text(
+                            s.workspace.keychainHostPickerLabel,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        FilterChip(
-                            selected = authMethod == HostAuthMethod.PRIVATE_KEY,
-                            onClick = { authMethod = HostAuthMethod.PRIVATE_KEY },
-                            label = { Text(s.editAuthKey) },
-                            colors = chipColors,
-                        )
-                        FilterChip(
-                            selected = authMethod == HostAuthMethod.KEY_OR_PASSWORD,
-                            onClick = { authMethod = HostAuthMethod.KEY_OR_PASSWORD },
-                            label = { Text(s.editAuthKeyOrPassword) },
-                            colors = chipColors,
-                        )
+                        @OptIn(ExperimentalLayoutApi::class)
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.Xs),
+                        ) {
+                            FilterChip(
+                                selected = credentialId == null,
+                                onClick = { credentialId = null },
+                                label = { Text(s.workspace.keychainHostCustomOption) },
+                                colors = chipColors,
+                            )
+                            credentials.forEach { cred ->
+                                FilterChip(
+                                    selected = credentialId == cred.id,
+                                    onClick = {
+                                        credentialId = cred.id
+                                        authMethod =
+                                            if (cred.kind == CredentialKind.PRIVATE_KEY) {
+                                                HostAuthMethod.PRIVATE_KEY
+                                            } else {
+                                                HostAuthMethod.PASSWORD
+                                            }
+                                        if ((username.isBlank() || username == "root") && cred.usernameHint.isNotBlank()) {
+                                            username = cred.usernameHint
+                                        }
+                                    },
+                                    label = { Text(cred.name) },
+                                    colors = chipColors,
+                                )
+                            }
+                        }
                     }
-                    if (authMethod != HostAuthMethod.PRIVATE_KEY) {
-                        OutlinedTextField(
-                            password,
-                            { password = it },
-                            Modifier.fillMaxWidth(),
-                            label = { Text(if (existing == null) s.editPassword else s.editPasswordKeep) },
-                            visualTransformation = PasswordVisualTransformation(),
-                            singleLine = true,
-                            shape = fieldShape,
-                        )
-                    }
-                    if (authMethod != HostAuthMethod.PASSWORD) {
-                        OutlinedTextField(
-                            privateKey,
-                            { privateKey = it },
-                            Modifier.fillMaxWidth(),
-                            label = { Text(if (existing == null) s.editPrivateKey else s.editPrivateKeyKeep) },
-                            minLines = 3,
-                            shape = fieldShape,
-                        )
+                    if (credentialId == null) {
+                        @OptIn(ExperimentalLayoutApi::class)
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.Xs),
+                        ) {
+                            FilterChip(
+                                selected = authMethod == HostAuthMethod.PASSWORD,
+                                onClick = { authMethod = HostAuthMethod.PASSWORD },
+                                label = { Text(s.editAuthPassword) },
+                                colors = chipColors,
+                            )
+                            FilterChip(
+                                selected = authMethod == HostAuthMethod.PRIVATE_KEY,
+                                onClick = { authMethod = HostAuthMethod.PRIVATE_KEY },
+                                label = { Text(s.editAuthKey) },
+                                colors = chipColors,
+                            )
+                            FilterChip(
+                                selected = authMethod == HostAuthMethod.KEY_OR_PASSWORD,
+                                onClick = { authMethod = HostAuthMethod.KEY_OR_PASSWORD },
+                                label = { Text(s.editAuthKeyOrPassword) },
+                                colors = chipColors,
+                            )
+                        }
+                        if (authMethod != HostAuthMethod.PRIVATE_KEY) {
+                            OutlinedTextField(
+                                password,
+                                { password = it },
+                                Modifier.fillMaxWidth(),
+                                label = { Text(if (existing == null) s.editPassword else s.editPasswordKeep) },
+                                visualTransformation = PasswordVisualTransformation(),
+                                singleLine = true,
+                                shape = fieldShape,
+                            )
+                        }
+                        if (authMethod != HostAuthMethod.PASSWORD) {
+                            OutlinedTextField(
+                                privateKey,
+                                { privateKey = it },
+                                Modifier.fillMaxWidth(),
+                                label = { Text(if (existing == null) s.editPrivateKey else s.editPrivateKeyKeep) },
+                                minLines = 3,
+                                shape = fieldShape,
+                            )
+                        }
                     }
                 }
             }

@@ -16,6 +16,7 @@ import androidx.compose.ui.text.intl.Locale
 data class AppStrings(
     // 底栏
     val appTabHosts: String,
+    val appTabWorkspace: String,
     val appTabConnections: String,
     val appTabSettings: String,
     // 主机列表
@@ -317,6 +318,97 @@ data class AppStrings(
     val sftpExt: SftpExtStrings,
     // Smart Quick Connect (Connections tab)
     val quickConnect: QuickConnectStrings,
+    // Workspace hub & sub-screens
+    val workspace: WorkspaceStrings,
+)
+
+@Immutable
+data class WorkspaceStrings(
+    val title: String,
+    val subtitle: String,
+    val hostsTitle: String,
+    val hostsSubtitle: String,
+    val keychainTitle: String,
+    val keychainSubtitle: String,
+    val snippetsTitle: String,
+    val snippetsSubtitle: String,
+    val knownHostsTitle: String,
+    val knownHostsSubtitle: String,
+    val logsTitle: String,
+    val logsSubtitle: String,
+    val keychainAdd: String,
+    val keychainEdit: String,
+    val keychainSearch: String,
+    val keychainEmpty: String,
+    val keychainNoMatch: String,
+    val keychainNameLabel: String,
+    val keychainTypeLabel: String,
+    val keychainKindKey: String,
+    val keychainKindPassword: String,
+    val keychainUsernameHintLabel: String,
+    val keychainSecretKeyLabel: String,
+    val keychainSecretPasswordLabel: String,
+    val keychainSecretKeepHint: String,
+    val keychainUsedByCount: (Int) -> String,
+    val keychainUnused: String,
+    val keychainDeleteConfirm: (String, Int) -> String,
+    val keychainDeleteSelectedConfirm: (Int) -> String,
+    val keychainNewSshKey: String,
+    val keychainNewPassword: String,
+    val keychainModePaste: String,
+    val keychainModeImport: String,
+    val keychainModeGenerate: String,
+    val keychainGenerateAction: String,
+    val keychainRegenerateAction: String,
+    val keychainImportAction: String,
+    val keychainImportedFileLabel: (String) -> String,
+    val keychainImportTooLarge: String,
+    val keychainImportFailed: String,
+    val keychainPublicKeyLabel: String,
+    val keychainPublicKeyCopied: String,
+    val keychainHostPickerLabel: String,
+    val keychainHostCustomOption: String,
+    val knownHostsSearch: String,
+    val knownHostsEmpty: String,
+    val knownHostsNoMatch: String,
+    val knownHostsCopyAction: String,
+    val knownHostsCopiedMessage: String,
+    val knownHostsForgetAction: String,
+    val knownHostsForgetConfirm: (String) -> String,
+    val knownHostsForgetSelectedConfirm: (Int) -> String,
+    val knownHostDetailAddress: String,
+    val knownHostDetailPublicKey: String,
+    val knownHostDetailHosts: String,
+    val knownHostDetailAddressCopied: String,
+    val actionInspect: String,
+    val actionSelect: String,
+    val actionRemove: String,
+    val connRemoveHistoryConfirm: (String) -> String,
+    val connRemoveSelectedHistoryConfirm: (Int) -> String,
+    val connClearHistoryConfirm: String,
+    val logsSearch: String,
+    val logsEmpty: String,
+    val logsNoMatch: String,
+    val logsClearAction: String,
+    val logsClearConfirm: String,
+    val logsDeleteSelectedConfirm: (Int) -> String,
+    val logsFilterAll: String,
+    val logsFilterFailed: String,
+    val logsEventConnected: String,
+    val logsEventDisconnected: String,
+    val logsEventFailed: String,
+    val logsDetailTitle: String,
+    val logsDetailTarget: String,
+    val logsDetailProtocol: String,
+    val logsDetailStatus: String,
+    val logsDetailTime: String,
+    val logsDetailError: String,
+    val logsCopyAction: String,
+    val logsCopiedMessage: String,
+    val dateToday: String,
+    val dateYesterday: String,
+    val formatMonthDay: (day: Int, monthNumber: Int, year: Int?) -> String,
+    val sessionCount: (Int) -> String,
 )
 
 @Immutable
@@ -794,9 +886,22 @@ fun appStringsFor(language: String): AppStrings =
             }
     }
 
+private val EnShortMonths =
+    listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+internal fun formatEnglishMonthDay(
+    day: Int,
+    monthNumber: Int,
+    year: Int? = null,
+): String {
+    val month = EnShortMonths.getOrElse(monthNumber - 1) { monthNumber.toString() }
+    return if (year == null) "$day $month" else "$day $month $year"
+}
+
 private val EnStrings =
     AppStrings(
         appTabHosts = "Hosts",
+        appTabWorkspace = "Workspace",
         appTabConnections = "Connections",
         appTabSettings = "Settings",
         hostsAdd = "Add host",
@@ -1363,7 +1468,7 @@ private val EnStrings =
         quickConnect =
             QuickConnectStrings(
                 title = "Quick Connect",
-                inputPlaceholder = "Host, user@host, or ssh/mosh command",
+                inputPlaceholder = "Host or user@host",
                 connectAction = "Connect",
                 continueAction = "Continue",
                 backAction = "Back",
@@ -1438,11 +1543,116 @@ private val EnStrings =
                 sftpPill = "SFTP",
                 stepPasswordSftpSubtitle = "Enter your password to open SFTP.",
             ),
+        workspace =
+            WorkspaceStrings(
+                title = "Workspace",
+                subtitle = "Local vault for infrastructure, credentials, and activity",
+                hostsTitle = "Hosts",
+                hostsSubtitle = "Saved servers and connection profiles",
+                keychainTitle = "Keychain",
+                keychainSubtitle = "Reusable SSH keys and passwords",
+                snippetsTitle = "Snippets",
+                snippetsSubtitle = "Reusable commands and shell scripts",
+                knownHostsTitle = "Known Hosts",
+                knownHostsSubtitle = "Trusted server key fingerprints",
+                logsTitle = "Logs",
+                logsSubtitle = "Connection and session history",
+                keychainAdd = "Add credential",
+                keychainEdit = "Edit credential",
+                keychainSearch = "Search credentials or username",
+                keychainEmpty = "No saved credentials yet.\nTap + to store an SSH key or password for your hosts.",
+                keychainNoMatch = "No matching credentials",
+                keychainNameLabel = "Label",
+                keychainTypeLabel = "Credential type",
+                keychainKindKey = "SSH Key",
+                keychainKindPassword = "Password",
+                keychainUsernameHintLabel = "Default username (optional)",
+                keychainSecretKeyLabel = "Private key (OpenSSH / PEM)",
+                keychainSecretPasswordLabel = "Password",
+                keychainSecretKeepHint = "Leave blank to keep saved secret",
+                keychainUsedByCount = { n -> "Linked to $n host${if (n == 1) "" else "s"}" },
+                keychainUnused = "Unused",
+                keychainDeleteConfirm = { name, count ->
+                    if (count > 0) {
+                        "Remove \"$name\"? $count host(s) using it will revert to per-host credentials."
+                    } else {
+                        "Remove \"$name\" from Keychain?"
+                    }
+                },
+                keychainDeleteSelectedConfirm = { n ->
+                    "Remove $n selected credential${if (n == 1) "" else "s"}? Linked hosts will revert to per-host credentials."
+                },
+                keychainNewSshKey = "New SSH key",
+                keychainNewPassword = "New password",
+                keychainModePaste = "Paste",
+                keychainModeImport = "Import file",
+                keychainModeGenerate = "Generate",
+                keychainGenerateAction = "Generate Ed25519 key",
+                keychainRegenerateAction = "Regenerate key",
+                keychainImportAction = "Choose key file",
+                keychainImportedFileLabel = { name -> "Loaded: $name" },
+                keychainImportTooLarge = "Selected file is too large for an SSH key.",
+                keychainImportFailed = "Could not read selected key file.",
+                keychainPublicKeyLabel = "Public key (add to ~/.ssh/authorized_keys)",
+                keychainPublicKeyCopied = "Public key copied",
+                keychainHostPickerLabel = "Keychain credential",
+                keychainHostCustomOption = "Per-host (custom)",
+                knownHostsSearch = "Search host or fingerprint",
+                knownHostsEmpty = "No trusted host keys yet.\nServer fingerprints appear here after you trust them.",
+                knownHostsNoMatch = "No matching known hosts",
+                knownHostsCopyAction = "Copy fingerprint",
+                knownHostsCopiedMessage = "Fingerprint copied",
+                knownHostsForgetAction = "Remove",
+                knownHostsForgetConfirm = { endpoint ->
+                    "Remove trusted host key for $endpoint? You will be prompted to verify it on next connection."
+                },
+                knownHostsForgetSelectedConfirm = { n ->
+                    "Remove $n selected trusted host key${if (n == 1) "" else "s"}? You will be prompted to verify them on next connection."
+                },
+                knownHostDetailAddress = "Address",
+                knownHostDetailPublicKey = "Public key",
+                knownHostDetailHosts = "Hosts",
+                knownHostDetailAddressCopied = "Address copied",
+                actionInspect = "Inspect",
+                actionSelect = "Select",
+                actionRemove = "Remove",
+                connRemoveHistoryConfirm = { target -> "Remove $target from recent connections?" },
+                connRemoveSelectedHistoryConfirm = { n ->
+                    "Remove $n selected recent connection${if (n == 1) "" else "s"}?"
+                },
+                connClearHistoryConfirm = "Clear all recent connections?",
+                logsSearch = "Search host, endpoint, or detail",
+                logsEmpty = "No connection events recorded yet.",
+                logsNoMatch = "No matching log entries",
+                logsClearAction = "Clear all",
+                logsClearConfirm = "Clear all recorded connection logs?",
+                logsDeleteSelectedConfirm = { n ->
+                    "Remove $n selected log entr${if (n == 1) "y" else "ies"}?"
+                },
+                logsFilterAll = "All",
+                logsFilterFailed = "Failed",
+                logsEventConnected = "Succeeded",
+                logsEventDisconnected = "Ended",
+                logsEventFailed = "Failed",
+                logsDetailTitle = "Connection log",
+                logsDetailTarget = "Target",
+                logsDetailProtocol = "Protocol",
+                logsDetailStatus = "Status",
+                logsDetailTime = "Time",
+                logsDetailError = "Details",
+                logsCopyAction = "Copy details",
+                logsCopiedMessage = "Copied",
+                dateToday = "Today",
+                dateYesterday = "Yesterday",
+                formatMonthDay = ::formatEnglishMonthDay,
+                sessionCount = { n -> if (n == 1) "1 session" else "$n sessions" },
+            ),
     )
 
 private val ZhStrings =
     AppStrings(
         appTabHosts = "主机",
+        appTabWorkspace = "工作区",
         appTabConnections = "连接",
         appTabSettings = "设置",
         hostsAdd = "添加主机",
@@ -2002,7 +2212,7 @@ private val ZhStrings =
         quickConnect =
             QuickConnectStrings(
                 title = "快速连接",
-                inputPlaceholder = "输入主机、user@host 或 ssh/mosh 命令",
+                inputPlaceholder = "主机或 user@host",
                 connectAction = "连接",
                 continueAction = "继续",
                 backAction = "上一步",
@@ -2076,5 +2286,107 @@ private val ZhStrings =
                 moshSshPortTag = { port -> "SSH $port" },
                 sftpPill = "SFTP",
                 stepPasswordSftpSubtitle = "输入密码以打开 SFTP。",
+            ),
+        workspace =
+            WorkspaceStrings(
+                title = "工作区",
+                subtitle = "本地主机、凭据、命令片段、信任指纹与连接记录",
+                hostsTitle = "主机",
+                hostsSubtitle = "已保存服务器与连接配置",
+                keychainTitle = "钥匙串",
+                keychainSubtitle = "可复用的 SSH 私钥与密码凭据",
+                snippetsTitle = "命令片段",
+                snippetsSubtitle = "可复用的常用命令与脚本",
+                knownHostsTitle = "已知主机",
+                knownHostsSubtitle = "已信任的服务器公钥指纹",
+                logsTitle = "连接日志",
+                logsSubtitle = "连接与会话历史",
+                keychainAdd = "添加凭据",
+                keychainEdit = "编辑凭据",
+                keychainSearch = "搜索凭据名称或用户名",
+                keychainEmpty = "还没有保存的凭据。\n点击右下角 + 添加可跨主机复用的私钥或密码。",
+                keychainNoMatch = "没有匹配的凭据",
+                keychainNameLabel = "名称",
+                keychainTypeLabel = "凭据类型",
+                keychainKindKey = "SSH 私钥",
+                keychainKindPassword = "密码",
+                keychainUsernameHintLabel = "默认用户名（可选）",
+                keychainSecretKeyLabel = "私钥内容（OpenSSH / PEM）",
+                keychainSecretPasswordLabel = "密码",
+                keychainSecretKeepHint = "留空以保留已保存的密钥/密码",
+                keychainUsedByCount = { n -> "已关联 $n 台主机" },
+                keychainUnused = "未使用",
+                keychainDeleteConfirm = { name, count ->
+                    if (count > 0) {
+                        "移除“$name”？关联该凭据的 $count 台主机将切回主机独立凭据。"
+                    } else {
+                        "从钥匙串移除“$name”？"
+                    }
+                },
+                keychainDeleteSelectedConfirm = { n ->
+                    "移除所选的 $n 项凭据？关联主机将切回主机独立凭据。"
+                },
+                keychainNewSshKey = "新建 SSH 密钥",
+                keychainNewPassword = "新建密码",
+                keychainModePaste = "粘贴",
+                keychainModeImport = "导入文件",
+                keychainModeGenerate = "生成密钥",
+                keychainGenerateAction = "生成 Ed25519 密钥",
+                keychainRegenerateAction = "重新生成密钥",
+                keychainImportAction = "选择密钥文件",
+                keychainImportedFileLabel = { name -> "已加载：$name" },
+                keychainImportTooLarge = "所选文件过大，无法作为 SSH 密钥读取。",
+                keychainImportFailed = "无法读取所选密钥文件。",
+                keychainPublicKeyLabel = "公钥（添加到服务器 ~/.ssh/authorized_keys）",
+                keychainPublicKeyCopied = "已复制公钥",
+                keychainHostPickerLabel = "钥匙串凭据",
+                keychainHostCustomOption = "独立凭据（仅此主机）",
+                knownHostsSearch = "搜索主机地址或指纹",
+                knownHostsEmpty = "还没有已信任的主机指纹。\n首次确认服务器身份后会记录在此处。",
+                knownHostsNoMatch = "没有匹配的已知主机",
+                knownHostsCopyAction = "复制指纹",
+                knownHostsCopiedMessage = "已复制指纹",
+                knownHostsForgetAction = "移除",
+                knownHostsForgetConfirm = { endpoint ->
+                    "移除 $endpoint 的已信任公钥指纹？下次连接将重新提示确认。"
+                },
+                knownHostsForgetSelectedConfirm = { n ->
+                    "移除所选的 $n 条已信任主机指纹？下次连接将重新提示确认。"
+                },
+                knownHostDetailAddress = "地址",
+                knownHostDetailPublicKey = "公钥",
+                knownHostDetailHosts = "关联主机",
+                knownHostDetailAddressCopied = "已复制地址",
+                actionInspect = "查看详情",
+                actionSelect = "选择",
+                actionRemove = "移除",
+                connRemoveHistoryConfirm = { target -> "从最近连接中移除 $target？" },
+                connRemoveSelectedHistoryConfirm = { n -> "移除所选的 $n 条最近连接？" },
+                connClearHistoryConfirm = "确定清空全部最近连接记录？",
+                logsSearch = "搜索主机、地址或错误详情",
+                logsEmpty = "暂无连接记录。",
+                logsNoMatch = "没有匹配的日志记录",
+                logsClearAction = "清空全部",
+                logsClearConfirm = "确定清空全部连接日志？",
+                logsDeleteSelectedConfirm = { n -> "移除所选的 $n 条连接日志？" },
+                logsFilterAll = "全部",
+                logsFilterFailed = "失败",
+                logsEventConnected = "连接成功",
+                logsEventDisconnected = "会话结束",
+                logsEventFailed = "连接失败",
+                logsDetailTitle = "连接日志详情",
+                logsDetailTarget = "目标主机",
+                logsDetailProtocol = "协议",
+                logsDetailStatus = "状态",
+                logsDetailTime = "时间",
+                logsDetailError = "详细信息",
+                logsCopyAction = "复制详情",
+                logsCopiedMessage = "已复制",
+                dateToday = "今天",
+                dateYesterday = "昨天",
+                formatMonthDay = { day, monthNumber, year ->
+                    if (year == null) "${monthNumber}月${day}日" else "${year}年${monthNumber}月${day}日"
+                },
+                sessionCount = { n -> "$n 个会话" },
             ),
     )

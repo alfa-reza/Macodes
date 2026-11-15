@@ -7,9 +7,11 @@ import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
@@ -31,6 +33,15 @@ import dev.macodes.ui.theme.Spacing
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertTrue
+import kotlinx.datetime.Clock
+import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.minus
+import kotlinx.datetime.toInstant
+import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.PreviewContextConfigurationEffect
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -41,10 +52,25 @@ import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(application = MacodesApplication::class, sdk = [34], qualifiers = "w390dp-h844dp-xxhdpi")
+@Config(application = MacodesApplication::class, sdk = [34], qualifiers = "w412dp-h915dp-420dpi")
 class QuickConnectScreenshotTest {
     @Test
     fun renderQuickConnectScreensAndVerifyLayout() {
+        val tz = TimeZone.currentSystemDefault()
+        val today =
+            Clock.System
+                .now()
+                .toLocalDateTime(tz)
+                .date
+        val yesterday = today.minus(DatePeriod(days = 1))
+        val prevYearDate = LocalDate(today.year - 1, 11, 14)
+
+        fun at(
+            date: LocalDate,
+            hour: Int,
+            minute: Int,
+        ): Long = LocalDateTime(date, LocalTime(hour, minute)).toInstant(tz).toEpochMilliseconds()
+
         val sampleHistory =
             listOf(
                 QuickConnectHistoryEntry(
@@ -52,7 +78,7 @@ class QuickConnectScreenshotTest {
                     host = "192.168.0.10",
                     port = 22,
                     username = "ubuntu",
-                    lastConnectedAt = 1_731_580_000_000L,
+                    lastConnectedAt = at(today, 10, 26),
                     system = "ubuntu",
                 ),
                 QuickConnectHistoryEntry(
@@ -62,7 +88,7 @@ class QuickConnectScreenshotTest {
                     moshUdpPort = 60001,
                     moshServerCommand = "/opt/homebrew/bin/mosh-server",
                     username = "deploy",
-                    lastConnectedAt = 1_731_575_000_000L,
+                    lastConnectedAt = at(yesterday, 9, 3),
                     system = "debian",
                 ),
                 QuickConnectHistoryEntry(
@@ -70,7 +96,7 @@ class QuickConnectScreenshotTest {
                     host = "files.prod.internal",
                     port = 22,
                     username = "backup",
-                    lastConnectedAt = 1_731_570_000_000L,
+                    lastConnectedAt = at(prevYearDate, 7, 40),
                     system = "alpine",
                     openSftp = true,
                 ),
@@ -186,12 +212,25 @@ class QuickConnectScreenshotTest {
             ) {
                 PreviewContextConfigurationEffect()
                 Box(modifier = Modifier.fillMaxSize()) {
-                    ConnectionsScreen(
-                        sessions = sessions,
-                        history = history,
-                        onOpen = {},
-                        onClose = {},
-                    )
+                    Scaffold(
+                        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                        bottomBar = {
+                            HomeBottomBar(
+                                selectedTab = HomeTab.CONNECTIONS,
+                                activeSessionCount = sessions.count { it.isActive },
+                                onSelectTab = {},
+                            )
+                        },
+                    ) { padding ->
+                        Box(Modifier.padding(padding)) {
+                            ConnectionsScreen(
+                                sessions = sessions,
+                                history = history,
+                                onOpen = {},
+                                onClose = {},
+                            )
+                        }
+                    }
                     if (overlay != null) {
                         Box(
                             modifier =
@@ -228,8 +267,8 @@ class QuickConnectScreenshotTest {
         activity.setContentView(view)
         shadowOf(Looper.getMainLooper()).idle()
 
-        val widthPx = 1170
-        val heightPx = 2532
+        val widthPx = activity.resources.displayMetrics.widthPixels
+        val heightPx = activity.resources.displayMetrics.heightPixels
         val widthSpec = View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY)
         val heightSpec = View.MeasureSpec.makeMeasureSpec(heightPx, View.MeasureSpec.EXACTLY)
         view.measure(widthSpec, heightSpec)

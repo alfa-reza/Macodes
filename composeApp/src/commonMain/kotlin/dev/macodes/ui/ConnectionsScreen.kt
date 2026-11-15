@@ -25,18 +25,17 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.LinkOff
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -104,10 +103,37 @@ fun ConnectionsScreen(
     val s = LocalAppStrings.current
     var commandInput by rememberSaveable { mutableStateOf("") }
     var parseError by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedHistoryKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingDeleteHistory by remember { mutableStateOf<List<QuickConnectHistoryEntry>>(emptyList()) }
+    var pendingRemoveSession by remember { mutableStateOf<HostSessionItem?>(null) }
+    var confirmClearHistory by remember { mutableStateOf(false) }
+    val activeSessionSignatures =
+        remember(sessions) {
+            sessions
+                .map { item ->
+                    val h =
+                        when (item) {
+                            is HostSessionItem.Terminal -> item.controller.host
+                            is HostSessionItem.Sftp -> item.host
+                            is HostSessionItem.Agent -> item.controller.host
+                        }
+                    Triple(h.hostname, h.port, h.username)
+                }.toSet()
+        }
+    val visibleHistory =
+        remember(history, activeSessionSignatures) {
+            history.filterNot { entry -> Triple(entry.host, entry.port, entry.username) in activeSessionSignatures }
+        }
     val suggestions =
         remember(commandInput, savedHosts, history) {
             buildQuickConnectSuggestions(commandInput, savedHosts, history)
         }
+    val selectionMode = selectedHistoryKeys.isNotEmpty()
+
+    fun toggleHistorySelection(key: String) {
+        selectedHistoryKeys =
+            if (key in selectedHistoryKeys) selectedHistoryKeys - key else selectedHistoryKeys + key
+    }
 
     fun submitQuickConnect(raw: String = commandInput) {
         when (val result = QuickConnectParser.parse(raw)) {
@@ -123,7 +149,57 @@ fun ConnectionsScreen(
 
     Scaffold(
         topBar = {
-            MacodesLargeHeader(title = s.appTabConnections)
+            if (selectionMode) {
+                val singleTarget =
+                    if (selectedHistoryKeys.size == 1) {
+                        visibleHistory.firstOrNull { historySelectionKey(it) in selectedHistoryKeys }
+                    } else {
+                        null
+                    }
+                WorkspaceSelectionHeader(
+                    count = selectedHistoryKeys.size,
+                    onClose = { selectedHistoryKeys = emptySet() },
+                    extraMenuItems = { dismiss ->
+                        if (singleTarget != null) {
+                            DropdownMenuItem(
+                                text = { Text(s.quickConnect.editConnectionAction) },
+                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                                onClick = {
+                                    dismiss()
+                                    selectedHistoryKeys = emptySet()
+                                    onEditHistory(singleTarget)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(s.quickConnect.saveToHostsAction) },
+                                leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
+                                onClick = {
+                                    dismiss()
+                                    selectedHistoryKeys = emptySet()
+                                    onSaveHistoryToHosts(singleTarget)
+                                },
+                            )
+                        }
+                        if (visibleHistory.size > 1) {
+                            DropdownMenuItem(
+                                text = { Text(s.workspace.logsClearAction) },
+                                leadingIcon = { Icon(Icons.Default.DeleteSweep, contentDescription = null) },
+                                onClick = {
+                                    dismiss()
+                                    confirmClearHistory = true
+                                },
+                            )
+                        }
+                    },
+                    onSelectAll = { selectedHistoryKeys = visibleHistory.map(::historySelectionKey).toSet() },
+                    onRemove = {
+                        val targets = visibleHistory.filter { historySelectionKey(it) in selectedHistoryKeys }
+                        if (targets.isNotEmpty()) pendingDeleteHistory = targets
+                    },
+                )
+            } else {
+                MacodesLargeHeader(title = s.appTabConnections)
+            }
         },
     ) { padding ->
         LazyColumn(
@@ -162,13 +238,23 @@ fun ConnectionsScreen(
 
             if (sessions.isNotEmpty()) {
                 item(key = "sessions-group-header") {
-                    Text(
-                        text = s.connSectionTitle,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(top = Spacing.Xs),
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = Spacing.Xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = s.connSectionTitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = s.workspace.sessionCount(sessions.size),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 items(
                     items = sessions,
@@ -186,24 +272,29 @@ fun ConnectionsScreen(
                         onOpen = { onOpen(item) },
                         onReconnect = { onReconnect(item) },
                         onClose = { onClose(item) },
+                        onRequestRemoveClosed = { pendingRemoveSession = item },
                     )
                 }
             }
 
-            if (showHistory && history.isNotEmpty()) {
+            if (showHistory && visibleHistory.isNotEmpty()) {
                 item(key = "quick-connect-history") {
                     QuickConnectHistoryGroup(
-                        history = history,
-                        onSelect = onSelectHistory,
-                        onEdit = onEditHistory,
-                        onSaveToHosts = onSaveHistoryToHosts,
-                        onDelete = onDeleteHistory,
-                        onClear = onClearHistory,
+                        history = visibleHistory,
+                        selectedKeys = selectedHistoryKeys,
+                        onSelect = { entry ->
+                            if (selectionMode) {
+                                toggleHistorySelection(historySelectionKey(entry))
+                            } else {
+                                onSelectHistory(entry)
+                            }
+                        },
+                        onLongClick = { entry -> toggleHistorySelection(historySelectionKey(entry)) },
                     )
                 }
             }
 
-            if (sessions.isEmpty() && (!showHistory || history.isEmpty())) {
+            if (sessions.isEmpty() && (!showHistory || visibleHistory.isEmpty())) {
                 item(key = "connections-empty-note") {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
@@ -228,7 +319,95 @@ fun ConnectionsScreen(
             }
         }
     }
+
+    if (pendingDeleteHistory.isNotEmpty()) {
+        val ws = s.workspace
+        val message =
+            if (pendingDeleteHistory.size == 1) {
+                val entry = pendingDeleteHistory.first()
+                ws.connRemoveHistoryConfirm("${entry.username}@${entry.host}")
+            } else {
+                ws.connRemoveSelectedHistoryConfirm(pendingDeleteHistory.size)
+            }
+        AlertDialog(
+            onDismissRequest = { pendingDeleteHistory = emptyList() },
+            title = { Text(ws.actionRemove) },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDeleteHistory.forEach(onDeleteHistory)
+                        pendingDeleteHistory = emptyList()
+                        selectedHistoryKeys = emptySet()
+                    },
+                ) {
+                    Text(ws.actionRemove, color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteHistory = emptyList() }) {
+                    Text(s.quickConnect.cancelAction)
+                }
+            },
+        )
+    }
+
+    if (confirmClearHistory) {
+        val ws = s.workspace
+        AlertDialog(
+            onDismissRequest = { confirmClearHistory = false },
+            title = { Text(s.quickConnect.clearHistoryAction) },
+            text = { Text(ws.connClearHistoryConfirm) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmClearHistory = false
+                        selectedHistoryKeys = emptySet()
+                        onClearHistory()
+                    },
+                ) {
+                    Text(s.quickConnect.clearHistoryAction, color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClearHistory = false }) {
+                    Text(s.quickConnect.cancelAction)
+                }
+            },
+        )
+    }
+
+    pendingRemoveSession?.let { target ->
+        val host =
+            when (target) {
+                is HostSessionItem.Terminal -> target.controller.host
+                is HostSessionItem.Sftp -> target.host
+                is HostSessionItem.Agent -> target.controller.host
+            }
+        AlertDialog(
+            onDismissRequest = { pendingRemoveSession = null },
+            title = { Text(s.connRemove) },
+            text = { Text(s.workspace.connRemoveHistoryConfirm("${host.username}@${host.hostname}")) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingRemoveSession = null
+                        onClose(target)
+                    },
+                ) {
+                    Text(s.connRemove, color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRemoveSession = null }) {
+                    Text(s.quickConnect.cancelAction)
+                }
+            },
+        )
+    }
 }
+
+private fun historySelectionKey(entry: QuickConnectHistoryEntry): String = "${entry.protocol.name}|${entry.username}@${entry.host}:${entry.port}|${entry.moshUdpPort ?: ""}|${entry.openSftp}"
 
 @Composable
 private fun SftpQuickSection(onOpenSftp: () -> Unit) {
@@ -437,11 +616,9 @@ internal fun QuickConnectBar(
 @Composable
 private fun QuickConnectHistoryGroup(
     history: List<QuickConnectHistoryEntry>,
+    selectedKeys: Set<String>,
     onSelect: (QuickConnectHistoryEntry) -> Unit,
-    onEdit: (QuickConnectHistoryEntry) -> Unit,
-    onSaveToHosts: (QuickConnectHistoryEntry) -> Unit,
-    onDelete: (QuickConnectHistoryEntry) -> Unit,
-    onClear: () -> Unit,
+    onLongClick: (QuickConnectHistoryEntry) -> Unit,
 ) {
     val s = LocalAppStrings.current.quickConnect
     Column(
@@ -451,37 +628,28 @@ private fun QuickConnectHistoryGroup(
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = Spacing.Xs),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.Xs),
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Spacing.Xs),
-            ) {
-                Icon(
-                    Icons.Default.History,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp),
-                )
-                Text(
-                    text = s.historySectionTitle,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-            TextButton(onClick = onClear) {
-                Text(s.clearHistoryAction, style = MaterialTheme.typography.labelMedium)
-            }
+            Icon(
+                Icons.Default.History,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = s.historySectionTitle,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
         }
 
         history.forEach { entry ->
             QuickConnectHistoryRow(
                 entry = entry,
+                selected = historySelectionKey(entry) in selectedKeys,
                 onClick = { onSelect(entry) },
-                onEdit = { onEdit(entry) },
-                onSaveToHosts = { onSaveToHosts(entry) },
-                onDelete = { onDelete(entry) },
+                onLongClick = { onLongClick(entry) },
             )
         }
     }
@@ -491,46 +659,57 @@ private fun QuickConnectHistoryGroup(
 @Composable
 private fun QuickConnectHistoryRow(
     entry: QuickConnectHistoryEntry,
+    selected: Boolean,
     onClick: () -> Unit,
-    onEdit: () -> Unit,
-    onSaveToHosts: () -> Unit,
-    onDelete: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
     val appStrings = LocalAppStrings.current
     val s = appStrings.quickConnect
-    val isMosh = entry.protocol == ConnectionMode.MOSH
     val sys = entry.system.ifBlank { entry.host }
-    val badgeLabel =
-        when {
-            entry.openSftp -> s.sftpPill
-            isMosh -> appStrings.hostsModeMosh
-            else -> appStrings.hostsModeSsh
+    val meta = remember(entry, s) { formatQuickConnectHistoryMeta(entry, s) }
+    val timestamp =
+        remember(entry.lastConnectedAt, appStrings) {
+            splitSessionTimestamp(entry.lastConnectedAt, appStrings.workspace)
         }
-    val subtitle = formatQuickConnectHistorySubtitle(entry, s)
-    var menuExpanded by remember { mutableStateOf(false) }
 
-    Box(modifier = Modifier.fillMaxWidth()) {
-        Surface(
+    Surface(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(Corners.Lg))
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick,
+                ),
+        shape = RoundedCornerShape(Corners.Lg),
+        color =
+            if (selected) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainer
+            },
+        border =
+            BorderStroke(
+                width = if (selected) 1.5.dp else Sizes.BorderThin,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+            ),
+    ) {
+        Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(Corners.Lg))
-                    .combinedClickable(
-                        onClick = onClick,
-                        onLongClick = { menuExpanded = true },
-                    ),
-            shape = RoundedCornerShape(Corners.Lg),
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            border = BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant),
+                    .padding(horizontal = Spacing.Md, vertical = Spacing.Md),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
         ) {
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(start = Spacing.Md, top = Spacing.Sm, bottom = Spacing.Sm, end = Spacing.Xs),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
-            ) {
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(Sizes.AvatarCard),
+                )
+            } else {
                 Box(
                     modifier =
                         Modifier
@@ -541,64 +720,49 @@ private fun QuickConnectHistoryRow(
                 ) {
                     SystemAvatarIcon(sys, Sizes.IconMedium)
                 }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.Xs),
-                    ) {
-                        Text(
-                            text = "${entry.username}@${entry.host}",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
-                        )
-                        ProtocolBadge(label = badgeLabel)
-                    }
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = "${entry.username}@${entry.host}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = meta,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                if (timestamp.dateLabel.isNotEmpty()) {
                     Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
+                        text = timestamp.dateLabel,
+                        style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = LocalAppStrings.current.connRemove,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(Sizes.IconSmall),
-                    )
-                }
+                Text(
+                    text = timestamp.timeLabel,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                )
             }
-        }
-        DropdownMenu(
-            expanded = menuExpanded,
-            onDismissRequest = { menuExpanded = false },
-        ) {
-            DropdownMenuItem(
-                text = { Text(s.editConnectionAction) },
-                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                onClick = {
-                    menuExpanded = false
-                    onEdit()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text(s.saveToHostsAction) },
-                leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
-                onClick = {
-                    menuExpanded = false
-                    onSaveToHosts()
-                },
-            )
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SessionConnectionCard(
     item: HostSessionItem,
@@ -606,6 +770,7 @@ private fun SessionConnectionCard(
     onOpen: () -> Unit,
     onReconnect: () -> Unit,
     onClose: () -> Unit,
+    onRequestRemoveClosed: () -> Unit,
 ) {
     val s = LocalAppStrings.current
     val host =
@@ -622,9 +787,16 @@ private fun SessionConnectionCard(
             is HostSessionItem.Agent ->
                 item.controller.currentSession?.title ?: host.name.ifBlank { host.hostname }
         }
+    val active = item.isActive
+    val endpointLabel =
+        buildString {
+            append("${host.username}@${host.hostname}")
+            if (host.port != 22) append(":${host.port}")
+        }
     val subtitle =
         when (item) {
-            is HostSessionItem.Sftp -> "sftp ${host.username}@${host.hostname} -p ${host.port}"
+            is HostSessionItem.Sftp ->
+                if (active) endpointLabel else "$endpointLabel · ${s.connStatusClosed}"
             is HostSessionItem.Agent -> {
                 val stateLabel =
                     when {
@@ -634,14 +806,18 @@ private fun SessionConnectionCard(
                         item.isConnected -> s.hostsActive
                         else -> s.connStatusClosed
                     }
-                "${host.username}@${host.hostname} · ${s.hostsActionAgents} · $stateLabel"
+                "$endpointLabel · ${s.hostsActionAgents} · $stateLabel"
             }
             is HostSessionItem.Terminal -> {
-                val proto =
-                    if (host.connectionMode == ConnectionMode.MOSH) s.hostsModeMosh else s.hostsModeSsh
-                val modeSuffix =
-                    if (item.controller.launchMode == TerminalLaunchMode.HERDR) " · ${s.hostsActionHerdr}" else ""
-                "$proto ${host.username}@${host.hostname} -p ${host.port}$modeSuffix"
+                buildString {
+                    append(endpointLabel)
+                    if (item.controller.launchMode == TerminalLaunchMode.HERDR) {
+                        append(" · ${s.hostsActionHerdr}")
+                    }
+                    if (!active) {
+                        append(" · ${s.connStatusClosed}")
+                    }
+                }
             }
         }
     val isConnecting =
@@ -668,7 +844,6 @@ private fun SessionConnectionCard(
                     else -> StatusColors.Neutral
                 }
         }
-    val active = item.isActive
     val kindLabel =
         when (item) {
             is HostSessionItem.Sftp -> "SFTP"
@@ -676,6 +851,24 @@ private fun SessionConnectionCard(
             is HostSessionItem.Terminal ->
                 if (host.connectionMode == ConnectionMode.MOSH) "MOSH" else "SSH"
         }
+    val statusLabel =
+        when (item) {
+            is HostSessionItem.Agent ->
+                when {
+                    item.controller.pendingApprovals.isNotEmpty() -> s.nativeAgents.sessionWaitingApproval
+                    item.controller.busy -> s.nativeAgents.sessionRunning
+                    item.isConnecting -> s.connStatusConnecting
+                    item.isConnected -> s.hostsActive
+                    else -> s.connStatusClosed
+                }
+            else ->
+                when {
+                    isConnecting -> s.connStatusConnecting
+                    active -> s.hostsActive
+                    else -> s.connStatusClosed
+                }
+        }
+    val cleanSubtitle = "$kindLabel · ${host.hostname}:${host.port}"
 
     val previewText =
         if (showPreview && item is HostSessionItem.Terminal) {
@@ -689,7 +882,16 @@ private fun SessionConnectionCard(
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(Corners.Lg))
-                .clickable(onClick = onOpen),
+                .combinedClickable(
+                    onClick = {
+                        if (!active && item is HostSessionItem.Terminal) {
+                            onReconnect()
+                        } else {
+                            onOpen()
+                        }
+                    },
+                    onLongClick = if (!active) onRequestRemoveClosed else null,
+                ),
         shape = RoundedCornerShape(Corners.Lg),
         colors =
             CardDefaults.cardColors(
@@ -703,86 +905,61 @@ private fun SessionConnectionCard(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .padding(start = Spacing.Md, top = Spacing.Sm, bottom = Spacing.Sm, end = Spacing.Xs),
+                        .padding(horizontal = Spacing.Md, vertical = Spacing.Md),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
             ) {
-                Box(Modifier.size(Sizes.AvatarCard)) {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(Corners.Md))
-                            .background(systemColor(sys)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (isConnecting) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(Sizes.IconMedium),
-                                color = Color.White,
-                                strokeWidth = 2.dp,
-                            )
-                        } else {
-                            SystemAvatarIcon(sys, Sizes.IconMedium)
-                        }
-                    }
-                    if (!isConnecting) {
-                        Box(
-                            Modifier
-                                .align(Alignment.BottomEnd)
-                                .size(12.dp)
-                                .clip(CircleShape)
-                                .background(dotColor)
-                                .border(2.dp, MaterialTheme.colorScheme.surfaceContainer, CircleShape),
+                Box(
+                    Modifier
+                        .size(Sizes.AvatarCard)
+                        .clip(RoundedCornerShape(Corners.Md))
+                        .background(systemColor(sys)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (isConnecting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(Sizes.IconMedium),
+                            color = Color.White,
+                            strokeWidth = 2.dp,
                         )
+                    } else {
+                        SystemAvatarIcon(sys, Sizes.IconMedium)
                     }
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.Xs),
-                    ) {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
-                        )
-                        ProtocolBadge(label = kindLabel)
-                    }
                     Text(
-                        text = subtitle,
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = cleanSubtitle,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (!active && item is HostSessionItem.Terminal) {
-                    IconButton(onClick = onReconnect) {
-                        Icon(
-                            Icons.Default.Refresh,
-                            contentDescription = s.quickConnect.reconnectContentDescription,
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                }
-                IconButton(onClick = onClose) {
-                    if (active) {
-                        Icon(
-                            Icons.Default.LinkOff,
-                            contentDescription = s.connDisconnect,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    } else {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription = s.connRemove,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Box(
+                        Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(dotColor),
+                    )
+                    Text(
+                        text = statusLabel,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = if (active || isConnecting) dotColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
                 }
             }
             if (previewText != null) {
@@ -848,7 +1025,7 @@ internal fun statusColor(
     }
 
 @Composable
-private fun ProtocolBadge(label: String) {
+internal fun ProtocolBadge(label: String) {
     Surface(
         shape = RoundedCornerShape(Corners.Sm),
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -905,7 +1082,7 @@ private fun QuickConnectSuggestionsCard(
                         QuickConnectSuggestionRow(
                             title = "${entry.username}@${entry.host}",
                             badgeLabel = protoLabel,
-                            subtitle = formatQuickConnectHistorySubtitle(entry, s),
+                            subtitle = formatQuickConnectHistorySubtitle(entry, s, appStrings.workspace),
                             onClick = { onSelectHistory(entry) },
                         )
                     }
@@ -1018,9 +1195,23 @@ internal fun buildQuickConnectSuggestions(
     return out
 }
 
+internal fun formatQuickConnectHistoryMeta(
+    entry: QuickConnectHistoryEntry,
+    s: QuickConnectStrings,
+): String {
+    val protocolLabel =
+        when {
+            entry.openSftp -> s.sftpPill
+            entry.protocol == ConnectionMode.MOSH -> ConnectionMode.MOSH.name
+            else -> ConnectionMode.SSH.name
+        }
+    return "$protocolLabel · ${s.historyPortTag(entry.port)}"
+}
+
 internal fun formatQuickConnectHistorySubtitle(
     entry: QuickConnectHistoryEntry,
     s: QuickConnectStrings,
+    ws: WorkspaceStrings? = null,
 ): String {
     val parts = mutableListOf<String>()
     if (entry.protocol == ConnectionMode.MOSH && !entry.openSftp) {
@@ -1035,6 +1226,6 @@ internal fun formatQuickConnectHistorySubtitle(
     } else if (entry.port != 22) {
         parts.add(s.historyPortTag(entry.port))
     }
-    parts.add(formatSessionCreatedAt(entry.lastConnectedAt))
+    parts.add(formatSessionCreatedAt(entry.lastConnectedAt, ws))
     return parts.joinToString(" · ")
 }

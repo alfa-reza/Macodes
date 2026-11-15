@@ -112,8 +112,10 @@ import dev.macodes.ui.theme.Spacing
 import dev.macodes.ui.theme.StatusColors
 import kotlinx.coroutines.delay
 import kotlinx.datetime.Clock
+import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
@@ -190,6 +192,7 @@ fun HostListScreen(
     onOpenSftp: (Host, SftpSession?) -> Unit,
     onStartSftp: (Host) -> Unit,
     onCloseAllSessions: (Host) -> Unit,
+    onBack: (() -> Unit)? = null,
 ) {
     val s = LocalAppStrings.current
     var query by remember { mutableStateOf("") }
@@ -261,6 +264,7 @@ fun HostListScreen(
             } else {
                 MacodesLargeHeader(
                     title = s.appTabHosts,
+                    onBack = onBack,
                     actions = {
                         IconButton(
                             onClick = {
@@ -867,7 +871,7 @@ private fun HostMoreMenu(
                                         s.hostsActionTerminal
                                     }
                                 Text(
-                                    "$launchLabel · ${formatSessionCreatedAt(item.createdAt)}",
+                                    "$launchLabel · ${formatSessionCreatedAt(item.createdAt, s.workspace)}",
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -888,7 +892,7 @@ private fun HostMoreMenu(
                         DropdownMenuItem(
                             text = {
                                 Text(
-                                    "${s.hostsActionFiles} · ${formatSessionCreatedAt(item.createdAt)}",
+                                    "${s.hostsActionFiles} · ${formatSessionCreatedAt(item.createdAt, s.workspace)}",
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -910,7 +914,7 @@ private fun HostMoreMenu(
                             text = {
                                 Text(
                                     "${item.controller.currentSession?.title ?: s.hostsActionAgents} · " +
-                                        formatSessionCreatedAt(item.createdAt),
+                                        formatSessionCreatedAt(item.createdAt, s.workspace),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -943,21 +947,49 @@ private fun HostMoreMenu(
     }
 }
 
-/** For entries on the same day, show only the hour and minute; for entries spanning multiple days, show the month and day to ensure the notation is compact yet sufficient to distinguish between sessions. */
-internal fun formatSessionCreatedAt(millis: Long): String {
-    if (millis <= 0L) return "--:--"
-    val timeZone = TimeZone.currentSystemDefault()
+internal data class AdaptiveTimestamp(
+    val dateLabel: String,
+    val timeLabel: String,
+) {
+    val fullLabel: String
+        get() = if (dateLabel.isEmpty()) timeLabel else "$dateLabel · $timeLabel"
+}
+
+/** Splits [millis] into adaptive date ("Today", "Yesterday", "12 Nov", "14 Nov 2025") and "HH:mm" time labels. */
+internal fun splitSessionTimestamp(
+    millis: Long,
+    s: WorkspaceStrings? = null,
+    timeZone: TimeZone = TimeZone.currentSystemDefault(),
+    now: Instant = Clock.System.now(),
+): AdaptiveTimestamp {
+    if (millis <= 0L) return AdaptiveTimestamp(dateLabel = "", timeLabel = "--:--")
     val created = Instant.fromEpochMilliseconds(millis).toLocalDateTime(timeZone)
-    val today =
-        Clock.System
-            .now()
-            .toLocalDateTime(timeZone)
-            .date
+    val today = now.toLocalDateTime(timeZone).date
+    val yesterday = today.minus(DatePeriod(days = 1))
 
     fun pad(value: Int): String = value.toString().padStart(2, '0')
     val time = "${pad(created.hour)}:${pad(created.minute)}"
-    return if (created.date == today) time else "${pad(created.monthNumber)}-${pad(created.dayOfMonth)} $time"
+    val date =
+        when {
+            created.date == today -> s?.dateToday ?: "Today"
+            created.date == yesterday -> s?.dateYesterday ?: "Yesterday"
+            created.year == today.year ->
+                s?.formatMonthDay?.invoke(created.dayOfMonth, created.monthNumber, null)
+                    ?: formatEnglishMonthDay(created.dayOfMonth, created.monthNumber, null)
+            else ->
+                s?.formatMonthDay?.invoke(created.dayOfMonth, created.monthNumber, created.year)
+                    ?: formatEnglishMonthDay(created.dayOfMonth, created.monthNumber, created.year)
+        }
+    return AdaptiveTimestamp(dateLabel = date, timeLabel = time)
 }
+
+/** Adaptive single-line timestamp notation: "Today · HH:mm", "Yesterday · HH:mm", "12 Nov · HH:mm", or "14 Nov 2025 · HH:mm". */
+internal fun formatSessionCreatedAt(
+    millis: Long,
+    s: WorkspaceStrings? = null,
+    timeZone: TimeZone = TimeZone.currentSystemDefault(),
+    now: Instant = Clock.System.now(),
+): String = splitSessionTimestamp(millis, s, timeZone, now).fullLabel
 
 /** System keywords → White icon resources (for systems with branded icons; otherwise, fall back to [systemIcon]). */
 internal fun systemSvg(system: String): DrawableResource? {
