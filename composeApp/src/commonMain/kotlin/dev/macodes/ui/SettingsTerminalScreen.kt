@@ -4,26 +4,23 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,6 +35,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import dev.macodes.ui.theme.Corners
+import dev.macodes.ui.theme.Spacing
 import dev.macodes.ui.theme.TerminalTheme
 import dev.macodes.ui.theme.TerminalThemes
 import dev.macodes.util.TerminalFont
@@ -45,7 +44,7 @@ import dev.macodes.util.monospaceFontFamily
 
 /**
  * Terminal Themes and Fonts Screen (Termius Style):
- * A font dropdown menu at the top, followed by a two-column card layout for themes below (live color scheme preview: background + 16 colors + text samples).
+ * A font dropdown menu at the top, followed by a two-column card layout for themes below.
  */
 @Composable
 fun SettingsTerminalScreen(
@@ -60,49 +59,35 @@ fun SettingsTerminalScreen(
     val selectedFont = TerminalFont.byId(currentFontId)
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        // Page header: Back + Title
-        Row(
-            Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = s.navBack)
-            }
-            Text(
-                s.settingsTerminalPageTitle,
-                style = MaterialTheme.typography.titleMedium,
-                fontFamily = monospaceFontFamily(),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-        }
+        MacodesHeader(
+            title = s.settingsTerminalPageTitle,
+            onBack = onBack,
+        )
 
         // Fixed font area; theme grid scrolls independently (LazyVerticalGrid cannot be nested within verticalScroll)
         Column(Modifier.fillMaxSize()) {
-            // Font selection dropdown menu
             Text(
                 s.settingsTerminalFontLabel,
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 6.dp),
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = Spacing.Xl, top = Spacing.Md, bottom = Spacing.Sm),
             )
-            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().padding(horizontal = Spacing.Lg)) {
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.surface)
-                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(Corners.Md))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                         .clickable { fontMenuOpen = true }
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                        .padding(horizontal = Spacing.Lg, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
                         selectedFont.label,
                         style = MaterialTheme.typography.bodyLarge,
                         fontFamily =
-                            if (selectedFont ==
-                                TerminalFont.JETBRAINS
-                            ) {
+                            if (selectedFont == TerminalFont.JETBRAINS) {
                                 monospaceFontFamily()
                             } else {
                                 FontFamily.Monospace
@@ -113,7 +98,7 @@ fun SettingsTerminalScreen(
                     Icon(
                         Icons.Filled.ArrowDropDown,
                         null,
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 DropdownMenu(expanded = fontMenuOpen, onDismissRequest = { fontMenuOpen = false }) {
@@ -133,17 +118,16 @@ fun SettingsTerminalScreen(
             Text(
                 s.settingsTerminalPalette,
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                modifier = Modifier.padding(start = 20.dp, top = 18.dp, bottom = 6.dp),
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = Spacing.Xl, top = Spacing.Lg, bottom = Spacing.Sm),
             )
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 modifier = Modifier.fillMaxSize().weight(1f),
-                contentPadding =
-                    androidx.compose.foundation.layout
-                        .PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(start = Spacing.Lg, end = Spacing.Lg, bottom = Spacing.Xl),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
+                verticalArrangement = Arrangement.spacedBy(Spacing.Md),
             ) {
                 items(TerminalThemes.ALL, key = { it.name }) { theme ->
                     ThemeCard(
@@ -164,26 +148,25 @@ private fun ThemeCard(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    val borderColor =
-        if (selected) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            MaterialTheme.colorScheme.outlineVariant
-        }
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .border(if (selected) 2.dp else 1.dp, borderColor, RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
+            .clip(RoundedCornerShape(Corners.Lg))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .then(
+                if (selected) {
+                    Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(Corners.Lg))
+                } else {
+                    Modifier
+                },
+            ).clickable(onClick = onClick)
             .padding(10.dp),
     ) {
         // Preview area: Background + sample foreground text + 16 color blocks
         Column(
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(Corners.Md))
                 .background(theme.background())
                 .padding(10.dp),
         ) {
@@ -193,10 +176,10 @@ private fun ThemeCard(
                 fontFamily = FontFamily.Monospace,
                 color = theme.foreground(),
             )
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Spacer(Modifier.height(Spacing.Sm))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.Xs)) {
                 theme.ansi.forEach { c ->
-                    Box(
+                    androidx.compose.foundation.layout.Box(
                         Modifier
                             .weight(1f)
                             .height(14.dp)
@@ -206,18 +189,16 @@ private fun ThemeCard(
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(Spacing.Sm))
         Text(
             theme.name,
             style = MaterialTheme.typography.bodySmall,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
             color =
                 if (selected) {
                     MaterialTheme.colorScheme.primary
                 } else {
-                    MaterialTheme.colorScheme.onSurface.copy(
-                        alpha = 0.8f,
-                    )
+                    MaterialTheme.colorScheme.onSurface
                 },
         )
     }

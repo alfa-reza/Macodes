@@ -179,17 +179,26 @@ class SessionManager(
 
     private fun persist() {
         repository.saveRecentTerminalEntries(
-            sessions.map {
-                RecentTerminalEntry(
-                    hostId = it.host.id,
-                    launchHerdr = it.launchMode == TerminalLaunchMode.HERDR,
-                    createdAt = it.createdAt,
-                )
-            },
+            sessions
+                .filterNot { it.host.id.startsWith("quickconnect:") }
+                .map {
+                    RecentTerminalEntry(
+                        hostId = it.host.id,
+                        launchHerdr = it.launchMode == TerminalLaunchMode.HERDR,
+                        createdAt = it.createdAt,
+                    )
+                },
         )
         repository.saveRecentSftpEntries(
             sftpSessions.map { RecentSftpEntry(it.host.id, it.uiState.path, it.createdAt) },
         )
+    }
+
+    /** Attach a connected ephemeral session (e.g. from Quick Connect) into the live session list without saving a Host. */
+    fun attachExisting(controller: TerminalController) {
+        if (controller !in sessions) {
+            sessions.add(controller)
+        }
     }
 
     /** To be called when AppRoot goes into the background: Save the latest SFTP browsing path (resume in the previous directory after the app is terminated). */

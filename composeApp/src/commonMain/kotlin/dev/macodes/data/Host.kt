@@ -54,6 +54,8 @@ data class Host(
      * And perform port forwarding on that UDP port to the remote host.
      */
     val moshUdpPort: Int = 0,
+    /** Custom remote mosh-server binary/command (`--server=COMMAND`); empty defaults to `mosh-server`. */
+    val moshServerCommand: String = "",
 )
 
 @Serializable
@@ -103,6 +105,12 @@ data class AppSettings(
     val agentProviders: List<AgentProvider> = emptyList(),
     /** @deprecated Legacy single-instance configuration: Replaced by [asrProviders] (for migration purposes). */
     val asrResourceId: String = "",
+    /** Connections tab: show live terminal preview inside active session cards (default enabled). */
+    val showConnectionsSessionPreview: Boolean = true,
+    /** Connections tab: show Quick Connect recent history list (default enabled). */
+    val showQuickConnectHistory: Boolean = true,
+    /** Connections tab: show SFTP quick entry at the bottom (default enabled). */
+    val showConnectionsSftp: Boolean = true,
 )
 
 /** Agent workspace preferences are saved independently on each host to avoid overwriting global terminal settings. */

@@ -10,23 +10,26 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -46,11 +49,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.macodes.agent.AgentBridgeController
 import dev.macodes.data.ASR_API_KEY_ACCOUNT
@@ -58,13 +64,18 @@ import dev.macodes.data.AgentProviderType
 import dev.macodes.data.AppSettings
 import dev.macodes.data.AsrProvider
 import dev.macodes.data.AsrProviderType
+import dev.macodes.data.ConnectionMode
 import dev.macodes.data.Host
+import dev.macodes.data.HostAuthMethod
 import dev.macodes.data.HostRepository
+import dev.macodes.data.QuickConnectHistoryEntry
+import dev.macodes.data.QuickConnectParser
 import dev.macodes.data.SECRET_SERVICE
 import dev.macodes.data.SecretStore
 import dev.macodes.data.ThemeMode
 import dev.macodes.data.asrKeyAccount
 import dev.macodes.data.newId
+import dev.macodes.data.quickConnectHostId
 import dev.macodes.data.resolveCredentials
 import dev.macodes.data.secretAccountFor
 import dev.macodes.notify.NotificationCenter
@@ -77,7 +88,10 @@ import dev.macodes.ssh.SftpSession
 import dev.macodes.ssh.SshCallbacks
 import dev.macodes.ssh.SshConnection
 import dev.macodes.ssh.createSftpSession
+import dev.macodes.ui.theme.Corners
 import dev.macodes.ui.theme.MacodesTheme
+import dev.macodes.ui.theme.Sizes
+import dev.macodes.ui.theme.Spacing
 import dev.macodes.ui.theme.TerminalThemes
 import dev.macodes.util.BackgroundProtectionVendor
 import dev.macodes.util.LocalTerminalFont
@@ -87,57 +101,95 @@ import dev.macodes.util.TerminalFont
 import dev.macodes.util.backgroundProtectionState
 import dev.macodes.util.backgroundProtectionVendor
 import dev.macodes.util.ioDispatcher
-import dev.macodes.util.monospaceFontFamily
 import dev.macodes.util.observeAppLifecycle
 import dev.macodes.util.observeNetworkChange
 import dev.macodes.util.openApplicationSettings
 import dev.macodes.util.shouldShowBackgroundProtectionGuide
+import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.Clock
 
 private enum class HomeTab { HOSTS, CONNECTIONS, SETTINGS }
 
 private const val AGENT_IDLE_TIMEOUT_MS = 60_000L
 
-/** Minimalist bottom bar items: icon + small monospace font tag; when selected, the item turns the theme’s green color; no capsule indicator. */
+/** Termius-style bottom bar item: rounded pill indicator behind active icon + clean sans-serif label. */
 @Composable
 private fun HomeTabItem(
     label: String,
     icon: ImageVector,
     selected: Boolean,
-    mono: FontFamily,
     modifier: Modifier = Modifier,
     badge: Int = 0,
     badgeAlert: Boolean = false,
     onClick: () -> Unit,
 ) {
-    val color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-    Column(
-        modifier.clickable(onClick = onClick).padding(vertical = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        BadgedBox(
-            badge = {
-                if (badge > 0) {
-                    Badge(
-                        containerColor =
-                            if (badgeAlert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                        contentColor =
-                            if (badgeAlert) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary,
-                    ) {
-                        Text(if (badge > 99) "99+" else "$badge", fontFamily = mono)
-                    }
-                }
-            },
-        ) {
-            Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(22.dp))
+    val iconColor =
+        if (selected) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
         }
+    val labelColor =
+        if (selected) {
+            MaterialTheme.colorScheme.onSurface
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        }
+    Column(
+        modifier
+            .clickable(onClick = onClick)
+            .padding(vertical = Spacing.Sm),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(width = Sizes.NavPillWidth, height = Sizes.NavPillHeight)
+                    .clip(RoundedCornerShape(Corners.Full))
+                    .background(
+                        if (selected) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            Color.Transparent
+                        },
+                    ),
+            contentAlignment = Alignment.Center,
+        ) {
+            BadgedBox(
+                badge = {
+                    if (badge > 0) {
+                        Badge(
+                            containerColor =
+                                if (badgeAlert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            contentColor =
+                                if (badgeAlert) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary,
+                        ) {
+                            Text(if (badge > 99) "99+" else "$badge")
+                        }
+                    }
+                },
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = label,
+                    tint = iconColor,
+                    modifier = Modifier.size(Sizes.IconMedium),
+                )
+            }
+        }
+        Spacer(Modifier.height(Spacing.Xs))
         Text(
             label,
-            style = MaterialTheme.typography.labelSmall,
-            fontFamily = mono,
-            color = color,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = labelColor,
+            maxLines = 1,
         )
     }
 }
@@ -259,6 +311,20 @@ fun AppRoot(repository: HostRepository) {
     /** Sessions that wait for the connection to complete before redirecting (the card avatar spins while the connection is being established). */
     var pendingNavigate by remember { mutableStateOf<TerminalController?>(null) }
 
+    /** Smart Quick Connect state: passwordless history + active wizard + transient connecting controller. */
+    var quickConnectHistory by remember { mutableStateOf(repository.listQuickConnectHistory()) }
+    var quickConnectWizard by remember { mutableStateOf<QuickConnectWizardState?>(null) }
+    var quickConnectConnectingController by remember { mutableStateOf<TerminalController?>(null) }
+    var quickConnectJob by remember { mutableStateOf<Job?>(null) }
+
+    fun cancelQuickConnect() {
+        quickConnectJob?.cancel()
+        quickConnectJob = null
+        quickConnectConnectingController?.destroy()
+        quickConnectConnectingController = null
+        quickConnectWizard = null
+    }
+
     /** Terminal + Menu “Favorites” dialog: host + list of favorite paths (null = disabled). */
     var favoritesDialog by remember { mutableStateOf<Pair<Host, List<String>>?>(null) }
 
@@ -373,13 +439,15 @@ fun AppRoot(repository: HostRepository) {
      */
     suspend fun establishSftp(
         host: Host,
+        passwordOverride: String? = null,
         onEstablished: (SftpSession, Any) -> Unit,
     ) {
         // Identifier for this connection: onClosed. Use this to distinguish between “unexpected disconnection of this connection” and
         // “reconnecting / switching: old connection actively closed” (close synchronously triggers the old callback,
         // without comparing generations, the disconnect banner would be wrongly applied to the just-reconnected session)
         val connectionToken = Any()
-        val (pw, key) = resolveCredentials(host)
+        val (resolvedPw, key) = resolveCredentials(host)
+        val pw = passwordOverride ?: resolvedPw
         val callbacks =
             object : SshCallbacks {
                 override suspend fun onOutput(data: ByteArray) {}
@@ -409,25 +477,40 @@ fun AppRoot(repository: HostRepository) {
                 }
 
                 override fun verifyHostKey(hostKey: HostKeyInfo): Boolean {
+                    val isQuickConnect = host.id.startsWith("quickconnect:")
+                    val recordFingerprint: (String) -> Unit = { fp ->
+                        if (isQuickConnect) {
+                            repository.recordQuickConnectFingerprint(host.hostname, host.port, fp)
+                        } else {
+                            repository.touchConnected(host.id, fp)
+                        }
+                    }
                     // Same origin as the terminal connection: Automatically passes if the fingerprint matches; no duplicate dialogs.
                     val known =
-                        repository.getHost(host.id)?.knownHostFingerprint
-                            ?: host.knownHostFingerprint
+                        if (isQuickConnect) {
+                            repository.getQuickConnectFingerprint(host.hostname, host.port)
+                        } else {
+                            repository.getHost(host.id)?.knownHostFingerprint
+                                ?: host.knownHostFingerprint
+                        }
                     if (known != null) {
                         if (known == hostKey.fingerprintSha256) return true
                         // Fingerprint changes: A dialog prompts the user to verify the new and old fingerprints
                         val req = HostKeyRequest(hostKey, changed = true, previousFingerprint = known)
                         sftpHostKey = req
                         val accepted = awaitHostKeyPromptAnswer(req.deferred)
-                        if (accepted) repository.touchConnected(host.id, hostKey.fingerprintSha256)
+                        if (accepted) recordFingerprint(hostKey.fingerprintSha256)
                         return accepted
                     }
                     // First connection: Set the settings to skip the initial confirmation and trust immediately
-                    if (!repository.loadSettings().verifyHostKeyOnFirstUse) return true
+                    if (!repository.loadSettings().verifyHostKeyOnFirstUse) {
+                        recordFingerprint(hostKey.fingerprintSha256)
+                        return true
+                    }
                     val req = HostKeyRequest(hostKey)
                     sftpHostKey = req
                     val accepted = awaitHostKeyPromptAnswer(req.deferred)
-                    if (accepted) repository.touchConnected(host.id, hostKey.fingerprintSha256)
+                    if (accepted) recordFingerprint(hostKey.fingerprintSha256)
                     return accepted
                 }
             }
@@ -469,6 +552,215 @@ fun AppRoot(repository: HostRepository) {
                 snackbarHostState.showSnackbar(appStrings.sftpConnectFailed(e.message ?: ""))
             }
         }
+    }
+
+    fun startQuickConnect(submittedState: QuickConnectWizardState) {
+        val protocol = submittedState.protocol
+        val port = submittedState.portInput.trim().toIntOrNull() ?: submittedState.target.sshPort
+        val username = submittedState.usernameInput.trim()
+        val moshUdpPort =
+            if (protocol == ConnectionMode.MOSH) {
+                submittedState.moshUdpPortInput
+                    .trim()
+                    .toIntOrNull()
+                    ?.takeIf { it in 1..65535 } ?: 0
+            } else {
+                0
+            }
+        val moshServerCommand =
+            if (protocol == ConnectionMode.MOSH) {
+                submittedState.moshCommandInput.trim()
+            } else {
+                ""
+            }
+        val host =
+            Host(
+                id = quickConnectHostId(protocol, submittedState.target.host, port),
+                name = "$username@${submittedState.target.host}",
+                hostname = submittedState.target.host,
+                port = port,
+                username = username,
+                authMethod = HostAuthMethod.PASSWORD,
+                connectionMode = protocol,
+                moshUdpPort = moshUdpPort,
+                moshServerCommand = moshServerCommand,
+            )
+
+        quickConnectJob?.cancel()
+        quickConnectConnectingController?.destroy()
+
+        val strings = currentStrings.value
+        if (submittedState.target.openSftp) {
+            quickConnectWizard =
+                submittedState.copy(
+                    connecting = true,
+                    statusText = strings.quickConnect.connectingStatus,
+                    errorMessage = null,
+                    failureSummary = null,
+                )
+            quickConnectJob =
+                scope.launch {
+                    try {
+                        establishSftp(host, passwordOverride = submittedState.passwordInput) { session, token ->
+                            repository.recordQuickConnectHistory(
+                                QuickConnectHistoryEntry(
+                                    protocol = ConnectionMode.SSH,
+                                    host = host.hostname,
+                                    port = port,
+                                    username = username,
+                                    lastConnectedAt = Clock.System.now().toEpochMilliseconds(),
+                                    openSftp = true,
+                                ),
+                            )
+                            quickConnectHistory = repository.listQuickConnectHistory()
+                            val entry = sessionManager.addSftp(host, session, token)
+                            quickConnectWizard = null
+                            currentTab = SessionTab.Sftp(host, session, entry.uiState)
+                            navigate(Screen.Terminal)
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        val activeStrings = currentStrings.value
+                        val summary =
+                            buildQuickConnectFailureSummary(
+                                e.message,
+                                ConnectionMode.SSH,
+                                activeStrings.quickConnect,
+                            )
+                        quickConnectWizard =
+                            submittedState.copy(
+                                connecting = false,
+                                statusText = null,
+                                errorMessage = summary.headline,
+                                failureSummary = summary,
+                            )
+                    }
+                }
+            return
+        }
+
+        val statusText =
+            if (protocol == ConnectionMode.MOSH) {
+                strings.quickConnect.moshBootstrappingStatus
+            } else {
+                strings.quickConnect.connectingStatus
+            }
+        quickConnectWizard =
+            submittedState.copy(
+                connecting = true,
+                statusText = statusText,
+                errorMessage = null,
+            )
+
+        var detectedSystem = ""
+        val controller =
+            TerminalController(
+                host = host,
+                password = submittedState.passwordInput,
+                privateKeyPem = null,
+                repository = repository,
+                autoReconnect = settings.autoReconnect,
+                strings = { currentStrings.value },
+            ).also { ctrl ->
+                ctrl.onSystemDetected = { updated ->
+                    detectedSystem = updated.system
+                    if (ctrl.status == ConnStatus.CONNECTED) {
+                        val existing =
+                            repository.listQuickConnectHistory().firstOrNull {
+                                it.protocol == protocol &&
+                                    it.host == host.hostname &&
+                                    it.port == port &&
+                                    it.moshUdpPort == moshUdpPort &&
+                                    it.username == username
+                            }
+                        if (existing != null && existing.system != updated.system) {
+                            repository.recordQuickConnectHistory(existing.copy(system = updated.system))
+                            quickConnectHistory = repository.listQuickConnectHistory()
+                        }
+                    }
+                }
+            }
+        quickConnectConnectingController = controller
+        quickConnectJob =
+            scope.launch {
+                controller.connect(80, 24)
+                snapshotFlow { controller.status }.first {
+                    it != ConnStatus.CONNECTING && it != ConnStatus.AUTH && it != ConnStatus.IDLE
+                }
+                if (quickConnectConnectingController !== controller) return@launch
+
+                val activeStrings = currentStrings.value
+                val moshFailed =
+                    protocol == ConnectionMode.MOSH &&
+                        (controller.moshNeedsInstall || controller.moshDegradedToSsh)
+
+                when {
+                    moshFailed -> {
+                        val reason =
+                            controller.moshInstallReason
+                                ?: if (controller.moshDegradedToSsh) {
+                                    activeStrings.quickConnect.errorMoshUdp
+                                } else {
+                                    activeStrings.moshServerMissing
+                                }
+                        val summary =
+                            buildQuickConnectFailureSummary(
+                                reason,
+                                protocol,
+                                activeStrings.quickConnect,
+                                errorCode = controller.errorCode,
+                            )
+                        controller.destroy()
+                        quickConnectConnectingController = null
+                        quickConnectWizard =
+                            submittedState.copy(
+                                connecting = false,
+                                statusText = null,
+                                errorMessage = summary.headline,
+                                failureSummary = summary,
+                            )
+                    }
+                    controller.status == ConnStatus.CONNECTED -> {
+                        repository.recordQuickConnectHistory(
+                            QuickConnectHistoryEntry(
+                                protocol = protocol,
+                                host = host.hostname,
+                                port = port,
+                                moshUdpPort = moshUdpPort,
+                                moshServerCommand = moshServerCommand,
+                                username = username,
+                                lastConnectedAt = Clock.System.now().toEpochMilliseconds(),
+                                system = detectedSystem,
+                            ),
+                        )
+                        quickConnectHistory = repository.listQuickConnectHistory()
+                        sessionManager.attachExisting(controller)
+                        quickConnectConnectingController = null
+                        quickConnectWizard = null
+                        currentTab = SessionTab.Terminal(controller)
+                        navigate(Screen.Terminal)
+                    }
+                    else -> {
+                        val summary =
+                            buildQuickConnectFailureSummary(
+                                controller.errorMessage,
+                                protocol,
+                                activeStrings.quickConnect,
+                                errorCode = controller.errorCode,
+                            )
+                        controller.destroy()
+                        quickConnectConnectingController = null
+                        quickConnectWizard =
+                            submittedState.copy(
+                                connecting = false,
+                                statusText = null,
+                                errorMessage = summary.headline,
+                                failureSummary = summary,
+                            )
+                    }
+                }
+            }
     }
 
     /** Host Capability Entry Point: Prioritize reuse on the same host and with the same launch type; otherwise, create a separate session. */
@@ -578,6 +870,8 @@ fun AppRoot(repository: HostRepository) {
                 }
             }
         onDispose {
+            quickConnectJob?.cancel()
+            quickConnectConnectingController?.destroy()
             agentControllerPool.closeAll()
             dispose()
             disposeNetwork()
@@ -666,6 +960,30 @@ fun AppRoot(repository: HostRepository) {
                         }
                     }
                 }
+                quickConnectWizard?.let { wizardState ->
+                    QuickConnectWizardDialog(
+                        state = wizardState,
+                        onStateChange = { quickConnectWizard = it },
+                        onConnect = ::startQuickConnect,
+                        onCancel = ::cancelQuickConnect,
+                    )
+                }
+                quickConnectConnectingController?.let { qcController ->
+                    qcController.authPrompt?.let { prompt ->
+                        AuthPromptDialog(prompt.prompt) { answers ->
+                            qcController.respondToPrompt(answers)
+                        }
+                    }
+                    qcController.hostKeyPrompt?.let { hk ->
+                        HostKeyDialog(
+                            key = hk.key,
+                            changed = hk.changed,
+                            previousFingerprint = hk.previousFingerprint,
+                        ) { accept ->
+                            qcController.respondToHostKey(accept)
+                        }
+                    }
+                }
                 AnimatedContent(
                     targetState = screen,
                     transitionSpec = {
@@ -697,48 +1015,41 @@ fun AppRoot(repository: HostRepository) {
                                 bottomBar = {
                                     // In fullscreen mode, set subpages to open: the bottom tab is hidden (subpages are closed uniformly via the back button).
                                     if (settingsSubPage == null) {
-                                        // Custom-drawn minimalist bottom bar: no capsule indicators; selected items = theme green; monospaced font for small tags
-                                        val mono = monospaceFontFamily()
-                                        Column {
-                                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                            Row(
-                                                Modifier
-                                                    .fillMaxWidth()
-                                                    .background(MaterialTheme.colorScheme.surface)
-                                                    .navigationBarsPadding(),
+                                        Row(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                                                .navigationBarsPadding()
+                                                .padding(vertical = Spacing.Xs),
+                                        ) {
+                                            HomeTabItem(
+                                                label = appStrings.appTabHosts,
+                                                icon = Icons.Default.Dns,
+                                                selected = homeTab == HomeTab.HOSTS,
+                                                modifier = Modifier.weight(1f),
                                             ) {
-                                                HomeTabItem(
-                                                    appStrings.appTabHosts,
-                                                    Icons.Default.Dns,
-                                                    homeTab == HomeTab.HOSTS,
-                                                    mono,
-                                                    Modifier.weight(1f),
-                                                ) {
-                                                    homeTab = HomeTab.HOSTS
-                                                }
-                                                HomeTabItem(
-                                                    appStrings.appTabConnections,
-                                                    Icons.Default.Cable,
-                                                    homeTab == HomeTab.CONNECTIONS,
-                                                    mono,
-                                                    Modifier.weight(1f),
-                                                    badge = activeSessionCount,
-                                                    badgeAlert =
-                                                        agentSessionItems.any {
-                                                            it.controller.pendingApprovals.isNotEmpty()
-                                                        },
-                                                ) {
-                                                    homeTab = HomeTab.CONNECTIONS
-                                                }
-                                                HomeTabItem(
-                                                    appStrings.appTabSettings,
-                                                    Icons.Default.Settings,
-                                                    homeTab == HomeTab.SETTINGS,
-                                                    mono,
-                                                    Modifier.weight(1f),
-                                                ) {
-                                                    homeTab = HomeTab.SETTINGS
-                                                }
+                                                homeTab = HomeTab.HOSTS
+                                            }
+                                            HomeTabItem(
+                                                label = appStrings.appTabConnections,
+                                                icon = Icons.Default.Terminal,
+                                                selected = homeTab == HomeTab.CONNECTIONS,
+                                                modifier = Modifier.weight(1f),
+                                                badge = activeSessionCount,
+                                                badgeAlert =
+                                                    agentSessionItems.any {
+                                                        it.controller.pendingApprovals.isNotEmpty()
+                                                    },
+                                            ) {
+                                                homeTab = HomeTab.CONNECTIONS
+                                            }
+                                            HomeTabItem(
+                                                label = appStrings.appTabSettings,
+                                                icon = Icons.Default.Settings,
+                                                selected = homeTab == HomeTab.SETTINGS,
+                                                modifier = Modifier.weight(1f),
+                                            ) {
+                                                homeTab = HomeTab.SETTINGS
                                             }
                                         }
                                     }
@@ -853,6 +1164,79 @@ fun AppRoot(repository: HostRepository) {
                                                                 )
                                                             } +
                                                             agentSessionItems,
+                                                    history = quickConnectHistory,
+                                                    savedHosts = hosts,
+                                                    showSessionPreview = settings.showConnectionsSessionPreview,
+                                                    showHistory = settings.showQuickConnectHistory,
+                                                    showSftp = settings.showConnectionsSftp,
+                                                    onQuickConnect = { target ->
+                                                        quickConnectWizard = createWizardState(target)
+                                                    },
+                                                    onSelectSavedHost = { host ->
+                                                        openHostTerminal(host, TerminalLaunchMode.SHELL)
+                                                    },
+                                                    onSelectHistory = { entry ->
+                                                        quickConnectWizard =
+                                                            createWizardState(QuickConnectParser.fromHistory(entry))
+                                                    },
+                                                    onEditHistory = { entry ->
+                                                        quickConnectWizard =
+                                                            createWizardState(
+                                                                QuickConnectParser.fromHistory(entry),
+                                                                forceProtocolStep = true,
+                                                            )
+                                                    },
+                                                    onSaveHistoryToHosts = { entry ->
+                                                        val hostId =
+                                                            quickConnectHostId(entry.protocol, entry.host, entry.port)
+                                                        val alreadySaved =
+                                                            hosts.any {
+                                                                it.id == hostId ||
+                                                                    (
+                                                                        it.hostname == entry.host &&
+                                                                            it.port == entry.port &&
+                                                                            it.username == entry.username
+                                                                    )
+                                                            }
+                                                        if (!alreadySaved) {
+                                                            repository.upsertHost(
+                                                                Host(
+                                                                    id = hostId,
+                                                                    name = "${entry.username}@${entry.host}",
+                                                                    hostname = entry.host,
+                                                                    port = entry.port,
+                                                                    username = entry.username,
+                                                                    authMethod = HostAuthMethod.PASSWORD,
+                                                                    connectionMode = entry.protocol,
+                                                                    moshUdpPort = entry.moshUdpPort,
+                                                                    moshServerCommand = entry.moshServerCommand,
+                                                                    system = entry.system,
+                                                                ),
+                                                            )
+                                                            refreshHosts()
+                                                        }
+                                                        scope.launch {
+                                                            snackbarHostState.showSnackbar(
+                                                                currentStrings.value.quickConnect.savedToHostsMessage(
+                                                                    "${entry.username}@${entry.host}",
+                                                                ),
+                                                            )
+                                                        }
+                                                    },
+                                                    onDeleteHistory = { entry ->
+                                                        repository.deleteQuickConnectHistory(entry)
+                                                        quickConnectHistory = repository.listQuickConnectHistory()
+                                                    },
+                                                    onClearHistory = {
+                                                        repository.clearQuickConnectHistory()
+                                                        quickConnectHistory = emptyList()
+                                                    },
+                                                    onOpenSftp = { sftpPickerVisible = true },
+                                                    onReconnect = { item ->
+                                                        if (item is HostSessionItem.Terminal) {
+                                                            item.controller.reconnect()
+                                                        }
+                                                    },
                                                     onOpen = { item ->
                                                         when (item) {
                                                             is HostSessionItem.Terminal -> {

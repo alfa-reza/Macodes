@@ -13,6 +13,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,10 +24,12 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Android
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DesktopWindows
@@ -44,6 +47,7 @@ import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -55,8 +59,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -72,6 +76,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -101,9 +106,10 @@ import dev.macodes.generated.resources.host_synology
 import dev.macodes.generated.resources.host_ubuntu
 import dev.macodes.generated.resources.host_windows
 import dev.macodes.ssh.SftpSession
+import dev.macodes.ui.theme.Corners
 import dev.macodes.ui.theme.Sizes
+import dev.macodes.ui.theme.Spacing
 import dev.macodes.ui.theme.StatusColors
-import dev.macodes.util.monospaceFontFamily
 import kotlinx.coroutines.delay
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
@@ -281,7 +287,7 @@ fun HostListScreen(
                     onClick = onAdd,
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(Corners.Lg),
                 ) { Icon(Icons.Default.Add, s.hostsAdd) }
             }
         },
@@ -292,37 +298,108 @@ fun HostListScreen(
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut(),
             ) {
-                OutlinedTextField(
+                MacodesSearchPill(
                     value = query,
                     onValueChange = { query = it },
+                    placeholder = s.hostsSearch,
                     modifier =
                         Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .padding(horizontal = Spacing.Lg, vertical = Spacing.Sm)
                             .focusRequester(searchFocusRequester),
-                    placeholder = { Text(s.hostsSearch) },
-                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                    trailingIcon = {
-                        if (query.isNotEmpty()) {
-                            IconButton(onClick = { query = "" }) {
-                                Icon(Icons.Filled.Close, contentDescription = s.navBack)
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
                 )
             }
+            val activeCount =
+                hosts.sumOf { h ->
+                    hostSessions[h.id].orEmpty().count { it.isActive }
+                }
             if (filtered.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        if (hosts.isEmpty()) s.hostsEmpty else s.hostsNoMatch,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                Box(Modifier.fillMaxSize().padding(Spacing.Lg), contentAlignment = Alignment.Center) {
+                    Surface(
+                        shape = RoundedCornerShape(Corners.Xl),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        border = BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(Spacing.Xl),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(Spacing.Md),
+                        ) {
+                            Icon(
+                                Icons.Filled.Terminal,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(36.dp),
+                            )
+                            Text(
+                                if (hosts.isEmpty()) s.hostsEmpty else s.hostsNoMatch,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            if (hosts.isEmpty()) {
+                                Button(
+                                    onClick = onAdd,
+                                    shape = RoundedCornerShape(Corners.Md),
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(Spacing.Xs))
+                                    Text(s.hostsAdd)
+                                }
+                            }
+                        }
+                    }
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize()) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = Spacing.Lg, vertical = Spacing.Sm),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.Sm),
+                ) {
+                    item(key = "hosts-overview-bar") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = Spacing.Xs),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(Corners.Full),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                border = BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant),
+                            ) {
+                                Text(
+                                    text = "${s.appTabHosts} · ${hosts.size}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = Spacing.Md, vertical = 6.dp),
+                                )
+                            }
+                            if (activeCount > 0) {
+                                Surface(
+                                    shape = RoundedCornerShape(Corners.Full),
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = Spacing.Md, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    ) {
+                                        Box(
+                                            Modifier
+                                                .size(7.dp)
+                                                .clip(CircleShape)
+                                                .background(StatusColors.Connected),
+                                        )
+                                        Text(
+                                            text = "${s.hostsActive} · $activeCount",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                     items(filtered, key = { it.id }) { host ->
                         val isSelected = host.id in selected
                         val sessions = hostSessions[host.id].orEmpty()
@@ -390,12 +467,12 @@ private fun SelectionHeader(
 ) {
     val s = LocalAppStrings.current
     var moreOpen by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLow)) {
         Row(
             Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 4.dp, vertical = 4.dp),
+                .padding(horizontal = Spacing.Xs, vertical = Spacing.Xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onClose) {
@@ -404,7 +481,7 @@ private fun SelectionHeader(
             Text(
                 s.hostsSelectedCount(count),
                 style = MaterialTheme.typography.titleMedium,
-                fontFamily = monospaceFontFamily(),
+                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.weight(1f))
@@ -492,15 +569,13 @@ private fun HostCard(
     val s = LocalAppStrings.current
     val sys = host.system.ifBlank { host.hostname }
     val connecting = sessions.any { it.isConnecting }
+    val isMosh = host.connectionMode == ConnectionMode.MOSH
+    val protoLabel = if (isMosh) s.hostsModeMosh else s.hostsModeSsh
     // First line: Alias (name) takes precedence; if empty, fall back to the host address.
     val title = host.name.ifBlank { host.hostname }
-    // Card subtitles should always refer to the host itself; session status is consistently handled by the badge on the right and the “More” menu,
-    // Avoid having “2 Disconnected” and the “2” badge occupy the same card.
     val detail =
         buildString {
-            append(if (host.connectionMode == ConnectionMode.MOSH) s.hostsModeMosh else s.hostsModeSsh)
-            append(" · ")
-            append(host.username)
+            append("${host.username}@${host.hostname}:${host.port}")
             if (host.system.isNotBlank()) {
                 append(" · ")
                 append(host.system)
@@ -511,45 +586,40 @@ private fun HostCard(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .clip(RoundedCornerShape(Corners.Lg))
                 .combinedClickable(
                     onClick = onCardClick,
                     onLongClick = onLongClick,
                 ),
-        shape = RoundedCornerShape(14.dp),
-        // Follow the theme: light mode = white, dark mode = dark; highlight batch-selected items with a border in the primary color.
+        shape = RoundedCornerShape(Corners.Lg),
         colors =
             CardDefaults.cardColors(
                 containerColor =
                     if (selected) {
                         MaterialTheme.colorScheme.primaryContainer
                     } else {
-                        MaterialTheme.colorScheme.surface
+                        MaterialTheme.colorScheme.surfaceContainerHigh
                     },
             ),
         border =
-            BorderStroke(
-                width = if (selected) 2.dp else 1.dp,
-                color =
-                    if (selected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.outlineVariant
-                    },
-            ),
+            if (selected) {
+                BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+            } else {
+                BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant)
+            },
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column {
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                Modifier.fillMaxWidth().padding(horizontal = Spacing.Lg, vertical = Spacing.Md),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
             ) {
                 // System Avatar (Rounded Square + White Icon): Tap to enter/toggle batch selection
                 Box(
                     Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .size(Sizes.AvatarCard)
+                        .clip(RoundedCornerShape(Corners.Md))
                         .background(systemColor(sys))
                         .clickable(onClick = onAvatarClick),
                     contentAlignment = Alignment.Center,
@@ -557,26 +627,54 @@ private fun HostCard(
                     if (connecting) {
                         // Connection: The avatar shows a spinning icon; once the connection is complete, you will be automatically redirected to the terminal screen.
                         CircularProgressIndicator(
-                            modifier = Modifier.size(22.dp),
+                            modifier = Modifier.size(Sizes.IconMedium),
                             color = Color.White,
                             strokeWidth = 2.dp,
                         )
                     } else {
-                        SystemAvatarIcon(sys, 22.dp)
+                        SystemAvatarIcon(sys, Sizes.IconMedium)
                     }
                 }
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.Xs),
+                    ) {
+                        Text(
+                            title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(Corners.Sm),
+                            color =
+                                if (isMosh) {
+                                    MaterialTheme.colorScheme.secondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                },
+                        ) {
+                            Text(
+                                text = protoLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color =
+                                    if (isMosh) {
+                                        MaterialTheme.colorScheme.onSecondaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    },
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
                     Text(
                         detail,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -586,22 +684,23 @@ private fun HostCard(
                     // Selection indicator: checkmark circle
                     Box(
                         Modifier
-                            .size(22.dp)
-                            .clip(RoundedCornerShape(11.dp))
+                            .size(24.dp)
+                            .clip(RoundedCornerShape(Corners.Full))
                             .background(
                                 if (selected) {
                                     MaterialTheme.colorScheme.primary
                                 } else {
-                                    MaterialTheme.colorScheme.surfaceVariant
+                                    MaterialTheme.colorScheme.surfaceContainerHighest
                                 },
                             ),
                         contentAlignment = Alignment.Center,
                     ) {
                         if (selected) {
-                            Text(
-                                "✓",
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                style = MaterialTheme.typography.labelMedium,
+                            Icon(
+                                Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(14.dp),
                             )
                         }
                     }
@@ -845,7 +944,7 @@ private fun HostMoreMenu(
 }
 
 /** For entries on the same day, show only the hour and minute; for entries spanning multiple days, show the month and day to ensure the notation is compact yet sufficient to distinguish between sessions. */
-private fun formatSessionCreatedAt(millis: Long): String {
+internal fun formatSessionCreatedAt(millis: Long): String {
     if (millis <= 0L) return "--:--"
     val timeZone = TimeZone.currentSystemDefault()
     val created = Instant.fromEpochMilliseconds(millis).toLocalDateTime(timeZone)
@@ -957,7 +1056,7 @@ internal fun systemColor(system: String): Color {
         s.contains("macos") || s.contains("darwin") || s.contains("osx") || s.contains("mac") -> Color.Black
         s.contains("windows") || s.contains("win") -> Color(0xFF0078D4)
         s.contains("freebsd") || s.contains("bsd") -> Color(0xFFD6242C)
-        s.contains("ubuntu") -> Color(0xFFE95420)
+        s.contains("ubuntu") -> Color(0xFFE9635E)
         s.contains("fedora") -> Color(0xFF294172)
         s.contains("debian") -> Color(0xFFA80030)
         s.contains("alpine") -> Color(0xFF0D597F)
@@ -980,7 +1079,7 @@ internal fun systemColor(system: String): Color {
             s.contains("nixos") ||
             s.contains("pop") ||
             s.contains("elementary") -> Color(0xFF475569)
-        // Unknown system: brand emerald green (same hue as light-theme primary); white cloud-host icon pops on it
-        else -> Color(0xFF059669)
+        // Unknown system: brand electric blue; white cloud-host icon pops on it
+        else -> Color(0xFF2B84F6)
     }
 }

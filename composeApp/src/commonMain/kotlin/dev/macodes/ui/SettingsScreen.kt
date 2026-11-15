@@ -27,11 +27,26 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
@@ -39,6 +54,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchColors
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -49,7 +66,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.macodes.APP_VERSION
 import dev.macodes.data.AppSettings
@@ -60,6 +80,9 @@ import dev.macodes.data.ThemeMode
 import dev.macodes.data.asrKeyAccount
 import dev.macodes.notify.NotificationPermissionController
 import dev.macodes.notify.NotificationPermissionState
+import dev.macodes.ui.theme.Corners
+import dev.macodes.ui.theme.Sizes
+import dev.macodes.ui.theme.Spacing
 import dev.macodes.ui.theme.TerminalThemes
 import dev.macodes.util.BackgroundProtectionState
 import dev.macodes.util.TermLog
@@ -132,6 +155,9 @@ fun SettingsScreen(
     var voiceInputEnabled by remember { mutableStateOf(settings.voiceInputEnabled) }
     // Recognition service list (pluggable providers); keys stored per provider in SecretStore
     var asrProviders by remember { mutableStateOf(settings.asrProviders) }
+    var showConnectionsSessionPreview by remember { mutableStateOf(settings.showConnectionsSessionPreview) }
+    var showQuickConnectHistory by remember { mutableStateOf(settings.showQuickConnectHistory) }
+    var showConnectionsSftp by remember { mutableStateOf(settings.showConnectionsSftp) }
 
     fun persist() =
         onChange(
@@ -151,6 +177,9 @@ fun SettingsScreen(
                 voiceInputEnabled = voiceInputEnabled,
                 asrProviders = asrProviders,
                 language = language,
+                showConnectionsSessionPreview = showConnectionsSessionPreview,
+                showQuickConnectHistory = showQuickConnectHistory,
+                showConnectionsSftp = showConnectionsSftp,
             ),
         )
 
@@ -160,12 +189,14 @@ fun SettingsScreen(
         Column(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
         ) {
-            // General Group (Original Appearance + Original General Merged): App Theme / Language / Haptic Feedback
+            // General Group: App Theme / Language / Notifications / Diagnostics / Snippets / Voice / Haptics
             SettingsGroup(s.settingsGroupGeneral) {
-                SettingsOptionItem(s.settingsAppTheme, themeModeLabel(theme, s)) { showThemeDialog = true }
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                SettingsOptionItem(s.settingsLanguage, languageLabel(language, s)) { showLanguageDialog = true }
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                SettingsOptionItem(s.settingsAppTheme, themeModeLabel(theme, s), icon = Icons.Filled.Palette) {
+                    showThemeDialog = true
+                }
+                SettingsOptionItem(s.settingsLanguage, languageLabel(language, s), icon = Icons.Filled.Language) {
+                    showLanguageDialog = true
+                }
                 SettingsOptionItem(
                     s.settingsNotifications,
                     if (
@@ -176,18 +207,18 @@ fun SettingsScreen(
                     } else {
                         s.settingsOff
                     },
+                    icon = Icons.Filled.Notifications,
                 ) { onOpenSub(SettingsSubPage.NOTIFICATION) }
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                 SettingsOptionItem(
                     s.settingsDiagnostics,
                     if (TermLog.diagnosticsEnabled) s.settingsOn else s.settingsOff,
+                    icon = Icons.Filled.BugReport,
                 ) { onOpenSub(SettingsSubPage.DIAGNOSTICS) }
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                 SettingsOptionItem(
                     s.settingsSnippets,
                     "",
+                    icon = Icons.Filled.Code,
                 ) { onOpenSub(SettingsSubPage.SNIPPETS) }
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                 SettingsOptionItem(
                     s.voice.settingsVoice,
                     if (voiceInputEnabled) {
@@ -195,9 +226,9 @@ fun SettingsScreen(
                     } else {
                         s.settingsOff
                     },
+                    icon = Icons.Filled.Mic,
                 ) { onOpenSub(SettingsSubPage.VOICE) }
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                SettingsSwitchItem(s.settingsHaptics, haptics) {
+                SettingsSwitchItem(s.settingsHaptics, haptics, icon = Icons.Filled.Vibration) {
                     haptics = it
                     persist()
                 }
@@ -207,12 +238,11 @@ fun SettingsScreen(
                 SettingsOptionItem(
                     s.settingsTerminalPalette,
                     TerminalThemes.ALL.getOrElse(terminalThemeIndex) { TerminalThemes.ALL[0] }.name,
+                    icon = Icons.Filled.Palette,
                 ) { onOpenSub(SettingsSubPage.TERMINAL) }
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                SettingsOptionItem(s.settingsTerminalType, terminalType) {
+                SettingsOptionItem(s.settingsTerminalType, terminalType, icon = Icons.Filled.Terminal) {
                     showTerminalTypeDialog = true
                 }
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                 SettingsSliderItem(
                     title = s.settingsTerminalCols,
                     valueText = if (targetCols < 1f) s.settingsManualFontSize else targetCols.toInt().toString(),
@@ -223,7 +253,6 @@ fun SettingsScreen(
                     },
                     valueRange = 0f..160f,
                 )
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                 SettingsSliderItem(
                     title = s.settingsTerminalFontSize,
                     valueText = "${fontSize.toInt()}sp",
@@ -235,8 +264,7 @@ fun SettingsScreen(
                     valueRange = 6f..32f,
                     enabled = targetCols < 1f,
                 )
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                SettingsSwitchItem(s.settingsOsc52Clipboard, osc52Clipboard) {
+                SettingsSwitchItem(s.settingsOsc52Clipboard, osc52Clipboard, icon = Icons.Filled.ContentPaste) {
                     osc52Clipboard = it
                     persist()
                 }
@@ -253,13 +281,11 @@ fun SettingsScreen(
                     },
                     valueRange = 0f..300f,
                 )
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                SettingsSwitchItem(s.settingsAutoReconnect, autoReconnect) {
+                SettingsSwitchItem(s.settingsAutoReconnect, autoReconnect, icon = Icons.Filled.Autorenew) {
                     autoReconnect = it
                     persist()
                 }
                 if (backgroundProtectionState != BackgroundProtectionState.NOT_APPLICABLE) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                     SettingsOptionItem(
                         s.permissions.backgroundProtection,
                         if (backgroundProtectionState == BackgroundProtectionState.SYSTEM_EXEMPT) {
@@ -267,29 +293,54 @@ fun SettingsScreen(
                         } else {
                             s.permissions.backgroundProtectionManaged
                         },
+                        icon = Icons.Filled.BatteryChargingFull,
                         onClick = ::openApplicationSettings,
                     )
                 }
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                SettingsSwitchItem(s.settingsVerifyHostKey, verifyHostKey) {
+                SettingsSwitchItem(s.settingsVerifyHostKey, verifyHostKey, icon = Icons.Filled.Security) {
                     verifyHostKey = it
                     persist()
                 }
             }
 
-            // About: Set a fixed position at the bottom of the settings page (industry convention: Termius, Blink, and others all place this at the bottom)
-            // Version + official website/documentation/repository links). Tap to open in a browser; uses LocalUriHandler.
-            SettingsGroup(s.settingsGroupAbout) {
-                SettingsOptionItem(s.settingsVersion, APP_VERSION) {}
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                SettingsOptionItem(s.settingsWebsite, WEBSITE_HOST) { uriHandler.openUri(WEBSITE_URL) }
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                SettingsOptionItem(s.permissions.privacyPolicy, "") { onOpenSub(SettingsSubPage.PRIVACY) }
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                SettingsOptionItem(s.settingsContact, CONTACT_EMAIL) { uriHandler.openUri("mailto:$CONTACT_EMAIL") }
+            SettingsGroup(s.quickConnect.settingsConnectionsGroup) {
+                SettingsSwitchItem(
+                    s.quickConnect.settingsShowSessionPreview,
+                    showConnectionsSessionPreview,
+                ) {
+                    showConnectionsSessionPreview = it
+                    persist()
+                }
+                SettingsSwitchItem(
+                    s.quickConnect.settingsShowQuickHistory,
+                    showQuickConnectHistory,
+                ) {
+                    showQuickConnectHistory = it
+                    persist()
+                }
+                SettingsSwitchItem(
+                    s.quickConnect.settingsShowSftpShortcut,
+                    showConnectionsSftp,
+                ) {
+                    showConnectionsSftp = it
+                    persist()
+                }
             }
 
-            Spacer(Modifier.height(24.dp))
+            SettingsGroup(s.settingsGroupAbout) {
+                SettingsOptionItem(s.settingsVersion, APP_VERSION, showArrow = false, icon = Icons.Filled.Info) {}
+                SettingsOptionItem(s.settingsWebsite, WEBSITE_HOST, icon = Icons.Filled.Public) {
+                    uriHandler.openUri(WEBSITE_URL)
+                }
+                SettingsOptionItem(s.permissions.privacyPolicy, "", icon = Icons.Filled.Lock) {
+                    onOpenSub(SettingsSubPage.PRIVACY)
+                }
+                SettingsOptionItem(s.settingsContact, CONTACT_EMAIL, icon = Icons.Filled.Email) {
+                    uriHandler.openUri("mailto:$CONTACT_EMAIL")
+                }
+            }
+
+            Spacer(Modifier.height(Spacing.Xl))
         }
     }
 
@@ -447,63 +498,113 @@ fun SettingsScreen(
     }
 }
 
-/** Card grouping: outer spacing + corner radius + group title. */
+/** Termius-style Switch colors: electric blue active track with crisp white thumb. */
 @Composable
-private fun SettingsGroup(
+internal fun macodesSwitchColors(): SwitchColors =
+    SwitchDefaults.colors(
+        checkedThumbColor = Color.White,
+        checkedTrackColor = MaterialTheme.colorScheme.primary,
+        checkedBorderColor = Color.Transparent,
+        uncheckedThumbColor = Color.White,
+        uncheckedTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        uncheckedBorderColor = Color.Transparent,
+    )
+
+/** Bordered tonal section card grouping with crisp section label. */
+@Composable
+internal fun SettingsGroup(
     title: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Text(
         title,
         style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-        modifier = Modifier.padding(start = 28.dp, top = 16.dp, bottom = 6.dp),
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = Spacing.Xl, top = Spacing.Lg, bottom = Spacing.Sm),
     )
     Card(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        Modifier.fillMaxWidth().padding(horizontal = Spacing.Lg),
+        shape = RoundedCornerShape(Corners.Lg),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        border = BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
     ) {
         Column(content = content)
     }
 }
 
-/** Rows containing option settings: Header + current value + right arrow. */
 @Composable
-private fun SettingsOptionItem(
-    title: String,
-    value: String,
-    onClick: () -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+private fun SettingsLeadingIconBadge(icon: ImageVector) {
+    Box(
+        modifier =
+            Modifier
+                .size(32.dp)
+                .clip(RoundedCornerShape(Corners.Sm))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(
-            title,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            value,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-        )
         Icon(
-            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            imageVector = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp),
         )
     }
 }
 
-/** For numeric settings rows: Header + current value, followed by a slider. */
+/** Stacked settings row with optional leading tinted icon badge, subtitle/value, and trailing chevron. */
+@Composable
+internal fun SettingsOptionItem(
+    title: String,
+    value: String,
+    showArrow: Boolean = true,
+    icon: ImageVector? = null,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.Lg, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
+    ) {
+        if (icon != null) {
+            SettingsLeadingIconBadge(icon)
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (value.isNotEmpty()) {
+                Text(
+                    value,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (showArrow) {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Numeric settings row: Title + current value, followed by a slim slider. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SettingsSliderItem(
+internal fun SettingsSliderItem(
     title: String,
     valueText: String,
     value: Float,
@@ -511,26 +612,21 @@ private fun SettingsSliderItem(
     valueRange: ClosedFloatingPointRange<Float>,
     enabled: Boolean = true,
 ) {
-    // top 14dp aligns with other rows; bottom 7dp compensates for the space below the thumb inside the Slider
-    // (Center the 18dp thumb within the 32dp area, with its bottom edge approximately 7dp from the bottom of the Slider) ——
-    // Visually, the spacing from the bottom edge of “thumb” to the next row should match the spacing from the bottom of text on other rows to the next row.
-    Column(Modifier.fillMaxWidth().padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 7.dp)) {
+    Column(Modifier.fillMaxWidth().padding(start = Spacing.Lg, top = 14.dp, end = Spacing.Lg, bottom = 7.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 title,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
                 modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.85f else 0.4f),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.4f),
             )
             Text(
                 valueText,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.5f else 0.3f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.4f),
             )
         }
-        // Rounded-end thin-track slider (the default vertical thumb looks too out of place in the list);
-        // height(32.dp): the default 48dp touch target would make rows ~96dp tall, far taller than other rows—
-        // Set the height of the slider on the settings page to be close to the line height of the OptionItem (while still allowing it to be dragged).
         Slider(
             value = value,
             onValueChange = onValueChange,
@@ -543,7 +639,7 @@ private fun SettingsSliderItem(
                         if (enabled) {
                             MaterialTheme.colorScheme.primary
                         } else {
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
                         },
                     ),
                 )
@@ -558,7 +654,7 @@ private fun SettingsSliderItem(
                                 MaterialTheme.colorScheme.primary.copy(
                                     alpha = if (enabled) 1f else 0.3f,
                                 ),
-                            inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
+                            inactiveTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                         ),
                 )
             },
@@ -566,26 +662,49 @@ private fun SettingsSliderItem(
     }
 }
 
-/** Switch-type settings rows. */
+/** Switch settings row with optional leading tinted icon badge. */
 @Composable
-private fun SettingsSwitchItem(
+internal fun SettingsSwitchItem(
     title: String,
     checked: Boolean,
+    subtitle: String? = null,
+    icon: ImageVector? = null,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    // Vertical 8dp: Line height = Switch 32dp + 16 = 48dp, consistent with OptionItem (text 20 + 28)——
-    // Otherwise, the row spacing for "Switch" is 12dp larger than other rows (user feedback indicates excessive vertical spacing).
     Row(
-        Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) }.padding(horizontal = 16.dp, vertical = 8.dp),
+        Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(horizontal = Spacing.Lg, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
     ) {
-        Text(
-            title,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+        if (icon != null) {
+            SettingsLeadingIconBadge(icon)
+        }
+        Column(
             modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (!subtitle.isNullOrEmpty()) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = macodesSwitchColors(),
         )
-        Switch(checked, onCheckedChange)
     }
 }
 

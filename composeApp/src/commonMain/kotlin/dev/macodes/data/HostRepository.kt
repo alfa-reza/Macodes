@@ -2,6 +2,7 @@ package dev.macodes.data
 
 import com.russhwolf.settings.Settings
 import dev.macodes.util.TermLog
+import dev.macodes.util.withRepoLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,6 +23,7 @@ class HostRepository(
             encodeDefaults = true
         },
 ) {
+    private val lock = Any()
     private val hostsKey = "macodes.hosts.v1"
     private val settingsKey = "macodes.settings.v1"
     private val tagGroupsKey = "macodes.tag_groups.v1"
@@ -51,14 +53,18 @@ class HostRepository(
     fun getHost(id: String): Host? = listHosts().firstOrNull { it.id == id }
 
     fun upsertHost(host: Host) {
-        val hosts = listHosts().toMutableList()
-        val idx = hosts.indexOfFirst { it.id == host.id }
-        if (idx >= 0) hosts[idx] = host else hosts.add(host)
-        saveHosts(hosts)
+        withRepoLock(lock) {
+            val hosts = listHosts().toMutableList()
+            val idx = hosts.indexOfFirst { it.id == host.id }
+            if (idx >= 0) hosts[idx] = host else hosts.add(host)
+            saveHosts(hosts)
+        }
     }
 
     fun deleteHost(id: String) {
-        saveHosts(listHosts().filter { it.id != id })
+        withRepoLock(lock) {
+            saveHosts(listHosts().filter { it.id != id })
+        }
     }
 
     fun touchConnected(
@@ -91,8 +97,10 @@ class HostRepository(
         id: String,
         transform: (Host) -> Host,
     ) {
-        val hosts = listHosts().map { h -> if (h.id == id) transform(h) else h }
-        saveHosts(hosts)
+        withRepoLock(lock) {
+            val hosts = listHosts().map { h -> if (h.id == id) transform(h) else h }
+            saveHosts(hosts)
+        }
     }
 
     private fun saveHosts(hosts: List<Host>) {
@@ -112,20 +120,24 @@ class HostRepository(
     }
 
     fun upsertTagGroup(group: TagGroup) {
-        val groups = listTagGroups().toMutableList()
-        val idx = groups.indexOfFirst { it.id == group.id }
-        if (idx >= 0) groups[idx] = group else groups.add(group)
-        settings.putString(tagGroupsKey, json.encodeToString(groups))
+        withRepoLock(lock) {
+            val groups = listTagGroups().toMutableList()
+            val idx = groups.indexOfFirst { it.id == group.id }
+            if (idx >= 0) groups[idx] = group else groups.add(group)
+            settings.putString(tagGroupsKey, json.encodeToString(groups))
+        }
     }
 
     /** Delete tag group: Cascading cleanup of all references to this tag across all snippets (without deleting the snippets themselves). */
     fun deleteTagGroup(id: String) {
-        settings.putString(tagGroupsKey, json.encodeToString(listTagGroups().filter { it.id != id }))
-        // Cascade cleanup of snippet references (write back only when references are actually cleaned up to avoid unnecessary writes)
-        val before = listSnippets()
-        val cleaned = before.map { s -> if (id in s.tagIds) s.copy(tagIds = s.tagIds - id) else s }
-        if (cleaned != before) {
-            settings.putString(snippetsKey, json.encodeToString(cleaned))
+        withRepoLock(lock) {
+            settings.putString(tagGroupsKey, json.encodeToString(listTagGroups().filter { it.id != id }))
+            // Cascade cleanup of snippet references (write back only when references are actually cleaned up to avoid unnecessary writes)
+            val before = listSnippets()
+            val cleaned = before.map { s -> if (id in s.tagIds) s.copy(tagIds = s.tagIds - id) else s }
+            if (cleaned != before) {
+                settings.putString(snippetsKey, json.encodeToString(cleaned))
+            }
         }
     }
 
@@ -144,14 +156,18 @@ class HostRepository(
     fun getSnippet(id: String): Snippet? = listSnippets().firstOrNull { it.id == id }
 
     fun upsertSnippet(snippet: Snippet) {
-        val snippets = listSnippets().toMutableList()
-        val idx = snippets.indexOfFirst { it.id == snippet.id }
-        if (idx >= 0) snippets[idx] = snippet else snippets.add(snippet)
-        settings.putString(snippetsKey, json.encodeToString(snippets))
+        withRepoLock(lock) {
+            val snippets = listSnippets().toMutableList()
+            val idx = snippets.indexOfFirst { it.id == snippet.id }
+            if (idx >= 0) snippets[idx] = snippet else snippets.add(snippet)
+            settings.putString(snippetsKey, json.encodeToString(snippets))
+        }
     }
 
     fun deleteSnippet(id: String) {
-        settings.putString(snippetsKey, json.encodeToString(listSnippets().filter { it.id != id }))
+        withRepoLock(lock) {
+            settings.putString(snippetsKey, json.encodeToString(listSnippets().filter { it.id != id }))
+        }
     }
 
     // ---------- settings ----------
@@ -253,6 +269,99 @@ class HostRepository(
     )
 
     private val recentSftpKey = "macodes.recent_sftp.v2"
+    private val quickConnectHistoryKey = "macodes.quick_connect_history.v1"
+    private val quickConnectHostKeysKey = "macodes.quick_connect_hostkeys.v1"
+
+    fun listQuickConnectHistory(): List<QuickConnectHistoryEntry> {
+        val raw = settings.getStringOrNull(quickConnectHistoryKey) ?: return emptyList()
+        return try {
+            json
+                .decodeFromString<List<QuickConnectHistoryEntry>>(raw)
+                .sortedByDescending { it.lastConnectedAt }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun QuickConnectHistoryEntry.sameEndpointAs(other: QuickConnectHistoryEntry): Boolean =
+        protocol == other.protocol &&
+            host == other.host &&
+            port == other.port &&
+            moshUdpPort == other.moshUdpPort &&
+            username == other.username &&
+            openSftp == other.openSftp
+
+    fun recordQuickConnectHistory(entry: QuickConnectHistoryEntry) {
+        withRepoLock(lock) {
+            val updated =
+                listQuickConnectHistory()
+                    .filterNot { it.sameEndpointAs(entry) }
+                    .toMutableList()
+            updated.add(0, entry)
+            settings.putString(quickConnectHistoryKey, json.encodeToString(updated.take(20)))
+        }
+    }
+
+    fun deleteQuickConnectHistory(entry: QuickConnectHistoryEntry) {
+        withRepoLock(lock) {
+            val updated = listQuickConnectHistory().filterNot { it.sameEndpointAs(entry) }
+            settings.putString(quickConnectHistoryKey, json.encodeToString(updated))
+        }
+    }
+
+    fun clearQuickConnectHistory() {
+        withRepoLock(lock) {
+            settings.remove(quickConnectHistoryKey)
+        }
+    }
+
+    private fun quickHostKey(
+        host: String,
+        port: Int,
+    ): String = "$host:$port"
+
+    fun getQuickConnectFingerprint(
+        host: String,
+        port: Int,
+    ): String? {
+        val raw = settings.getStringOrNull(quickConnectHostKeysKey) ?: return null
+        return try {
+            json.decodeFromString<Map<String, String>>(raw)[quickHostKey(host, port)]
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun recordQuickConnectFingerprint(
+        host: String,
+        port: Int,
+        fingerprint: String,
+    ) {
+        withRepoLock(lock) {
+            val raw = settings.getStringOrNull(quickConnectHostKeysKey)
+            val map =
+                if (raw == null) {
+                    mutableMapOf()
+                } else {
+                    try {
+                        json.decodeFromString<Map<String, String>>(raw).toMutableMap()
+                    } catch (_: Exception) {
+                        mutableMapOf()
+                    }
+                }
+            val key = quickHostKey(host, port)
+            map.remove(key)
+            map[key] = fingerprint
+            while (map.size > MAX_QUICK_CONNECT_HOST_KEYS) {
+                map.remove(map.keys.first())
+            }
+            settings.putString(quickConnectHostKeysKey, json.encodeToString(map))
+        }
+    }
+
+    private companion object {
+        const val MAX_QUICK_CONNECT_HOST_KEYS = 100
+    }
 
     fun loadRecentSftpEntries(): List<RecentSftpEntry> {
         val raw = settings.getStringOrNull(recentSftpKey) ?: return emptyList()

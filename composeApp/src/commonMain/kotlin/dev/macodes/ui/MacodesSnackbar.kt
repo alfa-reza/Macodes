@@ -8,13 +8,10 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
+import dev.macodes.ui.theme.Corners
 
 /**
- * Global standardization of Snackbar hosts: **Brand Visual Identity** (dark zinc-gray card with corner radius + white text + brand green action button),
- * Consistent across dark and light themes; does not shift with the screen background. Project-wide tooltips (connection failure / upload/download complete /
- * (Voice input feedback, copy-paste, etc.) should all follow this style to avoid inconsistencies in default formatting across different sections.
+ * Global standardization of Snackbar hosts using semantic surface tokens.
  */
 @Composable
 fun MacodesSnackbarHost(
@@ -28,12 +25,11 @@ fun MacodesSnackbarHost(
 
 @Composable
 private fun BrandSnackbar(data: SnackbarData) {
-    val brand = MaterialTheme.colorScheme.primary
     Snackbar(
         snackbarData = data,
-        shape = RoundedCornerShape(14.dp),
-        containerColor = Color(0xFF23262D).copy(alpha = 0.98f),
-        contentColor = Color(0xFFE4E4E7),
-        actionColor = brand,
+        shape = RoundedCornerShape(Corners.Lg),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        actionColor = MaterialTheme.colorScheme.primary,
     )
 }

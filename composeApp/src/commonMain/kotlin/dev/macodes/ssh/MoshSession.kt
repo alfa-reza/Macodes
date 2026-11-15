@@ -2,11 +2,14 @@ package dev.macodes.ssh
 
 import dev.macodes.mosh.KmpMoshSession
 import dev.macodes.mosh.MoshExitReason
+import dev.macodes.mosh.MoshUdpSocket
 import dev.macodes.term.TerminalBuffer
+import dev.macodes.util.ioDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * Mosh client session: The implementation is entirely in Kotlin (dev.macodes.mosh package, SSP protocol).
@@ -72,7 +75,7 @@ fun detectSystemFromOutput(output: String): String? {
 /**
  * Pure Kotlin mosh client (dev.macodes.mosh package): Syncs the shadow terminal state to [uiBuffer].
  */
-fun createKmpMoshSession(
+suspend fun createKmpMoshSession(
     ip: String,
     port: Int,
     key: String,
@@ -103,6 +106,7 @@ fun createKmpMoshSession(
             }
         }
     }
+    val initialSocket = withContext(ioDispatcher()) { MoshUdpSocket(ip, port) }
     val session =
         KmpMoshSession(
             ip = ip,
@@ -111,6 +115,7 @@ fun createKmpMoshSession(
             columns = columns,
             rows = rows,
             scope = scope,
+            initialSocket = initialSocket,
             onStateUpdate = { view ->
                 // Copying to the UI buffer must occur on the main thread (Compose renders while reading);
                 // The channel-consuming coroutine has been fixed in Main; this is just a submission.

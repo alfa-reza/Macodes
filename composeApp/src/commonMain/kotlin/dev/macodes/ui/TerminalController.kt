@@ -11,6 +11,7 @@ import dev.macodes.ssh.HostKeyInfo
 import dev.macodes.ssh.MoshSession
 import dev.macodes.ssh.SshCallbacks
 import dev.macodes.ssh.SshConnection
+import dev.macodes.ssh.SshErrorCode
 import dev.macodes.ssh.SshSession
 import dev.macodes.ssh.createSshSession
 import dev.macodes.term.TerminalBuffer
@@ -114,6 +115,8 @@ class TerminalController(
     var status by mutableStateOf(ConnStatus.IDLE)
         internal set
     var errorMessage by mutableStateOf<String?>(null)
+        internal set
+    var errorCode by mutableStateOf<SshErrorCode?>(null)
         internal set
 
     /** Current number of reconnection attempts: If this value is >0 and the status is CONNECTING, it indicates that an automatic reconnection is in progress. */
@@ -434,9 +437,13 @@ class TerminalController(
             // Prioritize reading the most recently saved fingerprint in the repository: After a successful connection, `touchConnected` only writes to the repository,
             // The Host in memory (AppRoot hosts state/this controller) does not refresh; it reads directly from the host's
             // After the initial connection within the same process, every subsequent reconnect returns null and repeatedly displays the trust prompt.
+            val isQuickConnect = host.id.startsWith("quickconnect:")
             val known =
-                repository.getHost(host.id)?.knownHostFingerprint
-                    ?: host.knownHostFingerprint
+                if (isQuickConnect) {
+                    repository.getQuickConnectFingerprint(host.hostname, host.port) ?: host.knownHostFingerprint
+                } else {
+                    repository.getHost(host.id)?.knownHostFingerprint ?: host.knownHostFingerprint
+                }
             if (known != null) {
                 if (known == hostKey.fingerprintSha256) {
                     TermLog.d("ssh") { "hostkey ok ${host.name} ${hostKey.algorithm}" }
@@ -450,7 +457,13 @@ class TerminalController(
                 val ok = awaitHostKeyAnswer(req)
                 if (generation != connectionGeneration) return false
                 // Accept and adopt the new fingerprint: even in case of failure during subsequent authentication, do not display the dialog again (TOFU trusts the host key).
-                if (ok) repository.recordHostKey(host.id, hostKey.fingerprintSha256)
+                if (ok) {
+                    if (isQuickConnect) {
+                        repository.recordQuickConnectFingerprint(host.hostname, host.port, hostKey.fingerprintSha256)
+                    } else {
+                        repository.recordHostKey(host.id, hostKey.fingerprintSha256)
+                    }
+                }
                 return ok
             }
             // First-time connection: If the user has disabled “First-time Connection Confirmation,” the connection is trusted immediately (the fingerprint will still be visible in settings).
@@ -466,7 +479,13 @@ class TerminalController(
             if (generation != connectionGeneration) return false
             // Tapping “Trust” records the fingerprint, decoupling it from the success or failure of authentication: otherwise, if there is a failure in authentication (e.g., incorrect password),
             // The authorization window pops up repeatedly with every connection.
-            if (ok) repository.recordHostKey(host.id, hostKey.fingerprintSha256)
+            if (ok) {
+                if (isQuickConnect) {
+                    repository.recordQuickConnectFingerprint(host.hostname, host.port, hostKey.fingerprintSha256)
+                } else {
+                    repository.recordHostKey(host.id, hostKey.fingerprintSha256)
+                }
+            }
             return ok
         }
     }

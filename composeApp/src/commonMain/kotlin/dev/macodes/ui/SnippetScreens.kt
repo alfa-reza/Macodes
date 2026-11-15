@@ -14,6 +14,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -23,7 +24,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -31,14 +31,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -70,6 +70,7 @@ import dev.macodes.data.HostRepository
 import dev.macodes.data.Snippet
 import dev.macodes.data.TagGroup
 import dev.macodes.data.newId
+import dev.macodes.ui.theme.Corners
 import dev.macodes.ui.theme.Spacing
 import dev.macodes.ui.theme.TerminalTheme
 import dev.macodes.util.monospaceFontFamily
@@ -121,30 +122,16 @@ fun SnippetManageScreen(
                 },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(Corners.Lg),
             ) { Icon(Icons.Default.Add, s.snippetsAdd) }
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            // Search box
-            OutlinedTextField(
+            MacodesSearchPill(
                 value = query,
                 onValueChange = { query = it },
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                placeholder = { Text(s.snippetsSearch) },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (query.isNotEmpty()) {
-                        IconButton(onClick = { query = "" }) {
-                            Icon(Icons.Filled.Close, contentDescription = s.navBack)
-                        }
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
+                placeholder = s.snippetsSearch,
+                modifier = Modifier.padding(horizontal = Spacing.Lg, vertical = Spacing.Sm),
             )
             // Tag filtering chips (horizontal scrolling; “All” + each tag group)
             if (tags.isNotEmpty()) {
@@ -152,8 +139,8 @@ fun SnippetManageScreen(
                     Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        .padding(horizontal = Spacing.Lg),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
                 ) {
                     FilterChip(
                         selected = filterTagId == null,
@@ -174,14 +161,14 @@ fun SnippetManageScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             s.snippetsEmpty,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         Text(
                             s.snippetsEmptyHint,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(top = 6.dp),
+                            modifier = Modifier.padding(top = Spacing.Sm),
                         )
                     }
                 }
@@ -189,12 +176,16 @@ fun SnippetManageScreen(
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
                         s.hostsNoMatch,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize()) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = Spacing.Lg, vertical = Spacing.Sm),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.Sm),
+                ) {
                     items(filtered, key = { it.id }) { snippet ->
                         SnippetRow(
                             snippet = snippet,
@@ -204,7 +195,6 @@ fun SnippetManageScreen(
                                 showEditor = true
                             },
                         )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
                     }
                 }
             }
@@ -262,49 +252,56 @@ private fun SnippetRow(
     tags: List<TagGroup>,
     onClick: () -> Unit,
 ) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+    Card(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(Corners.Lg))
+                .clickable(onClick = onClick),
+        shape = RoundedCornerShape(Corners.Lg),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                snippet.name,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            // Content preview (monospace font, gray)
-            Text(
-                snippet.content.replace("\n", " ").take(24),
-                style = MaterialTheme.typography.labelSmall,
-                fontFamily = monospaceFontFamily(),
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        val named = snippet.tagIds.mapNotNull { id -> tags.firstOrNull { it.id == id }?.name }
-        if (named.isNotEmpty()) {
-            Row(
-                Modifier.padding(top = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                named.take(3).forEach { name ->
-                    Text(
-                        name,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier =
-                            Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp),
-                    )
+        Column(Modifier.fillMaxWidth().padding(horizontal = Spacing.Lg, vertical = Spacing.Md)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    snippet.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(Spacing.Sm))
+                // Content preview (monospace font)
+                Text(
+                    snippet.content.replace("\n", " ").take(24),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = monospaceFontFamily(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            val named = snippet.tagIds.mapNotNull { id -> tags.firstOrNull { it.id == id }?.name }
+            if (named.isNotEmpty()) {
+                Row(
+                    Modifier.padding(top = Spacing.Sm),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.Xs),
+                ) {
+                    named.take(3).forEach { name ->
+                        Text(
+                            name,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier =
+                                Modifier
+                                    .clip(RoundedCornerShape(Corners.Sm))
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                                    .padding(horizontal = Spacing.Sm, vertical = 2.dp),
+                        )
+                    }
                 }
             }
         }
@@ -342,33 +339,24 @@ private fun SnippetEditPage(
     }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Row(
-            Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = s.navBack)
-            }
-            Text(
-                if (existing == null) s.snippetsAdd else s.snippetEdit,
-                style = MaterialTheme.typography.titleMedium,
-                fontFamily = monospaceFontFamily(),
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f),
-            )
-            if (existing != null) {
-                IconButton(onClick = { pendingDelete = true }) {
-                    Icon(
-                        Icons.Filled.Delete,
-                        contentDescription = s.snippetDelete,
-                        tint = MaterialTheme.colorScheme.error,
-                    )
+        MacodesHeader(
+            title = if (existing == null) s.snippetsAdd else s.snippetEdit,
+            onBack = onBack,
+            actions = {
+                if (existing != null) {
+                    IconButton(onClick = { pendingDelete = true }) {
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = s.snippetDelete,
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
-            }
-            TextButton(onClick = { save() }, enabled = name.isNotBlank() && content.isNotBlank()) {
-                Text(s.editSave, fontWeight = FontWeight.SemiBold)
-            }
-        }
+                TextButton(onClick = { save() }, enabled = name.isNotBlank() && content.isNotBlank()) {
+                    Text(s.editSave, fontWeight = FontWeight.SemiBold)
+                }
+            },
+        )
         Column(
             Modifier
                 .fillMaxSize()
@@ -466,20 +454,10 @@ fun TagManagePage(
     }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Row(
-            Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = s.navBack)
-            }
-            Text(
-                s.tagsTitle,
-                style = MaterialTheme.typography.titleMedium,
-                fontFamily = monospaceFontFamily(),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-        }
+        MacodesHeader(
+            title = s.tagsTitle,
+            onBack = onBack,
+        )
         Column(
             Modifier
                 .fillMaxSize()

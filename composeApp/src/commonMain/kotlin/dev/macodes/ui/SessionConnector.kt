@@ -8,6 +8,7 @@ import dev.macodes.notify.NotificationEvent
 import dev.macodes.ssh.MoshSession
 import dev.macodes.ssh.SYSTEM_PROBE_COMMAND
 import dev.macodes.ssh.SshConnection
+import dev.macodes.ssh.SshException
 import dev.macodes.ssh.SshSession
 import dev.macodes.ssh.createKmpMoshSession
 import dev.macodes.ssh.detectSystemFromOutput
@@ -116,6 +117,7 @@ internal class SessionConnector(
         c.reconnectCount = 0
         c.reconnectCause = null
         c.errorMessage = null
+        c.errorCode = null
         // Reset on reconnect: SSH output from fallback reconnect (moshDegradedToSsh) should be shown in a normal manner
         c.moshDisplayTakeover = false
         doConnect()
@@ -236,6 +238,7 @@ internal class SessionConnector(
                         TermLog.e("ssh") { "connect failed after ${elapsed}ms ${c.host.name}: ${e.message}" }
                     }
                     c.errorMessage = e.message
+                    c.errorCode = (e as? SshException)?.code
                     // Automatic reconnection failure: The session has expired; the keep-alive must be stopped, otherwise the foreground service and wakelock will idle.
                     // (In the event of a failure in the initial connection, keepAliveActive=false; stopKeepAlive has a guard, so it provides security.)
                     c.stopKeepAlive()
@@ -342,11 +345,15 @@ internal class SessionConnector(
             // 2. Start the mosh-server using the connection (runCommand reuses the authenticated connection; the detection output follows
             //    After MOSH CONNECT, this does not affect parseMoshConnect (the system automatically recognizes it).
             val moshColors = if (c.repository.loadSettings().terminalType == "xterm-256color") "256" else "8"
+            val serverBin =
+                c.host.moshServerCommand
+                    .trim()
+                    .ifEmpty { "mosh-server" }
             val baseBootstrap =
                 if (c.host.moshUdpPort in 1024..65535) {
-                    "mosh-server new -s -c $moshColors -p ${c.host.moshUdpPort} -l LANG=en_US.UTF-8$bootstrapExtra"
+                    "$serverBin new -s -c $moshColors -p ${c.host.moshUdpPort} -l LANG=en_US.UTF-8$bootstrapExtra"
                 } else {
-                    "mosh-server new -s -c $moshColors -l LANG=en_US.UTF-8$bootstrapExtra"
+                    "$serverBin new -s -c $moshColors -l LANG=en_US.UTF-8$bootstrapExtra"
                 }
             val bootstrap = "$baseBootstrap 2>&1; $SYSTEM_PROBE_COMMAND"
             TermLog.i("mosh") { "bootstrap ${c.host.name}: $baseBootstrap" }
@@ -485,6 +492,7 @@ internal class SessionConnector(
                 TermLog.e("mosh") { "mosh connect failed ${c.host.name}: ${e.message}" }
                 c.status = ConnStatus.ERROR
                 c.errorMessage = e.message
+                c.errorCode = (e as? SshException)?.code
                 c.stopKeepAlive()
             }
         }
@@ -551,6 +559,7 @@ internal class SessionConnector(
         if (c.herdrInstalling) return
         c.herdrInstalling = true
         c.errorMessage = null
+        c.errorCode = null
         c.herdrInstallLog = ""
         c.scope.launch {
             try {
@@ -662,6 +671,7 @@ internal class SessionConnector(
         if (c.moshInstalling) return
         c.moshInstalling = true
         c.errorMessage = null
+        c.errorCode = null
         c.moshInstallLog = ""
         c.scope.launch {
             try {
@@ -836,6 +846,7 @@ internal class SessionConnector(
         c.reconnectCount = 0
         c.reconnectCause = null
         c.errorMessage = null
+        c.errorCode = null
         c.startKeepAlive()
         c.networkImmuneUntilMs = c.nowMs() + NETWORK_IMMUNE_MS
         c.swallowClosed = false
@@ -930,6 +941,7 @@ internal class SessionConnector(
                 c.status = ConnStatus.CONNECTING
                 c.reconnectCount = c.reconnectAttempts
                 c.errorMessage = null
+                c.errorCode = null
                 c.scope
                     .launch {
                         delay(RECONNECT_BASE_DELAY_MS * c.reconnectAttempts)
@@ -977,6 +989,7 @@ internal class SessionConnector(
         c.status = ConnStatus.CONNECTED
         c.reconnectCount = 0
         c.errorMessage = null
+        c.errorCode = null
         c.linkLostSeconds = 0
         c.startKeepAlive()
         // Network Toggle Immunity Period + Stability Period Reset:
@@ -1035,6 +1048,7 @@ internal class SessionConnector(
             c.status = ConnStatus.CONNECTING
             c.reconnectCount = c.reconnectAttempts
             c.errorMessage = null
+            c.errorCode = null
             c.scope
                 .launch {
                     delay(RECONNECT_BASE_DELAY_MS * c.reconnectAttempts)
@@ -1113,6 +1127,7 @@ internal class SessionConnector(
         c.reconnectAttempts = 1
         c.reconnectCount = 1
         c.errorMessage = null
+        c.errorCode = null
         doConnect()
     }
 

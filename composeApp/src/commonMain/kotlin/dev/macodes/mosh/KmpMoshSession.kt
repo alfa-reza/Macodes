@@ -10,6 +10,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Reasons for mosh session termination. The protocol layer does not generate UI text (maintaining zero UI dependencies); the UI layer translates accordingly. */
@@ -35,13 +36,14 @@ enum class MoshExitReason {
  * Sync content to the UI buffer ([onStateUpdate]); do not use the ANSI byte stream.
  */
 @Suppress("ktlint:standard:property-naming") // mosh port rotation parameters
-class KmpMoshSession(
+class KmpMoshSession internal constructor(
     ip: String,
     port: Int,
     key: String,
     columns: Int,
     rows: Int,
     private val scope: CoroutineScope,
+    initialSocket: MoshUdpSocket,
     /** Latest shadow state (callback in a session coroutine; the implementation should copy it and then switch back to the main thread to render). */
     private val onStateUpdate: (ShadowTerminalView) -> Unit,
     private val onExit: (MoshExitReason) -> Unit,
@@ -96,7 +98,7 @@ class KmpMoshSession(
     private val remoteIp = ip
     private val remotePort = port
 
-    private val sockets = ArrayDeque<MoshUdpSocket>().apply { addLast(MoshUdpSocket(remoteIp, remotePort)) }
+    private val sockets = ArrayDeque<MoshUdpSocket>().apply { addLast(initialSocket) }
     private var sendSocket = sockets.first()
     private val socketJobs = ArrayDeque<Job>()
     private var lastHopAt = 0L
@@ -295,7 +297,7 @@ class KmpMoshSession(
      * If no acknowledgment is received from the peer within 10 seconds and the source port has not changed within 10 seconds → create a new socket; the old socket continues to receive packets,
      * Clear old sockets (prune_sockets) after the new port has been stable for 60 seconds; allow a maximum of 10 open sockets simultaneously.
      */
-    private fun maybeHopPort() {
+    private suspend fun maybeHopPort() {
         val now = nowMs()
         // First, filter out: If the connection remains stable for more than 60 seconds after the last hop, it indicates that the link has resumed; only keep the latest port.
         if (sockets.size > 1 && now - lastHopAt >= MAX_OLD_SOCKET_AGE) {
@@ -321,7 +323,7 @@ class KmpMoshSession(
         if (now - lastHopAt < PORT_HOP_INTERVAL) return
         if (now - transport.sentStateAckedTimestamp() < PORT_HOP_INTERVAL) return
 
-        val next = MoshUdpSocket(remoteIp, remotePort)
+        val next = withContext(ioDispatcher()) { MoshUdpSocket(remoteIp, remotePort) }
         sockets.addLast(next)
         launchReader(next)
         sendSocket = next

@@ -6,22 +6,23 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -45,7 +46,8 @@ import androidx.compose.ui.unit.dp
 import dev.macodes.data.AsrProvider
 import dev.macodes.data.AsrProviderType
 import dev.macodes.data.newId
-import dev.macodes.util.monospaceFontFamily
+import dev.macodes.ui.theme.Corners
+import dev.macodes.ui.theme.Spacing
 import dev.macodes.util.openApplicationSettings
 import dev.macodes.voice.VolcAsrProtocol
 import dev.macodes.voice.rememberMicPermissionRequester
@@ -89,141 +91,125 @@ fun SettingsVoiceScreen(
     }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Row(
-            Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = s.navBack)
-            }
-            Text(
-                s.voice.settingsVoiceTitle,
-                style = MaterialTheme.typography.titleMedium,
-                fontFamily = monospaceFontFamily(),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-        }
+        MacodesHeader(
+            title = s.voice.settingsVoiceTitle,
+            onBack = onBack,
+        )
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            // Main Switch
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable { setEnabled(!enabled) }
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            Spacer(Modifier.height(Spacing.Sm))
+            Card(
+                Modifier.fillMaxWidth().padding(horizontal = Spacing.Lg),
+                shape = RoundedCornerShape(Corners.Lg),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {
-                Text(
-                    s.voice.settingsVoiceEnabled,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
-                    modifier = Modifier.weight(1f),
-                )
-                Switch(checked = enabled, onCheckedChange = ::setEnabled)
-            }
-            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = ::openApplicationSettings)
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    s.voice.settingsMicrophonePermission,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-
-            // Service List
-            if (providers.isEmpty()) {
-                Text(
-                    s.voice.providerEmpty,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp),
-                )
-            } else {
-                providers.forEachIndexed { i, p ->
-                    AsrProviderRow(
-                        provider = p,
-                        apiKey = apiKeyOf(p),
-                        onToggle = { onUpdateProvider(p.copy(enabled = !p.enabled), apiKeyOf(p)) },
-                        onEdit = {
-                            editing = p
-                            isNew = false
-                        },
-                        onDelete = { pendingDelete = p },
+                Column {
+                    SettingsSwitchItem(
+                        title = s.voice.settingsVoiceEnabled,
+                        checked = enabled,
+                        onCheckedChange = ::setEnabled,
                     )
-                    if (i < providers.lastIndex) {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                    SettingsOptionItem(
+                        title = s.voice.settingsMicrophonePermission,
+                        value = "",
+                        onClick = ::openApplicationSettings,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(Spacing.Lg))
+            Card(
+                Modifier.fillMaxWidth().padding(horizontal = Spacing.Lg),
+                shape = RoundedCornerShape(Corners.Lg),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            ) {
+                Column {
+                    if (providers.isEmpty()) {
+                        Text(
+                            s.voice.providerEmpty,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = Spacing.Lg, vertical = 18.dp),
+                        )
+                    } else {
+                        providers.forEach { p ->
+                            AsrProviderRow(
+                                provider = p,
+                                apiKey = apiKeyOf(p),
+                                onToggle = { onUpdateProvider(p.copy(enabled = !p.enabled), apiKeyOf(p)) },
+                                onEdit = {
+                                    editing = p
+                                    isNew = false
+                                },
+                                onDelete = { pendingDelete = p },
+                            )
+                        }
+                    }
+
+                    // Add Button
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                editing =
+                                    AsrProvider(
+                                        id = newId(),
+                                        type = AsrProviderType.VOLC_STREAMING,
+                                        name = "",
+                                        resourceId = VolcAsrProtocol.DEFAULT_RESOURCE_ID,
+                                        enabled = true,
+                                    )
+                                isNew = true
+                            }.padding(horizontal = Spacing.Lg, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
+                    ) {
+                        Box(
+                            Modifier.size(28.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.Add,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                        Text(
+                            s.voice.providerAdd,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium,
+                        )
                     }
                 }
             }
-
-            // Add Button
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        editing =
-                            AsrProvider(
-                                id = newId(),
-                                type = AsrProviderType.VOLC_STREAMING,
-                                name = "",
-                                resourceId = VolcAsrProtocol.DEFAULT_RESOURCE_ID,
-                                enabled = true,
-                            )
-                        isNew = true
-                    }.padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Box(
-                    Modifier.size(26.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        Icons.Filled.Add,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
-                Text(
-                    s.voice.providerAdd,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Medium,
-                )
-            }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
 
             // Usage Instructions + Console Entry Point
             Text(
                 s.voice.settingsVoiceHint,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = Spacing.Xl, vertical = Spacing.Md),
             )
-            TextButton(onClick = { uriHandler.openUri(VOLC_ASR_CONSOLE_URL) }) {
-                Text(
-                    s.voice.settingsVoiceConsole,
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.bodySmall,
-                )
+            Column(Modifier.padding(horizontal = Spacing.Sm)) {
+                TextButton(onClick = { uriHandler.openUri(VOLC_ASR_CONSOLE_URL) }) {
+                    Text(
+                        s.voice.settingsVoiceConsole,
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                TextButton(onClick = { uriHandler.openUri(PRIVACY_POLICY_URL) }) {
+                    Text(
+                        s.permissions.privacyPolicy,
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
-            TextButton(onClick = { uriHandler.openUri(PRIVACY_POLICY_URL) }) {
-                Text(
-                    s.permissions.privacyPolicy,
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            Box(Modifier.height(24.dp))
+            Spacer(Modifier.height(Spacing.Xl))
         }
     }
 
@@ -334,6 +320,7 @@ private fun AsrProviderRow(
         Switch(
             checked = provider.enabled,
             onCheckedChange = { onToggle() },
+            colors = macodesSwitchColors(),
         )
         IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
             Text(

@@ -22,6 +22,7 @@ object Corners {
     val Sm = 8.dp
     val Md = 12.dp
     val Lg = 16.dp
+    val Xl = 20.dp
     val Full = 999.dp
 }
 
@@ -32,6 +33,13 @@ object Sizes {
 
     /** Compact header content height (excluding status bar padding). */
     val HeaderCompact = 48.dp
+
+    /** Host & session card squircle avatar size. */
+    val AvatarCard = 44.dp
+
+    /** Bottom navigation active pill dimensions. */
+    val NavPillWidth = 64.dp
+    val NavPillHeight = 32.dp
 
     /** List item status circles. */
     val StatusDot = 10.dp

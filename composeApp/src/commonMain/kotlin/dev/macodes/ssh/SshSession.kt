@@ -268,7 +268,15 @@ expect fun createSshSession(
     callbacks: SshCallbacks,
 ): SshSession
 
+enum class SshErrorCode {
+    PASSWORD_AUTH_UNSUPPORTED,
+    AUTH_FAILED,
+    KEY_PASSPHRASE_CANCELLED,
+    KEY_LOAD_FAILED,
+}
+
 class SshException(
     message: String,
     cause: Throwable? = null,
+    val code: SshErrorCode? = null,
 ) : Exception(message, cause)

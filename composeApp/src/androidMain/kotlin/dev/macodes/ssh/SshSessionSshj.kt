@@ -408,10 +408,27 @@ class SshSessionSshj(
         try {
             client.auth(connection.username, methods)
         } catch (e: Exception) {
-            // If there is a failure during private key loading (unsupported format/incorrect password/input canceled), include the reason in the error message,
-            // Avoid situations where users see only “Failure in authentication” without realizing that the private key was never used in the authentication process.
-            val hint = privateKeyError?.let { "（私钥加载失败：$it）" } ?: ""
-            throw SshException("SSH 认证失败$hint：${e.message}", e)
+            val allowed = runCatching { client.userAuth?.allowedMethods }.getOrNull().orEmpty()
+            if (connection.privateKeyPem == null &&
+                connection.password != null &&
+                allowed.isNotEmpty() &&
+                "password" !in allowed &&
+                "keyboard-interactive" !in allowed
+            ) {
+                throw SshException(
+                    "Password authentication is not supported by this server (allowed: ${allowed.joinToString(", ")})",
+                    e,
+                    code = SshErrorCode.PASSWORD_AUTH_UNSUPPORTED,
+                )
+            }
+            val code =
+                if (privateKeyError != null) {
+                    SshErrorCode.KEY_LOAD_FAILED
+                } else {
+                    SshErrorCode.AUTH_FAILED
+                }
+            val hint = privateKeyError?.let { " (key load failed: $it)" } ?: ""
+            throw SshException("Authentication failed$hint: ${e.message}", e, code = code)
         }
     }
 
@@ -434,14 +451,14 @@ class SshSessionSshj(
                     callbacks.onPrompt(
                         AuthPrompt(
                             method = SshAuthMethod.PASSPHRASE,
-                            name = "私钥口令",
-                            instruction = "该私钥已加密（passphrase-protected），请输入口令。",
+                            name = "Private key passphrase",
+                            instruction = "This private key is passphrase-protected. Enter the passphrase.",
                             prompts = listOf(PromptField("Passphrase", echo = false)),
                         ),
                     )
                 }?.firstOrNull()
             if (passphrase.isNullOrEmpty()) {
-                privateKeyError = "加密私钥需要口令，已取消输入"
+                privateKeyError = "Private key passphrase entry cancelled"
                 return null
             }
             return try {
@@ -458,7 +475,7 @@ class SshSessionSshj(
                 privateKeyError = null
                 kp
             } catch (e: Exception) {
-                privateKeyError = "口令错误或密钥无法解析：${e.message ?: e.javaClass.simpleName}"
+                privateKeyError = "Wrong passphrase or unparseable key: ${e.message ?: e.javaClass.simpleName}"
                 null
             }
         }
@@ -554,26 +571,22 @@ class SshSessionSshj(
                 // A channel may end with a disconnect
                 while ((sh as? AbstractChannel)?.isOpen == true) delay(50)
             }
-            handleClosed()
+            val sc = sh as? SessionChannel
+            var exitStatus: Int? = null
+            if (sc != null && !closed.get()) {
+                val deadline = System.currentTimeMillis() + 2000
+                while (exitStatus == null && System.currentTimeMillis() < deadline) {
+                    exitStatus = sc.getExitStatus()
+                    if (exitStatus == null) delay(20)
+                }
+            }
+            handleClosed(exitStatus)
         }
     }
 
-    private fun handleClosed() {
+    private fun handleClosed(exitStatus: Int? = null) {
         if (!closed.compareAndSet(false, true)) return
-        try {
-            val sc = shell as? SessionChannel
-            if (sc != null) {
-                // The exit state may be reached shortly after the channel is closed; poll briefly.
-                var status: Int? = null
-                val deadline = System.currentTimeMillis() + 2000
-                while (status == null && System.currentTimeMillis() < deadline) {
-                    status = sc.getExitStatus()
-                    if (status == null) Thread.sleep(20)
-                }
-                status?.let { callbacks.onExitStatus(it) }
-            }
-        } catch (_: Exception) {
-        }
+        exitStatus?.let { callbacks.onExitStatus(it) }
         callbacks.onClosed(null)
     }
 
@@ -633,12 +646,12 @@ class SshSessionSshj(
                 .retrieve(timeoutMillis.coerceAtLeast(1L), TimeUnit.MILLISECONDS)
             isActive()
         } catch (e: ConnectionException) {
-            // OpenSSH returns REQUEST_FAILURE for unknown global requests; sshj wraps it as an exception,
-            // However, receiving this response itself proves that the bidirectional SSH connection is alive. Timeouts or transmission exceptions
-            // If the message text differs, treat it as a failure.
-            val serverRejectedRequest =
-                e.message?.contains("Global request [global req for keepalive@openssh.com] failed") == true
-            if (serverRejectedRequest && isActive()) return true
+            // OpenSSH returns REQUEST_FAILURE for unknown global requests; sshj wraps it in ConnectionException without dropping transport.
+            val rejectedWithoutDisconnect =
+                e.disconnectReason == DisconnectReason.UNKNOWN &&
+                    e.cause == null &&
+                    isActive()
+            if (rejectedWithoutDisconnect) return true
             TermLog.w("ssh") { "health check failed: ${e.message}" }
             false
         } catch (e: Exception) {

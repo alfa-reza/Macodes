@@ -7,6 +7,7 @@ import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.core.content.edit
 import dev.macodes.AppContext
+import dev.macodes.util.TermLog
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -24,6 +25,7 @@ actual object SecretStore {
 
     private fun prefs(): SharedPreferences = AppContext.get().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
+    @Synchronized
     private fun getOrCreateKey(): SecretKey {
         val ks = KeyStore.getInstance(KEYSTORE).apply { load(null) }
         (ks.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
@@ -69,6 +71,7 @@ actual object SecretStore {
         return try {
             decrypt(enc)
         } catch (e: Exception) {
+            TermLog.w("security") { "SecretStore decrypt failed: ${e.javaClass.simpleName}: ${e.message}" }
             null
         }
     }

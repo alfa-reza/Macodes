@@ -36,13 +36,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -75,6 +78,7 @@ import dev.macodes.data.Host
 import dev.macodes.data.HostAuthMethod
 import dev.macodes.data.HostRepository
 import dev.macodes.data.newId
+import dev.macodes.ui.theme.Corners
 import dev.macodes.ui.theme.Sizes
 import dev.macodes.ui.theme.Spacing
 
@@ -145,161 +149,268 @@ fun HostEditScreen(
             )
         },
     ) { padding ->
-        // When `adjustNothing` is enabled, the keyboard does not scale the window: the IME inset pushes the entire form upward,
-        // Otherwise, the bottom fields (mosh port/launch command) are obscured by the keyboard (using the same mechanism as the terminal screen).
+        val fieldShape = RoundedCornerShape(Corners.Md)
+        val chipColors =
+            FilterChipDefaults.filterChipColors(
+                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+        // When `adjustNothing` is enabled, the keyboard does not scale the window: the IME inset pushes the entire form upward.
         Column(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .imePadding()
-                .padding(16.dp)
+                .padding(horizontal = Spacing.Lg, vertical = Spacing.Sm)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(Spacing.Lg),
         ) {
-            OutlinedTextField(
-                name,
-                { name = it },
-                Modifier.fillMaxWidth(),
-                label = { Text(s.editName) },
-                singleLine = true,
-            )
-            OutlinedTextField(hostname, {
-                hostname = it
-            }, Modifier.fillMaxWidth(), label = { Text(s.editHostname) }, singleLine = true)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    port,
-                    { port = it },
-                    Modifier.weight(1f),
-                    label = { Text(s.editPort) },
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    username,
-                    { username = it },
-                    Modifier.weight(2f),
-                    label = { Text(s.editUsername) },
-                    singleLine = true,
-                )
-            }
-
-            Text(s.editAuthMethod, style = MaterialTheme.typography.labelLarge)
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                RadioButton(authMethod == HostAuthMethod.PASSWORD, { authMethod = HostAuthMethod.PASSWORD })
-                Text(s.editAuthPassword)
-            }
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                RadioButton(authMethod == HostAuthMethod.PRIVATE_KEY, { authMethod = HostAuthMethod.PRIVATE_KEY })
-                Text(s.editAuthKey)
-            }
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                RadioButton(
-                    authMethod == HostAuthMethod.KEY_OR_PASSWORD,
-                    { authMethod = HostAuthMethod.KEY_OR_PASSWORD },
-                )
-                Text(s.editAuthKeyOrPassword)
-            }
-
-            Text(s.editConnectionMode, style = MaterialTheme.typography.labelLarge)
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                RadioButton(connectionMode == ConnectionMode.SSH, { connectionMode = ConnectionMode.SSH })
-                Text(s.editModeSsh)
-            }
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                RadioButton(connectionMode == ConnectionMode.MOSH, { connectionMode = ConnectionMode.MOSH })
-                Text(s.editModeMosh)
-            }
-            if (authMethod != HostAuthMethod.PRIVATE_KEY) {
-                OutlinedTextField(
-                    password,
-                    { password = it },
-                    Modifier.fillMaxWidth(),
-                    label = { Text(if (existing == null) s.editPassword else s.editPasswordKeep) },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true,
-                )
-            }
-            if (authMethod != HostAuthMethod.PASSWORD) {
-                OutlinedTextField(
-                    privateKey,
-                    { privateKey = it },
-                    Modifier.fillMaxWidth(),
-                    label = { Text(if (existing == null) s.editPrivateKey else s.editPrivateKeyKeep) },
-                    minLines = 3,
-                )
-            }
-
-            // Host tag: chip input field (Enter/comma turns into a deletable tag to avoid free-text fragmentation)
-            TagInputField(
-                tags = tags,
-                onTagsChange = { tags = it },
-                label = s.editTags,
+            // Section 1: Host & Connection Mode
+            Card(
                 modifier = Modifier.fillMaxWidth(),
-            )
-            // Command snippet entry: Host-level quick commands have been deprecated (reuse across hosts via the global snippet library),
-            // The edit page should only display an entry point; tapping on it takes you to the snippet management/create page.
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                    .clickable { showSnippets = true }
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                shape = RoundedCornerShape(Corners.Lg),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {
-                Icon(
-                    Icons.Filled.Terminal,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        s.snippetsTitle,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        s.snippetsEmptyHint,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                    )
-                }
-                Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = s.snippetsTitle,
-                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                )
-            }
-            OutlinedTextField(
-                startupCommand,
-                { startupCommand = it },
-                Modifier.fillMaxWidth(),
-                label = { Text(s.editStartupCommand) },
-                placeholder = { Text(s.editStartupPlaceholder) },
-                singleLine = true,
-            )
-            if (connectionMode == ConnectionMode.MOSH) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                Column(
+                    Modifier.fillMaxWidth().padding(Spacing.Lg),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.Md),
                 ) {
-                    Text(s.editMoshThemeSync, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                    Switch(moshThemeSync, { moshThemeSync = it })
+                    OutlinedTextField(
+                        name,
+                        { name = it },
+                        Modifier.fillMaxWidth(),
+                        label = { Text(s.editName) },
+                        singleLine = true,
+                        shape = fieldShape,
+                    )
+                    OutlinedTextField(
+                        hostname,
+                        { hostname = it },
+                        Modifier.fillMaxWidth(),
+                        label = { Text(s.editHostname) },
+                        singleLine = true,
+                        shape = fieldShape,
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.Md)) {
+                        OutlinedTextField(
+                            port,
+                            { port = it },
+                            Modifier.weight(1f),
+                            label = { Text(s.editPort) },
+                            singleLine = true,
+                            shape = fieldShape,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        )
+                        OutlinedTextField(
+                            username,
+                            { username = it },
+                            Modifier.weight(2f),
+                            label = { Text(s.editUsername) },
+                            singleLine = true,
+                            shape = fieldShape,
+                        )
+                    }
+                    Text(
+                        s.editConnectionMode,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.Sm)) {
+                        FilterChip(
+                            selected = connectionMode == ConnectionMode.SSH,
+                            onClick = { connectionMode = ConnectionMode.SSH },
+                            label = { Text(s.editModeSsh) },
+                            colors = chipColors,
+                        )
+                        FilterChip(
+                            selected = connectionMode == ConnectionMode.MOSH,
+                            onClick = { connectionMode = ConnectionMode.MOSH },
+                            label = { Text("Mosh") },
+                            colors = chipColors,
+                        )
+                    }
+                    if (connectionMode == ConnectionMode.MOSH) {
+                        Text(
+                            s.editModeMosh,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
-                OutlinedTextField(
-                    moshUdpPort,
-                    { moshUdpPort = it },
-                    Modifier.fillMaxWidth(),
-                    label = { Text(s.editMoshUdpPort) },
-                    placeholder = { Text("0") },
-                    supportingText = { Text(s.editMoshUdpPortHint) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                )
             }
+
+            // Section 2: Authentication
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(Corners.Lg),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(Spacing.Lg),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.Md),
+                ) {
+                    Text(
+                        s.editAuthMethod,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    @OptIn(ExperimentalLayoutApi::class)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.Xs),
+                    ) {
+                        FilterChip(
+                            selected = authMethod == HostAuthMethod.PASSWORD,
+                            onClick = { authMethod = HostAuthMethod.PASSWORD },
+                            label = { Text(s.editAuthPassword) },
+                            colors = chipColors,
+                        )
+                        FilterChip(
+                            selected = authMethod == HostAuthMethod.PRIVATE_KEY,
+                            onClick = { authMethod = HostAuthMethod.PRIVATE_KEY },
+                            label = { Text(s.editAuthKey) },
+                            colors = chipColors,
+                        )
+                        FilterChip(
+                            selected = authMethod == HostAuthMethod.KEY_OR_PASSWORD,
+                            onClick = { authMethod = HostAuthMethod.KEY_OR_PASSWORD },
+                            label = { Text(s.editAuthKeyOrPassword) },
+                            colors = chipColors,
+                        )
+                    }
+                    if (authMethod != HostAuthMethod.PRIVATE_KEY) {
+                        OutlinedTextField(
+                            password,
+                            { password = it },
+                            Modifier.fillMaxWidth(),
+                            label = { Text(if (existing == null) s.editPassword else s.editPasswordKeep) },
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true,
+                            shape = fieldShape,
+                        )
+                    }
+                    if (authMethod != HostAuthMethod.PASSWORD) {
+                        OutlinedTextField(
+                            privateKey,
+                            { privateKey = it },
+                            Modifier.fillMaxWidth(),
+                            label = { Text(if (existing == null) s.editPrivateKey else s.editPrivateKeyKeep) },
+                            minLines = 3,
+                            shape = fieldShape,
+                        )
+                    }
+                }
+            }
+
+            // Section 3: Tags, Snippets & Startup Command
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(Corners.Lg),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(Spacing.Lg),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.Md),
+                ) {
+                    TagInputField(
+                        tags = tags,
+                        onTagsChange = { tags = it },
+                        label = s.editTags,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(Corners.Md))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .clickable { showSnippets = true }
+                            .padding(horizontal = Spacing.Lg, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Filled.Terminal,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(Modifier.width(Spacing.Md))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                s.snippetsTitle,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                s.snippetsEmptyHint,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Icon(
+                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = s.snippetsTitle,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    OutlinedTextField(
+                        startupCommand,
+                        { startupCommand = it },
+                        Modifier.fillMaxWidth(),
+                        label = { Text(s.editStartupCommand) },
+                        placeholder = { Text(s.editStartupPlaceholder) },
+                        singleLine = true,
+                        shape = fieldShape,
+                    )
+                }
+            }
+
+            if (connectionMode == ConnectionMode.MOSH) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(Corners.Lg),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                ) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(Spacing.Lg),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.Md),
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                s.editMoshThemeSync,
+                                Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Switch(
+                                checked = moshThemeSync,
+                                onCheckedChange = { moshThemeSync = it },
+                                colors = macodesSwitchColors(),
+                            )
+                        }
+                        OutlinedTextField(
+                            moshUdpPort,
+                            { moshUdpPort = it },
+                            Modifier.fillMaxWidth(),
+                            label = { Text(s.editMoshUdpPort) },
+                            placeholder = { Text("0") },
+                            supportingText = { Text(s.editMoshUdpPortHint) },
+                            singleLine = true,
+                            shape = fieldShape,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.size(Spacing.Lg))
         }
     }
 
@@ -340,7 +451,7 @@ private fun TagInputField(
     val focusRequester = remember { FocusRequester() }
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
-    val fieldShape = RoundedCornerShape(4.dp)
+    val fieldShape = RoundedCornerShape(Corners.Md)
 
     // Reading the live state (the onDone callback for the soft keyboard occurs after the last input, so val may be caught and return an outdated value)
     fun commit() {

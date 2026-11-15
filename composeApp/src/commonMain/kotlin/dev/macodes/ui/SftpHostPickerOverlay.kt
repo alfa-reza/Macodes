@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,7 +18,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -33,7 +33,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.macodes.data.ConnectionMode
 import dev.macodes.data.Host
-import dev.macodes.util.monospaceFontFamily
+import dev.macodes.ui.theme.Corners
+import dev.macodes.ui.theme.Sizes
+import dev.macodes.ui.theme.Spacing
 
 /**
  * New SFTP connection overlay: appears on top of the current screen (not a stack-based navigation).
@@ -52,12 +54,11 @@ fun SftpHostPickerOverlay(
     ) {
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+                Modifier.fillMaxWidth().padding(horizontal = Spacing.Xs, vertical = Spacing.Xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = onDismiss) {
-                    // Explicit tint: The `LocalContentColor` of the Dialog window is the platform default (black),
-                    // ...(user feedback: in dark theme the ✕ is black)
+                    // Explicit tint: The `LocalContentColor` of the Dialog window is the platform default (black)
                     Icon(
                         Icons.Filled.Close,
                         contentDescription = s.navBack,
@@ -66,20 +67,23 @@ fun SftpHostPickerOverlay(
                 }
                 Text(
                     s.sftpNewTitle,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontFamily = monospaceFontFamily(),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            // Group Headings (same style as “My Hosts” on the homepage; left-aligned cards with 8dp padding)
             Text(
                 s.sftpSectionTitle,
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 4.dp),
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = Spacing.Lg, vertical = Spacing.Sm),
             )
-            LazyColumn(Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = Spacing.Lg, vertical = Spacing.Xs),
+                verticalArrangement = Arrangement.spacedBy(Spacing.Sm),
+            ) {
                 items(hosts, key = { it.id }) { host ->
                     SftpHostRow(host = host, onClick = { onSelect(host) })
                 }
@@ -117,25 +121,24 @@ private fun SftpHostRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .clip(RoundedCornerShape(Corners.Lg))
                 .clickable(onClick = onClick),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shape = RoundedCornerShape(Corners.Lg),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            Modifier.fillMaxWidth().padding(horizontal = Spacing.Lg, vertical = Spacing.Md),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
         ) {
             Box(
-                Modifier.size(42.dp).clip(RoundedCornerShape(10.dp)).background(systemColor(sys)),
+                Modifier.size(Sizes.AvatarCard).clip(RoundedCornerShape(Corners.Md)).background(systemColor(sys)),
                 contentAlignment = Alignment.Center,
             ) {
-                SystemAvatarIcon(sys, 22.dp)
+                SystemAvatarIcon(sys, Sizes.IconMedium)
             }
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     title,
                     style = MaterialTheme.typography.titleMedium,

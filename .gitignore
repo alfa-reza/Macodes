@@ -44,4 +44,10 @@ DerivedData/
 # Local agent task notes
 .agents/
 
+# Local agent harness configs
+.codex/
+.antigravity/
+opencode.json
+skills-lock.json
+
 composeApp/src/commonMain/composeResources/files/macodes-agent/
