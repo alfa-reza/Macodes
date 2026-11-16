@@ -3,6 +3,8 @@ package dev.macodes.ui
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.text.intl.Locale
+import dev.macodes.data.ConnectionLogProtocol
+import dev.macodes.data.SessionLogErrorCode
 
 /**
  * 应用内文案（多语言）。
@@ -405,10 +407,64 @@ data class WorkspaceStrings(
     val logsDetailError: String,
     val logsCopyAction: String,
     val logsCopiedMessage: String,
+    val logsEmptyHint: String,
+    val logsNoMatchHint: String,
+    val logsFilterAction: String,
+    val logsFilterTitle: String,
+    val logsFilterStatusLabel: String,
+    val logsFilterProtocolLabel: String,
+    val logsFilterApply: String,
+    val logsFilterReset: String,
+    val logsActiveFilterPrefix: String,
+    val logsSortAction: String,
+    val logsSortNewestFirst: String,
+    val logsSortOldestFirst: String,
+    val logsStatusCompleted: String,
+    val logsStatusFailed: String,
+    val logsStatusInterrupted: String,
+    val logsDetailStarted: String,
+    val logsDetailEnded: String,
+    val logsDetailDuration: String,
+    val logsDetailNotOpened: String,
+    val logsDetailDeleteAction: String,
+    val logsDeleteConfirmTitle: String,
+    val logsDeleteSingleConfirm: (String) -> String,
+    val logsTimelineTitle: String,
+    val logsEventConnectingTo: (String) -> String,
+    val logsEventConnectionEstablished: String,
+    val logsEventHostVerified: String,
+    val logsEventHostVerifyFailed: String,
+    val logsEventAuthSucceeded: (String?) -> String,
+    val logsEventAuthFailed: String,
+    val logsEventMoshBootstrapStarted: String,
+    val logsEventMoshServerStarted: String,
+    val logsEventMoshUdpEstablished: String,
+    val logsEventMoshUdpTimedOut: String,
+    val logsEventSessionOpened: (ConnectionLogProtocol) -> String,
+    val logsEventSessionClosed: String,
+    val logsEventConnectionFailed: String,
+    val logsEventConnectionInterrupted: String,
+    val logsErrorDescription: (SessionLogErrorCode) -> String,
     val dateToday: String,
     val dateYesterday: String,
     val formatMonthDay: (day: Int, monthNumber: Int, year: Int?) -> String,
     val sessionCount: (Int) -> String,
+    val hostsFolderAll: String,
+    val hostsFoldersLabel: String,
+    val hostsFolderNew: String,
+    val hostsFolderEdit: String,
+    val hostsFolderName: String,
+    val hostsFolderParent: String,
+    val hostsFolderRoot: String,
+    val hostsFolderMoveTo: String,
+    val hostsFolderDelete: String,
+    val hostsFolderDeleteConfirm: (String) -> String,
+    val hostsFolderCount: (hosts: Int, subfolders: Int) -> String,
+    val hostsFolderEmpty: String,
+    val hostsTagsAll: String,
+    val hostsSuggestedTags: String,
+    val hostsNewHost: String,
+    val editFolder: String,
 )
 
 @Immutable
@@ -1634,18 +1690,113 @@ private val EnStrings =
                 logsEventConnected = "Succeeded",
                 logsEventDisconnected = "Ended",
                 logsEventFailed = "Failed",
-                logsDetailTitle = "Connection log",
+                logsDetailTitle = "Session details",
                 logsDetailTarget = "Target",
                 logsDetailProtocol = "Protocol",
                 logsDetailStatus = "Status",
                 logsDetailTime = "Time",
-                logsDetailError = "Details",
+                logsDetailError = "Failure details",
                 logsCopyAction = "Copy details",
                 logsCopiedMessage = "Copied",
+                logsEmptyHint = "Completed, failed, and interrupted SSH, Mosh, and SFTP sessions will appear here.",
+                logsNoMatchHint = "Try adjusting your search or active filters.",
+                logsFilterAction = "Filter logs",
+                logsFilterTitle = "Filter logs",
+                logsFilterStatusLabel = "Status",
+                logsFilterProtocolLabel = "Protocol",
+                logsFilterApply = "Apply",
+                logsFilterReset = "Reset",
+                logsActiveFilterPrefix = "Filtered",
+                logsSortAction = "Sort by date",
+                logsSortNewestFirst = "Newest first",
+                logsSortOldestFirst = "Oldest first",
+                logsStatusCompleted = "Completed",
+                logsStatusFailed = "Failed",
+                logsStatusInterrupted = "Interrupted",
+                logsDetailStarted = "Started",
+                logsDetailEnded = "Ended",
+                logsDetailDuration = "Duration",
+                logsDetailNotOpened = "Not opened",
+                logsDetailDeleteAction = "Delete log",
+                logsDeleteConfirmTitle = "Delete session log?",
+                logsDeleteSingleConfirm = { label -> "Remove session log for \"$label\"?" },
+                logsTimelineTitle = "Timeline",
+                logsEventConnectingTo = { endpoint -> "Connecting to $endpoint" },
+                logsEventConnectionEstablished = "Connection established",
+                logsEventHostVerified = "Server identity verified",
+                logsEventHostVerifyFailed = "Server identity verification failed",
+                logsEventAuthSucceeded = { method ->
+                    when (method) {
+                        "key" -> "Authenticated with SSH key"
+                        "password" -> "Authenticated with password"
+                        "keyboard-interactive" -> "Interactive authentication succeeded"
+                        else -> "Authentication succeeded"
+                    }
+                },
+                logsEventAuthFailed = "Authentication failed",
+                logsEventMoshBootstrapStarted = "Connecting via SSH",
+                logsEventMoshServerStarted = "Mosh server started",
+                logsEventMoshUdpEstablished = "UDP connection established",
+                logsEventMoshUdpTimedOut = "UDP connection timed out",
+                logsEventSessionOpened = { protocol ->
+                    when (protocol) {
+                        ConnectionLogProtocol.SFTP -> "SFTP session opened"
+                        ConnectionLogProtocol.SSH, ConnectionLogProtocol.MOSH -> "Terminal session opened"
+                    }
+                },
+                logsEventSessionClosed = "Session closed normally",
+                logsEventConnectionFailed = "Connection failed",
+                logsEventConnectionInterrupted = "Connection interrupted",
+                logsErrorDescription = { code ->
+                    when (code) {
+                        SessionLogErrorCode.HOST_KEY_MISMATCH -> "Server host key changed or failed verification"
+                        SessionLogErrorCode.HOST_KEY_REJECTED -> "Server host key rejected"
+                        SessionLogErrorCode.AUTHENTICATION_FAILED -> "Authentication failed"
+                        SessionLogErrorCode.AUTHENTICATION_CANCELLED -> "Authentication cancelled"
+                        SessionLogErrorCode.INVALID_PRIVATE_KEY -> "Invalid or unsupported private key"
+                        SessionLogErrorCode.CONNECTION_TIMED_OUT -> "Connection timed out"
+                        SessionLogErrorCode.UDP_TIMED_OUT -> "UDP connection timed out"
+                        SessionLogErrorCode.CONNECTION_REFUSED -> "Connection refused by host"
+                        SessionLogErrorCode.HOST_UNREACHABLE -> "Host unreachable"
+                        SessionLogErrorCode.UNKNOWN_HOST -> "Unable to resolve hostname"
+                        SessionLogErrorCode.CONNECTION_CANCELLED -> "Connection cancelled"
+                        SessionLogErrorCode.KEEPALIVE_TIMEOUT -> "Keepalive timeout"
+                        SessionLogErrorCode.TRANSPORT_DISCONNECTED -> "Connection lost unexpectedly"
+                        SessionLogErrorCode.SFTP_SUBSYSTEM_FAILED -> "Failed to open SFTP subsystem"
+                        SessionLogErrorCode.MOSH_SESSION_ERROR -> "Mosh session disconnected unexpectedly"
+                        SessionLogErrorCode.UNKNOWN_ERROR -> "Connection failed"
+                    }
+                },
                 dateToday = "Today",
                 dateYesterday = "Yesterday",
                 formatMonthDay = ::formatEnglishMonthDay,
                 sessionCount = { n -> if (n == 1) "1 session" else "$n sessions" },
+                hostsFolderAll = "All Hosts",
+                hostsFoldersLabel = "Folders",
+                hostsFolderNew = "New Folder",
+                hostsFolderEdit = "Edit Folder",
+                hostsFolderName = "Folder name",
+                hostsFolderParent = "Parent folder",
+                hostsFolderRoot = "Root (No folder)",
+                hostsFolderMoveTo = "Move to folder",
+                hostsFolderDelete = "Delete folder",
+                hostsFolderDeleteConfirm = { name ->
+                    "Delete \"$name\"? Hosts and subfolders inside will be moved up to the parent folder."
+                },
+                hostsFolderCount = { h, sub ->
+                    val hostPart = if (h == 1) "1 host" else "$h hosts"
+                    if (sub > 0) {
+                        val subPart = if (sub == 1) "1 folder" else "$sub folders"
+                        "$hostPart · $subPart"
+                    } else {
+                        hostPart
+                    }
+                },
+                hostsFolderEmpty = "This folder is empty",
+                hostsTagsAll = "All",
+                hostsSuggestedTags = "Existing tags",
+                hostsNewHost = "New Host",
+                editFolder = "Folder",
             ),
     )
 
@@ -2374,19 +2525,108 @@ private val ZhStrings =
                 logsEventConnected = "连接成功",
                 logsEventDisconnected = "会话结束",
                 logsEventFailed = "连接失败",
-                logsDetailTitle = "连接日志详情",
+                logsDetailTitle = "会话详情",
                 logsDetailTarget = "目标主机",
                 logsDetailProtocol = "协议",
                 logsDetailStatus = "状态",
                 logsDetailTime = "时间",
-                logsDetailError = "详细信息",
+                logsDetailError = "故障详情",
                 logsCopyAction = "复制详情",
                 logsCopiedMessage = "已复制",
+                logsEmptyHint = "已结束、失败或意外中断的 SSH、Mosh 与 SFTP 会话将显示在此处。",
+                logsNoMatchHint = "请尝试调整搜索关键词或筛选条件。",
+                logsFilterAction = "筛选日志",
+                logsFilterTitle = "筛选日志",
+                logsFilterStatusLabel = "状态",
+                logsFilterProtocolLabel = "协议",
+                logsFilterApply = "应用",
+                logsFilterReset = "重置",
+                logsActiveFilterPrefix = "已筛选",
+                logsSortAction = "按日期排序",
+                logsSortNewestFirst = "最新优先",
+                logsSortOldestFirst = "最早优先",
+                logsStatusCompleted = "已完成",
+                logsStatusFailed = "失败",
+                logsStatusInterrupted = "已中断",
+                logsDetailStarted = "开始时间",
+                logsDetailEnded = "结束时间",
+                logsDetailDuration = "持续时间",
+                logsDetailNotOpened = "未打开会话",
+                logsDetailDeleteAction = "删除日志",
+                logsDeleteConfirmTitle = "删除会话日志？",
+                logsDeleteSingleConfirm = { label -> "确定删除“$label”的会话日志吗？" },
+                logsTimelineTitle = "事件时间线",
+                logsEventConnectingTo = { endpoint -> "正在连接 $endpoint" },
+                logsEventConnectionEstablished = "连接已建立",
+                logsEventHostVerified = "服务器身份已验证",
+                logsEventHostVerifyFailed = "服务器身份验证失败",
+                logsEventAuthSucceeded = { method ->
+                    when (method) {
+                        "key" -> "SSH 密钥认证成功"
+                        "password" -> "密码认证成功"
+                        "keyboard-interactive" -> "交互式认证成功"
+                        else -> "认证成功"
+                    }
+                },
+                logsEventAuthFailed = "认证失败",
+                logsEventMoshBootstrapStarted = "正在通过 SSH 引导连接",
+                logsEventMoshServerStarted = "Mosh 服务已启动",
+                logsEventMoshUdpEstablished = "UDP 连接已建立",
+                logsEventMoshUdpTimedOut = "UDP 连接超时",
+                logsEventSessionOpened = { protocol ->
+                    when (protocol) {
+                        ConnectionLogProtocol.SFTP -> "SFTP 会话已打开"
+                        ConnectionLogProtocol.SSH, ConnectionLogProtocol.MOSH -> "终端会话已打开"
+                    }
+                },
+                logsEventSessionClosed = "会话正常关闭",
+                logsEventConnectionFailed = "连接失败",
+                logsEventConnectionInterrupted = "连接意外中断",
+                logsErrorDescription = { code ->
+                    when (code) {
+                        SessionLogErrorCode.HOST_KEY_MISMATCH -> "服务器主机密钥已变更或验证失败"
+                        SessionLogErrorCode.HOST_KEY_REJECTED -> "已拒绝服务器主机密钥"
+                        SessionLogErrorCode.AUTHENTICATION_FAILED -> "身份认证失败"
+                        SessionLogErrorCode.AUTHENTICATION_CANCELLED -> "已取消认证"
+                        SessionLogErrorCode.INVALID_PRIVATE_KEY -> "私钥无效或不受支持"
+                        SessionLogErrorCode.CONNECTION_TIMED_OUT -> "连接超时"
+                        SessionLogErrorCode.UDP_TIMED_OUT -> "UDP 连接超时"
+                        SessionLogErrorCode.CONNECTION_REFUSED -> "目标主机拒绝连接"
+                        SessionLogErrorCode.HOST_UNREACHABLE -> "主机不可达"
+                        SessionLogErrorCode.UNKNOWN_HOST -> "无法解析主机名"
+                        SessionLogErrorCode.CONNECTION_CANCELLED -> "已取消连接"
+                        SessionLogErrorCode.KEEPALIVE_TIMEOUT -> "保活超时"
+                        SessionLogErrorCode.TRANSPORT_DISCONNECTED -> "连接意外断开"
+                        SessionLogErrorCode.SFTP_SUBSYSTEM_FAILED -> "无法启动 SFTP 子系统"
+                        SessionLogErrorCode.MOSH_SESSION_ERROR -> "Mosh 会话意外断开"
+                        SessionLogErrorCode.UNKNOWN_ERROR -> "连接失败"
+                    }
+                },
                 dateToday = "今天",
                 dateYesterday = "昨天",
                 formatMonthDay = { day, monthNumber, year ->
                     if (year == null) "${monthNumber}月${day}日" else "${year}年${monthNumber}月${day}日"
                 },
                 sessionCount = { n -> "$n 个会话" },
+                hostsFolderAll = "全部主机",
+                hostsFoldersLabel = "文件夹",
+                hostsFolderNew = "新建文件夹",
+                hostsFolderEdit = "编辑文件夹",
+                hostsFolderName = "文件夹名称",
+                hostsFolderParent = "上级文件夹",
+                hostsFolderRoot = "根目录（无文件夹）",
+                hostsFolderMoveTo = "移动到文件夹",
+                hostsFolderDelete = "删除文件夹",
+                hostsFolderDeleteConfirm = { name ->
+                    "删除“$name”？其中的主机和子文件夹将移回上级目录。"
+                },
+                hostsFolderCount = { h, sub ->
+                    if (sub > 0) "$h 台主机 · $sub 个文件夹" else "$h 台主机"
+                },
+                hostsFolderEmpty = "此文件夹为空",
+                hostsTagsAll = "全部",
+                hostsSuggestedTags = "已有标签",
+                hostsNewHost = "新建主机",
+                editFolder = "所属文件夹",
             ),
     )

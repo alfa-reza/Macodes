@@ -10,6 +10,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,22 +19,28 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DesktopWindows
+import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.LaptopMac
 import androidx.compose.material.icons.filled.Link
@@ -45,6 +52,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
@@ -54,14 +62,18 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -85,6 +97,11 @@ import dev.macodes.agent.AgentBridgeController
 import dev.macodes.agent.AgentBridgeState
 import dev.macodes.data.ConnectionMode
 import dev.macodes.data.Host
+import dev.macodes.data.HostFolder
+import dev.macodes.data.countFolderContents
+import dev.macodes.data.filterHostOrganization
+import dev.macodes.data.newId
+import dev.macodes.data.wouldCreateFolderCycle
 import dev.macodes.generated.resources.Res
 import dev.macodes.generated.resources.host_alma
 import dev.macodes.generated.resources.host_alpine
@@ -193,10 +210,23 @@ fun HostListScreen(
     onStartSftp: (Host) -> Unit,
     onCloseAllSessions: (Host) -> Unit,
     onBack: (() -> Unit)? = null,
+    folders: List<HostFolder> = emptyList(),
+    onAddInFolder: ((String?) -> Unit)? = null,
+    onUpsertFolder: (HostFolder) -> Unit = {},
+    onDeleteFolder: (String) -> Unit = {},
+    onMoveHostsToFolder: (Set<String>, String?) -> Unit = { _, _ -> },
 ) {
     val s = LocalAppStrings.current
     var query by remember { mutableStateOf("") }
     var searchExpanded by remember { mutableStateOf(false) }
+    var currentFolderId by remember { mutableStateOf<String?>(null) }
+    var selectedTag by remember { mutableStateOf<String?>(null) }
+    var addMenuOpen by remember { mutableStateOf(false) }
+    var editingFolder by remember { mutableStateOf<HostFolder?>(null) }
+    var showNewFolderDialog by remember { mutableStateOf(false) }
+    var showMoveToFolderDialog by remember { mutableStateOf(false) }
+    var pendingDeleteFolder by remember { mutableStateOf<HostFolder?>(null) }
+
     val searchFocusRequester = remember { FocusRequester() }
     // Wait until the search results expand and the entrance animation begins before refocusing; the keyboard should then pop up.
     LaunchedEffect(searchExpanded) {
@@ -205,19 +235,24 @@ fun HostListScreen(
             searchFocusRequester.requestFocus()
         }
     }
-    val filtered =
-        hosts
-            .filter { h ->
-                query.isBlank() ||
-                    h.name.contains(query, ignoreCase = true) ||
-                    h.hostname.contains(query, ignoreCase = true) ||
-                    h.username.contains(query, ignoreCase = true) ||
-                    h.system.contains(query, ignoreCase = true) ||
-                    h.tags.any { it.contains(query, ignoreCase = true) }
-            }
-            // Sorting order: Sort by creation time (new hosts are appended to the end); do not reorder based on the most recent connection—
-            // After linking, the position of the list cards remains unchanged; you can rely on muscle memory (old data with `createdAt=0` is used as a fallback based on its name).
-            .sortedWith(compareBy<Host> { it.createdAt }.thenBy { it.name.lowercase() })
+
+    LaunchedEffect(folders) {
+        if (currentFolderId != null && folders.none { it.id == currentFolderId }) {
+            currentFolderId = null
+        }
+    }
+
+    val orgView =
+        remember(hosts, folders, currentFolderId, selectedTag, query) {
+            filterHostOrganization(
+                hosts = hosts,
+                folders = folders,
+                currentFolderId = currentFolderId,
+                selectedTag = selectedTag,
+                query = query,
+            )
+        }
+    val filtered = orgView.visibleHosts
 
     // Batch (multiple selections) mode: Tap the avatar / Long press a card to enter
     var selectionMode by remember { mutableStateOf(false) }
@@ -234,8 +269,14 @@ fun HostListScreen(
         selected.clear()
     }
 
-    // In multi-select mode the system Back key exits batch mode first, not to the home screen
-    PlatformBackHandler(enabled = selectionMode, onBack = { exitSelection() })
+    // In multi-select mode the system Back key exits batch mode first; otherwise navigates up one folder level.
+    PlatformBackHandler(enabled = selectionMode || currentFolderId != null) {
+        if (selectionMode) {
+            exitSelection()
+        } else {
+            currentFolderId = folders.firstOrNull { it.id == currentFolderId }?.parentId
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -247,6 +288,7 @@ fun HostListScreen(
                         selected.values.firstOrNull()?.let(onEdit)
                         exitSelection()
                     },
+                    onMoveToFolder = { showMoveToFolderDialog = true },
                     onSelectAll = { filtered.forEach { selected[it.id] = it } },
                     onConnect = {
                         onConnectBatch(selected.values.toList())
@@ -287,12 +329,39 @@ fun HostListScreen(
         },
         floatingActionButton = {
             if (!selectionMode) {
-                FloatingActionButton(
-                    onClick = onAdd,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = RoundedCornerShape(Corners.Lg),
-                ) { Icon(Icons.Default.Add, s.hostsAdd) }
+                Box {
+                    FloatingActionButton(
+                        onClick = { addMenuOpen = true },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        shape = RoundedCornerShape(Corners.Lg),
+                    ) { Icon(Icons.Default.Add, s.hostsAdd) }
+                    DropdownMenu(
+                        expanded = addMenuOpen,
+                        onDismissRequest = { addMenuOpen = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(s.workspace.hostsNewHost) },
+                            leadingIcon = { Icon(Icons.Filled.Terminal, contentDescription = null) },
+                            onClick = {
+                                addMenuOpen = false
+                                if (onAddInFolder != null) {
+                                    onAddInFolder(currentFolderId)
+                                } else {
+                                    onAdd()
+                                }
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(s.workspace.hostsFolderNew) },
+                            leadingIcon = { Icon(Icons.Filled.CreateNewFolder, contentDescription = null) },
+                            onClick = {
+                                addMenuOpen = false
+                                showNewFolderDialog = true
+                            },
+                        )
+                    }
+                }
             }
         },
     ) { padding ->
@@ -312,11 +381,27 @@ fun HostListScreen(
                             .focusRequester(searchFocusRequester),
                 )
             }
+            if (orgView.breadcrumbs.isNotEmpty()) {
+                FolderBreadcrumbsBar(
+                    breadcrumbs = orgView.breadcrumbs,
+                    onSelectFolder = { currentFolderId = it },
+                )
+            }
+            if (orgView.allTags.isNotEmpty()) {
+                TagFilterBar(
+                    tags = orgView.allTags,
+                    selectedTag = selectedTag,
+                    onSelectTag = { tag ->
+                        selectedTag = if (selectedTag.equals(tag, ignoreCase = true)) null else tag
+                    },
+                )
+            }
             val activeCount =
                 hosts.sumOf { h ->
                     hostSessions[h.id].orEmpty().count { it.isActive }
                 }
-            if (filtered.isEmpty()) {
+            val showEmptyState = orgView.visibleFolders.isEmpty() && filtered.isEmpty()
+            if (showEmptyState) {
                 Box(Modifier.fillMaxSize().padding(Spacing.Lg), contentAlignment = Alignment.Center) {
                     Surface(
                         shape = RoundedCornerShape(Corners.Xl),
@@ -329,19 +414,25 @@ fun HostListScreen(
                             verticalArrangement = Arrangement.spacedBy(Spacing.Md),
                         ) {
                             Icon(
-                                Icons.Filled.Terminal,
+                                if (currentFolderId != null) Icons.Filled.FolderOpen else Icons.Filled.Terminal,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(36.dp),
                             )
                             Text(
-                                if (hosts.isEmpty()) s.hostsEmpty else s.hostsNoMatch,
+                                when {
+                                    hosts.isEmpty() && folders.isEmpty() -> s.hostsEmpty
+                                    currentFolderId != null && query.isBlank() && selectedTag == null -> s.workspace.hostsFolderEmpty
+                                    else -> s.hostsNoMatch
+                                },
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodyMedium,
                             )
-                            if (hosts.isEmpty()) {
+                            if (hosts.isEmpty() && folders.isEmpty()) {
                                 Button(
-                                    onClick = onAdd,
+                                    onClick = {
+                                        if (onAddInFolder != null) onAddInFolder(currentFolderId) else onAdd()
+                                    },
                                     shape = RoundedCornerShape(Corners.Md),
                                 ) {
                                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -377,6 +468,21 @@ fun HostListScreen(
                                     modifier = Modifier.padding(horizontal = Spacing.Md, vertical = 6.dp),
                                 )
                             }
+                            if (folders.isNotEmpty()) {
+                                Surface(
+                                    shape = RoundedCornerShape(Corners.Full),
+                                    color = MaterialTheme.colorScheme.surfaceContainer,
+                                    border = BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant),
+                                ) {
+                                    Text(
+                                        text = "${s.workspace.hostsFoldersLabel} · ${folders.size}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = Spacing.Md, vertical = 6.dp),
+                                    )
+                                }
+                            }
                             if (activeCount > 0) {
                                 Surface(
                                     shape = RoundedCornerShape(Corners.Full),
@@ -403,6 +509,16 @@ fun HostListScreen(
                                 }
                             }
                         }
+                    }
+                    items(orgView.visibleFolders, key = { "folder:${it.id}" }) { folder ->
+                        val counts = remember(hosts, folders, folder.id) { countFolderContents(hosts, folders, folder.id) }
+                        FolderCard(
+                            folder = folder,
+                            hostCount = counts.hostCount,
+                            subfolderCount = counts.subfolderCount,
+                            onClick = { currentFolderId = folder.id },
+                            onLongClick = { editingFolder = folder },
+                        )
                     }
                     items(filtered, key = { it.id }) { host ->
                         val isSelected = host.id in selected
@@ -456,6 +572,75 @@ fun HostListScreen(
             }
         }
     }
+
+    if (showNewFolderDialog) {
+        FolderEditDialog(
+            existing = null,
+            folders = folders,
+            defaultParentId = currentFolderId,
+            onSave = { folder ->
+                onUpsertFolder(folder)
+                showNewFolderDialog = false
+            },
+            onDelete = null,
+            onDismiss = { showNewFolderDialog = false },
+        )
+    }
+
+    editingFolder?.let { target ->
+        FolderEditDialog(
+            existing = target,
+            folders = folders,
+            defaultParentId = target.parentId,
+            onSave = { updated ->
+                onUpsertFolder(updated)
+                editingFolder = null
+            },
+            onDelete = {
+                editingFolder = null
+                pendingDeleteFolder = target
+            },
+            onDismiss = { editingFolder = null },
+        )
+    }
+
+    pendingDeleteFolder?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteFolder = null },
+            title = { Text(s.workspace.hostsFolderDelete) },
+            text = { Text(s.workspace.hostsFolderDeleteConfirm(target.name)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteFolder(target.id)
+                        if (currentFolderId == target.id) {
+                            currentFolderId = target.parentId
+                        }
+                        pendingDeleteFolder = null
+                    },
+                ) {
+                    Text(s.workspace.hostsFolderDelete, color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteFolder = null }) { Text(s.navBack) }
+            },
+        )
+    }
+
+    if (showMoveToFolderDialog && selected.isNotEmpty()) {
+        FolderPickerDialog(
+            title = s.workspace.hostsFolderMoveTo,
+            folders = folders,
+            selectedFolderId = selected.values.firstOrNull()?.folderId,
+            onSelect = { targetFolderId ->
+                onMoveHostsToFolder(selected.keys.toSet(), targetFolderId)
+                showMoveToFolderDialog = false
+                exitSelection()
+            },
+            onDismiss = { showMoveToFolderDialog = false },
+        )
+    }
 }
 
 /** Batch mode header: Close on the left, “x selected” in the middle, and Edit + three-dot menu on the right. */
@@ -464,6 +649,7 @@ private fun SelectionHeader(
     count: Int,
     onClose: () -> Unit,
     onEdit: () -> Unit,
+    onMoveToFolder: () -> Unit,
     onSelectAll: () -> Unit,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
@@ -507,6 +693,14 @@ private fun SelectionHeader(
                     Icon(Icons.Default.MoreVert, contentDescription = s.navMore)
                 }
                 DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text(s.workspace.hostsFolderMoveTo) },
+                        leadingIcon = { Icon(Icons.Filled.DriveFileMove, null) },
+                        onClick = {
+                            moreOpen = false
+                            onMoveToFolder()
+                        },
+                    )
                     DropdownMenuItem(
                         text = { Text(s.hostsSelectAll) },
                         leadingIcon = { Icon(Icons.Filled.SelectAll, null) },
@@ -683,6 +877,46 @@ private fun HostCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    if (host.tags.isNotEmpty()) {
+                        val visibleTags = host.tags.take(3)
+                        val overflowCount = host.tags.size - visibleTags.size
+                        Row(
+                            modifier = Modifier.padding(top = 2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.Xs),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            visibleTags.forEach { tag ->
+                                Surface(
+                                    shape = RoundedCornerShape(Corners.Sm),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                    border = BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant),
+                                ) {
+                                    Text(
+                                        text = "#$tag",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    )
+                                }
+                            }
+                            if (overflowCount > 0) {
+                                Surface(
+                                    shape = RoundedCornerShape(Corners.Sm),
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                ) {
+                                    Text(
+                                        text = "+$overflowCount",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
                 if (selectionMode) {
                     // Selection indicator: checkmark circle
@@ -1113,5 +1347,412 @@ internal fun systemColor(system: String): Color {
             s.contains("elementary") -> Color(0xFF475569)
         // Unknown system: brand electric blue; white cloud-host icon pops on it
         else -> Color(0xFF2B84F6)
+    }
+}
+
+@Composable
+private fun FolderBreadcrumbsBar(
+    breadcrumbs: List<HostFolder>,
+    onSelectFolder: (String?) -> Unit,
+) {
+    val s = LocalAppStrings.current
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = Spacing.Lg, vertical = Spacing.Xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.Xs),
+    ) {
+        Surface(
+            shape = RoundedCornerShape(Corners.Full),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            border = BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant),
+            modifier =
+                Modifier
+                    .clip(RoundedCornerShape(Corners.Full))
+                    .clickable { onSelectFolder(null) },
+        ) {
+            Text(
+                text = s.workspace.hostsFolderAll,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = Spacing.Md, vertical = 6.dp),
+            )
+        }
+        breadcrumbs.forEachIndexed { index, folder ->
+            val isCurrent = index == breadcrumbs.lastIndex
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
+            )
+            Surface(
+                shape = RoundedCornerShape(Corners.Full),
+                color =
+                    if (isCurrent) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainer
+                    },
+                border =
+                    if (isCurrent) {
+                        null
+                    } else {
+                        BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant)
+                    },
+                modifier =
+                    Modifier
+                        .clip(RoundedCornerShape(Corners.Full))
+                        .clickable(enabled = !isCurrent) { onSelectFolder(folder.id) },
+            ) {
+                Text(
+                    text = folder.name,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                    color =
+                        if (isCurrent) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = Spacing.Md, vertical = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TagFilterBar(
+    tags: List<String>,
+    selectedTag: String?,
+    onSelectTag: (String) -> Unit,
+) {
+    val s = LocalAppStrings.current
+    val chipColors =
+        FilterChipDefaults.filterChipColors(
+            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        )
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = Spacing.Lg, vertical = Spacing.Xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
+    ) {
+        FilterChip(
+            selected = selectedTag == null,
+            onClick = { if (selectedTag != null) onSelectTag(selectedTag) },
+            label = { Text(s.workspace.hostsTagsAll) },
+            colors = chipColors,
+        )
+        tags.forEach { tag ->
+            val active = selectedTag.equals(tag, ignoreCase = true)
+            FilterChip(
+                selected = active,
+                onClick = { onSelectTag(tag) },
+                label = { Text("#$tag") },
+                colors = chipColors,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FolderCard(
+    folder: HostFolder,
+    hostCount: Int,
+    subfolderCount: Int,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    val s = LocalAppStrings.current
+    Card(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(Corners.Lg))
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick,
+                ),
+        shape = RoundedCornerShape(Corners.Lg),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        border = BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.Lg, vertical = Spacing.Md),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(Sizes.AvatarCard)
+                        .clip(RoundedCornerShape(Corners.Md))
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Filled.Folder,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(Sizes.IconMedium),
+                )
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    text = folder.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = s.workspace.hostsFolderCount(hostCount, subfolderCount),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun FolderEditDialog(
+    existing: HostFolder?,
+    folders: List<HostFolder>,
+    defaultParentId: String?,
+    onSave: (HostFolder) -> Unit,
+    onDelete: (() -> Unit)?,
+    onDismiss: () -> Unit,
+) {
+    val s = LocalAppStrings.current
+    var name by remember(existing) { mutableStateOf(existing?.name ?: "") }
+    var parentId by remember(existing, defaultParentId) { mutableStateOf(existing?.parentId ?: defaultParentId) }
+    var showParentPicker by remember { mutableStateOf(false) }
+
+    val parentOptions =
+        remember(folders, existing) {
+            if (existing == null) {
+                folders
+            } else {
+                folders.filter { f -> !wouldCreateFolderCycle(folders, existing.id, f.id) }
+            }
+        }
+    val parentName = parentOptions.firstOrNull { it.id == parentId }?.name ?: s.workspace.hostsFolderRoot
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (existing == null) s.workspace.hostsFolderNew else s.workspace.hostsFolderEdit) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.Md)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(s.workspace.hostsFolderName) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(Corners.Md),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (parentOptions.isNotEmpty()) {
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = Sizes.TouchTarget)
+                                .clip(RoundedCornerShape(Corners.Md))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .clickable { showParentPicker = true }
+                                .padding(horizontal = Spacing.Md, vertical = Spacing.Sm),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Filled.Folder,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(Sizes.IconSmall),
+                        )
+                        Spacer(Modifier.width(Spacing.Sm))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                s.workspace.hostsFolderParent,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                parentName,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Icon(
+                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                if (onDelete != null) {
+                    TextButton(onClick = onDelete) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(Sizes.IconSmall),
+                        )
+                        Spacer(Modifier.width(Spacing.Xs))
+                        Text(s.workspace.hostsFolderDelete, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = name.trim().isNotEmpty(),
+                onClick = {
+                    val folder =
+                        HostFolder(
+                            id = existing?.id ?: newId(),
+                            name = name.trim(),
+                            parentId = parentId,
+                            createdAt = existing?.createdAt ?: Clock.System.now().toEpochMilliseconds(),
+                        )
+                    onSave(folder)
+                },
+            ) {
+                Text(s.editSave)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(s.navBack) }
+        },
+    )
+
+    if (showParentPicker) {
+        FolderPickerDialog(
+            title = s.workspace.hostsFolderParent,
+            folders = parentOptions,
+            selectedFolderId = parentId,
+            onSelect = {
+                parentId = it
+                showParentPicker = false
+            },
+            onDismiss = { showParentPicker = false },
+        )
+    }
+}
+
+@Composable
+internal fun FolderPickerDialog(
+    title: String,
+    folders: List<HostFolder>,
+    selectedFolderId: String?,
+    onSelect: (String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val s = LocalAppStrings.current
+    val sortedFolders = remember(folders) { folders.sortedBy { it.name.lowercase() } }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.Xs)) {
+                FolderPickerOptionRow(
+                    label = s.workspace.hostsFolderRoot,
+                    selected = selectedFolderId == null,
+                    onClick = { onSelect(null) },
+                )
+                sortedFolders.forEach { folder ->
+                    FolderPickerOptionRow(
+                        label = folder.name,
+                        selected = folder.id == selectedFolderId,
+                        onClick = { onSelect(folder.id) },
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(s.navBack) }
+        },
+    )
+}
+
+@Composable
+private fun FolderPickerOptionRow(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = Sizes.TouchTarget)
+                .clip(RoundedCornerShape(Corners.Md))
+                .background(
+                    if (selected) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        Color.Transparent
+                    },
+                ).clickable(onClick = onClick)
+                .padding(horizontal = Spacing.Md, vertical = Spacing.Sm),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
+    ) {
+        Icon(
+            Icons.Filled.Folder,
+            contentDescription = null,
+            tint =
+                if (selected) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            modifier = Modifier.size(Sizes.IconSmall),
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color =
+                if (selected) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (selected) {
+            Icon(
+                Icons.Filled.Check,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(Sizes.IconSmall),
+            )
+        }
     }
 }

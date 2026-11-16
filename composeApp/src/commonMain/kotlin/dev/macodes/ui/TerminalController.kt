@@ -3,8 +3,15 @@ package dev.macodes.ui
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import dev.macodes.data.ConnectionLogProtocol
 import dev.macodes.data.Host
+import dev.macodes.data.HostAuthMethod
 import dev.macodes.data.HostRepository
+import dev.macodes.data.RepositorySessionLogSink
+import dev.macodes.data.SessionLogErrorCode
+import dev.macodes.data.SessionLogEventType
+import dev.macodes.data.SessionLogRecorder
+import dev.macodes.data.SessionLogSink
 import dev.macodes.herdr.HerdrMonitor
 import dev.macodes.ssh.AuthPrompt
 import dev.macodes.ssh.HostKeyInfo
@@ -224,6 +231,9 @@ class TerminalController(
     internal var moshDisplayTakeover = false
 
     internal val scope = CoroutineScope(ioDispatcher() + SupervisorJob())
+    private val logPersistScope = CoroutineScope(ioDispatcher() + SupervisorJob())
+    internal var sessionLogSink: SessionLogSink = RepositorySessionLogSink(repository, logPersistScope, ioDispatcher())
+    internal var sessionLogRecorder: SessionLogRecorder? = null
 
     /** Flag set after `destroy()`: the `reader` coroutine stops enqueuing to the output queue (the queue is closed; attempting to enqueue will throw). */
     @Volatile
@@ -398,6 +408,26 @@ class TerminalController(
     ) = object : SshCallbacks {
         override fun onTraceStep(step: String) {
             trace?.step(step)
+            if (generation != connectionGeneration) return
+            val rec = sessionLogRecorder ?: return
+            when (step) {
+                "tcp+kex" ->
+                    if (rec.protocol != ConnectionLogProtocol.MOSH) {
+                        rec.record(SessionLogEventType.CONNECTION_ESTABLISHED)
+                    }
+                "auth" ->
+                    rec.markAuthSucceeded(
+                        when (host.authMethod) {
+                            HostAuthMethod.PRIVATE_KEY -> "key"
+                            HostAuthMethod.PASSWORD -> "password"
+                            HostAuthMethod.KEY_OR_PASSWORD -> if (privateKeyPem != null) "key" else "password"
+                        },
+                    )
+                "shell" ->
+                    if (rec.protocol != ConnectionLogProtocol.MOSH) {
+                        rec.markSessionOpened()
+                    }
+            }
         }
 
         override suspend fun onOutput(data: ByteArray) {
@@ -447,6 +477,7 @@ class TerminalController(
             if (known != null) {
                 if (known == hostKey.fingerprintSha256) {
                     TermLog.d("ssh") { "hostkey ok ${host.name} ${hostKey.algorithm}" }
+                    sessionLogRecorder?.markHostVerification(true)
                     return true
                 }
                 // Fingerprint has changed: no longer results in a hard failure (otherwise, connections would be permanently lost after changing the address or server keys, and there would be no way to reset it),
@@ -464,11 +495,13 @@ class TerminalController(
                         repository.recordHostKey(host.id, hostKey.fingerprintSha256)
                     }
                 }
+                sessionLogRecorder?.markHostVerification(ok)
                 return ok
             }
             // First-time connection: If the user has disabled “First-time Connection Confirmation,” the connection is trusted immediately (the fingerprint will still be visible in settings).
             if (!repository.loadSettings().verifyHostKeyOnFirstUse) {
                 TermLog.d("ssh") { "hostkey trust-on-first-use skipped (setting off) ${host.name}" }
+                sessionLogRecorder?.markHostVerification(true)
                 return true
             }
             // TOFU: First connection requires the user to confirm it
@@ -486,6 +519,7 @@ class TerminalController(
                     repository.recordHostKey(host.id, hostKey.fingerprintSha256)
                 }
             }
+            sessionLogRecorder?.markHostVerification(ok)
             return ok
         }
     }
@@ -587,6 +621,15 @@ class TerminalController(
     internal fun forceReconnect(cause: SessionReconnectCause) = connector.forceReconnect(cause)
 
     fun close() {
+        val prevStatus = status
+        val activeRecorder = sessionLogRecorder
+        if (activeRecorder != null && !activeRecorder.isFinalized && prevStatus != ConnStatus.ERROR) {
+            if (activeRecorder.isOpened) {
+                activeRecorder.completeNormal("user")
+            } else {
+                activeRecorder.fail(explicitCode = SessionLogErrorCode.CONNECTION_CANCELLED)
+            }
+        }
         // First, invalidate all pending connection establishment attempts; even if the underlying blocking calls return, they don't go back,
         // It will only release its own resources and will not revive the session.
         connectionGeneration++

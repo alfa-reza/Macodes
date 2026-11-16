@@ -66,8 +66,6 @@ import dev.macodes.data.AgentProviderType
 import dev.macodes.data.AppSettings
 import dev.macodes.data.AsrProvider
 import dev.macodes.data.AsrProviderType
-import dev.macodes.data.ConnectionLogEntry
-import dev.macodes.data.ConnectionLogEvent
 import dev.macodes.data.ConnectionLogProtocol
 import dev.macodes.data.ConnectionMode
 import dev.macodes.data.Host
@@ -75,10 +73,15 @@ import dev.macodes.data.HostAuthMethod
 import dev.macodes.data.HostRepository
 import dev.macodes.data.QuickConnectHistoryEntry
 import dev.macodes.data.QuickConnectParser
+import dev.macodes.data.RepositorySessionLogSink
 import dev.macodes.data.SECRET_SERVICE
 import dev.macodes.data.SecretStore
+import dev.macodes.data.SessionLogErrorCode
+import dev.macodes.data.SessionLogEventType
+import dev.macodes.data.SessionLogRecorder
 import dev.macodes.data.ThemeMode
 import dev.macodes.data.asrKeyAccount
+import dev.macodes.data.collectAllTags
 import dev.macodes.data.newId
 import dev.macodes.data.quickConnectHostId
 import dev.macodes.data.resolveCredentials
@@ -329,6 +332,8 @@ fun AppRoot(repository: HostRepository) {
     val backgroundVendor = remember { backgroundProtectionVendor() }
     var showBackgroundProtectionGuide by remember { mutableStateOf(false) }
     var hosts by remember { mutableStateOf(repository.listHosts()) }
+    var folders by remember { mutableStateOf(repository.listFolders()) }
+    var pendingNewHostFolderId by remember { mutableStateOf<String?>(null) }
     val navigation = remember { NavigationStack<Screen>(Screen.Home) }
     val screen = navigation.current
     val scope = rememberCoroutineScope()
@@ -495,6 +500,14 @@ fun AppRoot(repository: HostRepository) {
         // “reconnecting / switching: old connection actively closed” (close synchronously triggers the old callback,
         // without comparing generations, the disconnect banner would be wrongly applied to the just-reconnected session)
         val connectionToken = Any()
+        val logRecorder =
+            SessionLogRecorder(
+                host = host,
+                protocol = ConnectionLogProtocol.SFTP,
+                sink = RepositorySessionLogSink(repository, scope, ioDispatcher()),
+            ).also {
+                it.record(SessionLogEventType.CONNECTION_STARTED)
+            }
         val (resolvedPw, key) = resolveCredentials(host)
         val pw = passwordOverride ?: resolvedPw
         val callbacks =
@@ -513,17 +526,7 @@ fun AppRoot(repository: HostRepository) {
                         sessionManager.sftpSessions
                             .firstOrNull { it.host.id == host.id && it.session != null }
                     if (entry == null || entry.connectionToken !== connectionToken) return
-                    repository.appendConnectionLog(
-                        ConnectionLogEntry(
-                            id = newId(),
-                            hostLabel = host.name.ifBlank { host.hostname },
-                            endpoint = "${host.username}@${host.hostname}:${host.port}",
-                            protocol = ConnectionLogProtocol.SFTP,
-                            event = ConnectionLogEvent.DISCONNECTED,
-                            detail = reason.orEmpty(),
-                            timestamp = Clock.System.now().toEpochMilliseconds(),
-                        ),
-                    )
+                    (entry.logRecorder ?: logRecorder).interrupt(reason = reason)
                     scope.launch {
                         TermLog.w("sftp") { "sftp closed ${host.name}: ${reason ?: "unknown"}" }
                         entry.uiState.disconnected = true
@@ -587,33 +590,17 @@ fun AppRoot(repository: HostRepository) {
             try {
                 withContext(ioDispatcher()) { createSftpSession(conn, callbacks) }
             } catch (e: Exception) {
-                if (e !is CancellationException) {
-                    repository.appendConnectionLog(
-                        ConnectionLogEntry(
-                            id = newId(),
-                            hostLabel = host.name.ifBlank { host.hostname },
-                            endpoint = "${host.username}@${host.hostname}:${host.port}",
-                            protocol = ConnectionLogProtocol.SFTP,
-                            event = ConnectionLogEvent.FAILED,
-                            detail = e.message.orEmpty(),
-                            timestamp = Clock.System.now().toEpochMilliseconds(),
-                        ),
-                    )
+                if (e is CancellationException) {
+                    logRecorder.fail(explicitCode = SessionLogErrorCode.CONNECTION_CANCELLED)
+                } else {
+                    logRecorder.fail(error = e)
                 }
                 throw e
             }
-        repository.appendConnectionLog(
-            ConnectionLogEntry(
-                id = newId(),
-                hostLabel = host.name.ifBlank { host.hostname },
-                endpoint = "${host.username}@${host.hostname}:${host.port}",
-                protocol = ConnectionLogProtocol.SFTP,
-                event = ConnectionLogEvent.CONNECTED,
-                timestamp = Clock.System.now().toEpochMilliseconds(),
-            ),
-        )
+        logRecorder.markSessionOpened()
         TermLog.i("sftp") { "connected ${host.name} ${host.hostname}:${host.port}" }
         onEstablished(session, connectionToken)
+        sessionManager.attachSftpRecorder(connectionToken, logRecorder)
     }
 
     // After the host is selected in the overlay layer: Establish an SFTP session (authentication/host key dialogs use the global `sftpAuth` and `sftpHostKey`).
@@ -1142,7 +1129,7 @@ fun AppRoot(repository: HostRepository) {
                                                     }
                                                 val logsCount =
                                                     remember(workspaceRevision, workspaceSubPage, screen) {
-                                                        repository.listConnectionLogs().size
+                                                        repository.listSessionLogs().size
                                                     }
                                                 Box(Modifier.fillMaxSize()) {
                                                     WorkspaceScreen(
@@ -1172,7 +1159,28 @@ fun AppRoot(repository: HostRepository) {
                                                                         } +
                                                                         agentSessionItems
                                                                 ).groupBy { it.hostId },
-                                                            onAdd = { navigate(Screen.Edit(null)) },
+                                                            onAdd = {
+                                                                pendingNewHostFolderId = null
+                                                                navigate(Screen.Edit(null))
+                                                            },
+                                                            folders = folders,
+                                                            onAddInFolder = { folderId ->
+                                                                pendingNewHostFolderId = folderId
+                                                                navigate(Screen.Edit(null))
+                                                            },
+                                                            onUpsertFolder = { folder ->
+                                                                repository.upsertFolder(folder)
+                                                                folders = repository.listFolders()
+                                                            },
+                                                            onDeleteFolder = { folderId ->
+                                                                repository.deleteFolder(folderId)
+                                                                folders = repository.listFolders()
+                                                                hosts = repository.listHosts()
+                                                            },
+                                                            onMoveHostsToFolder = { hostIds, folderId ->
+                                                                repository.moveHostsToFolder(hostIds, folderId)
+                                                                hosts = repository.listHosts()
+                                                            },
                                                             onEdit = { navigate(Screen.Edit(it.id)) },
                                                             onConnect = { host ->
                                                                 openHostTerminal(host, TerminalLaunchMode.SHELL)
@@ -1470,9 +1478,13 @@ fun AppRoot(repository: HostRepository) {
 
                         is Screen.Edit -> {
                             val existing = hosts.firstOrNull { it.id == s.hostId }
+                            val existingTags = remember(hosts) { collectAllTags(hosts) }
                             HostEditScreen(
                                 existing = existing,
                                 repository = repository,
+                                folders = folders,
+                                existingTags = existingTags,
+                                initialFolderId = if (existing == null) pendingNewHostFolderId else null,
                                 onSave = { host, pw, key ->
                                     if (pw.isNotBlank()) {
                                         SecretStore.set(
@@ -1489,10 +1501,14 @@ fun AppRoot(repository: HostRepository) {
                                         )
                                     }
                                     repository.upsertHost(host)
+                                    pendingNewHostFolderId = null
                                     refreshHosts()
                                     navigateBack()
                                 },
-                                onCancel = ::navigateBack,
+                                onCancel = {
+                                    pendingNewHostFolderId = null
+                                    navigateBack()
+                                },
                             )
                         }
 

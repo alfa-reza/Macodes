@@ -6,6 +6,7 @@ import dev.macodes.data.Host
 import dev.macodes.data.HostRepository
 import dev.macodes.data.HostRepository.RecentSftpEntry
 import dev.macodes.data.HostRepository.RecentTerminalEntry
+import dev.macodes.data.SessionLogRecorder
 import dev.macodes.data.resolveCredentials
 import dev.macodes.ssh.SftpSession
 import dev.macodes.util.ForegroundSshRecovery
@@ -28,6 +29,8 @@ data class SftpSessionEntry(
     val connectionToken: Any = Any(),
     /** The time the entry was first created; this remains unchanged when the underlying connection is replaced during a reconnect. */
     val createdAt: Long = Clock.System.now().toEpochMilliseconds(),
+    /** Active in-memory session log recorder (finalized when SFTP ends). */
+    val logRecorder: SessionLogRecorder? = null,
 )
 
 internal enum class BackgroundReconnectAction {
@@ -292,6 +295,16 @@ class SessionManager(
      * SFTP Reconnection: Replace "session" in the entry (uiState is preserved, and the browsing path/list is retained).
      * Close the old session first to release the connection; the caller is responsible for prompting the user in case of a reconnection failure.
      */
+    fun attachSftpRecorder(
+        connectionToken: Any,
+        recorder: SessionLogRecorder,
+    ) {
+        val idx = sftpSessions.indexOfFirst { it.connectionToken === connectionToken }
+        if (idx >= 0) {
+            sftpSessions[idx] = sftpSessions[idx].copy(logRecorder = recorder)
+        }
+    }
+
     fun reconnectSftp(
         entry: SftpSessionEntry,
         newSession: SftpSession,
@@ -322,6 +335,7 @@ class SessionManager(
 
     /** Disconnect the SFTP session but retain the entry (same semantics as a terminal session: the gray dot indicates it can be reconnected, and the browsing state is preserved). */
     fun disconnectSftp(entry: SftpSessionEntry) {
+        entry.logRecorder?.completeNormal("user")
         // First clear the session, then close it: closing the session triggers `onClosed` in sync; at this point, the entry no longer has a session,
         // The callback cannot find a target to mark (the "disconnected" flag is set here proactively and is not affected by the old callback).
         val idx = sftpSessions.indexOf(entry)
@@ -346,6 +360,7 @@ class SessionManager(
     }
 
     fun closeSftp(entry: SftpSessionEntry) {
+        entry.logRecorder?.completeNormal("user")
         // Remove first, then close: Closing triggers `onClosed` in sync, at which point the entry is no longer in the list,
         // No mislabeling or incorrect logging
         sftpSessions.remove(entry)

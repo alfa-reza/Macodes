@@ -1,10 +1,10 @@
 package dev.macodes.ui
 
-import dev.macodes.data.ConnectionLogEntry
-import dev.macodes.data.ConnectionLogEvent
 import dev.macodes.data.ConnectionLogProtocol
 import dev.macodes.data.ConnectionMode
-import dev.macodes.data.newId
+import dev.macodes.data.SessionLogErrorCode
+import dev.macodes.data.SessionLogEventType
+import dev.macodes.data.SessionLogRecorder
 import dev.macodes.herdr.HerdrProbe
 import dev.macodes.mosh.MoshExitReason
 import dev.macodes.notify.NotificationCenter
@@ -182,6 +182,9 @@ internal class SessionConnector(
                 "mode" to c.host.connectionMode.name,
             )
         c.status = ConnStatus.CONNECTING
+        if (c.host.connectionMode != ConnectionMode.MOSH || c.moshDegradedToSsh) {
+            ensureRecorder(ConnectionLogProtocol.SSH).record(SessionLogEventType.CONNECTION_STARTED)
+        }
         c.scope.launch {
             try {
                 if (!isCurrentGeneration(generation)) return@launch
@@ -266,7 +269,7 @@ internal class SessionConnector(
                     } else if (c.reconnectAttempts > 0) {
                         // All automatic attempts to reconnect failed: close the session and send a single notification only when the connection is finally exhausted.
                         c.status = ConnStatus.CLOSED
-                        logConnectionEvent(ConnectionLogProtocol.SSH, ConnectionLogEvent.FAILED, e.message.orEmpty())
+                        c.sessionLogRecorder?.interrupt(error = e)
                         TermLog.e("ssh") { "reconnect exhausted ${c.host.name} -> CLOSED" }
                         NotificationCenter.post(
                             NotificationEvent.RECONNECT_FAILED,
@@ -277,7 +280,7 @@ internal class SessionConnector(
                     } else {
                         // If there is a failure in the initial connection, display an error in the UI; do not enter the automatic reconnect loop.
                         c.status = ConnStatus.ERROR
-                        logConnectionEvent(ConnectionLogProtocol.SSH, ConnectionLogEvent.FAILED, e.message.orEmpty())
+                        c.sessionLogRecorder?.fail(error = e)
                     }
                 }
             }
@@ -301,6 +304,9 @@ internal class SessionConnector(
         generation: Int = c.connectionGeneration,
     ) {
         val t0 = c.nowMs()
+        if (!c.moshDegradedToSsh) {
+            ensureRecorder(ConnectionLogProtocol.MOSH).record(SessionLogEventType.SSH_BOOTSTRAP_STARTED)
+        }
         try {
             if (!isCurrentGeneration(generation)) return
             // 1. SSH connection + shell (initialization channel; becomes a show channel upon fallback; closes when Mosh achieves success)
@@ -407,6 +413,7 @@ internal class SessionConnector(
             val (moshPort, moshKey) = parsed
             val moshServerPid = parseMoshServerPid(raw.orEmpty())
             TermLog.i("mosh") { "mosh-server up port=$moshPort ${c.host.hostname}" }
+            c.sessionLogRecorder?.record(SessionLogEventType.SSH_BOOTSTRAP_SUCCEEDED)
             // Setup success: The "pending installation" status was immediately cleared (residual entries may have come from a previous session).
             c.moshNeedsInstall = false
             c.moshInstallReason = null
@@ -474,6 +481,14 @@ internal class SessionConnector(
                 // UDP connectivity issues are due to environmental barriers: Mark this session entry so that subsequent reconnections go directly through SSH,
                 // Do not retry mosh (retrials will only occur in new sessions)
                 c.moshDegradedToSsh = true
+                c.sessionLogRecorder?.fail(
+                    explicitCode = SessionLogErrorCode.UDP_TIMED_OUT,
+                    terminalEvent = SessionLogEventType.UDP_CONNECTION_TIMED_OUT,
+                )
+                c.sessionLogRecorder =
+                    SessionLogRecorder(c.host, ConnectionLogProtocol.SSH, c.sessionLogSink, clock = { c.nowMs() }).also {
+                        it.record(SessionLogEventType.CONNECTION_STARTED)
+                    }
                 finishConnected(s, generation)
                 showDegradeNotice(strings().moshUdpDegraded)
                 TermLog.i("mosh") { "mosh degraded-to-ssh ${c.host.name} in ${c.nowMs() - t0}ms" }
@@ -500,7 +515,7 @@ internal class SessionConnector(
                 c.errorMessage = e.message
                 c.errorCode = (e as? SshException)?.code
                 c.stopKeepAlive()
-                logConnectionEvent(ConnectionLogProtocol.MOSH, ConnectionLogEvent.FAILED, e.message.orEmpty())
+                c.sessionLogRecorder?.fail(error = e)
             }
         }
     }
@@ -846,7 +861,7 @@ internal class SessionConnector(
             return
         }
         c.status = ConnStatus.CONNECTED
-        logConnectionEvent(ConnectionLogProtocol.SSH, ConnectionLogEvent.CONNECTED)
+        c.sessionLogRecorder?.markSessionOpened()
         // Silent detection start point: Counting from the completion of the connection. MOTD has finished → Herdr injection after 250 ms;
         // Still processing → lastOutputAtMs is being continuously refreshed by the consumer loop; wait until it finishes processing before performing injection.
         c.lastOutputAtMs = c.nowMs()
@@ -962,14 +977,37 @@ internal class SessionConnector(
                 val msg = moshExitMessage(reason)
                 msg?.let { c.errorMessage = it }
                 c.stopKeepAlive()
-                logConnectionEvent(ConnectionLogProtocol.MOSH, ConnectionLogEvent.DISCONNECTED, msg.orEmpty())
+                if (reason == MoshExitReason.NORMAL) {
+                    c.sessionLogRecorder?.completeNormal("remote")
+                } else {
+                    c.sessionLogRecorder?.interrupt(
+                        explicitCode =
+                            if (reason == MoshExitReason.CONNECT_TIMEOUT) {
+                                SessionLogErrorCode.UDP_TIMED_OUT
+                            } else {
+                                SessionLogErrorCode.MOSH_SESSION_ERROR
+                            },
+                    )
+                }
             }
         } else if (c.status == ConnStatus.CONNECTING) {
             c.status = ConnStatus.ERROR
             val msg = moshExitMessage(reason) ?: strings().moshClientExited
             c.errorMessage = msg
             c.stopKeepAlive()
-            logConnectionEvent(ConnectionLogProtocol.MOSH, ConnectionLogEvent.FAILED, msg)
+            val code =
+                if (reason == MoshExitReason.CONNECT_TIMEOUT) {
+                    SessionLogErrorCode.UDP_TIMED_OUT
+                } else {
+                    SessionLogErrorCode.MOSH_SESSION_ERROR
+                }
+            val terminalEvent =
+                if (reason == MoshExitReason.CONNECT_TIMEOUT) {
+                    SessionLogEventType.UDP_CONNECTION_TIMED_OUT
+                } else {
+                    SessionLogEventType.CONNECTION_FAILED
+                }
+            c.sessionLogRecorder?.fail(explicitCode = code, terminalEvent = terminalEvent)
         }
     }
 
@@ -1000,7 +1038,8 @@ internal class SessionConnector(
         }
         c.status = ConnStatus.CONNECTED
         c.reconnectCount = 0
-        logConnectionEvent(ConnectionLogProtocol.MOSH, ConnectionLogEvent.CONNECTED)
+        c.sessionLogRecorder?.record(SessionLogEventType.UDP_CONNECTION_ESTABLISHED)
+        c.sessionLogRecorder?.markSessionOpened()
         c.errorMessage = null
         c.errorCode = null
         c.linkLostSeconds = 0
@@ -1056,6 +1095,7 @@ internal class SessionConnector(
         val wasConnected = c.status == ConnStatus.CONNECTED || c.status == ConnStatus.AUTH
         if (c.autoReconnect && wasConnected && c.reconnectAttempts < RECONNECT_SSH_MAX) {
             c.reconnectAttempts++
+            c.sessionLogRecorder?.beginReconnectAttempt()
             if (c.reconnectCause == null) c.reconnectCause = SessionReconnectCause.CONNECTION_LOST
             c.session = null
             c.status = ConnStatus.CONNECTING
@@ -1073,7 +1113,11 @@ internal class SessionConnector(
         c.status = ConnStatus.CLOSED
         c.stopKeepAlive()
         if (reason != null) c.errorMessage = reason
-        logConnectionEvent(ConnectionLogProtocol.SSH, ConnectionLogEvent.DISCONNECTED, reason.orEmpty())
+        if (reason == null && c.reconnectAttempts == 0 && c.errorCode == null) {
+            c.sessionLogRecorder?.completeNormal("remote")
+        } else {
+            c.sessionLogRecorder?.interrupt(reason = reason)
+        }
         // Background Event Notification: Unexpected disconnection (without reconnect) reports CONNECTION_LOST;
         // Automatic reconnection attempts have exhausted all options but still resulted in failure, reporting RECONNECT_FAILED (user intervention required);
         // All include a “Reconnect” action (notification prompting the user to tap to reconnect using the hostId)
@@ -1184,22 +1228,14 @@ internal class SessionConnector(
         }
     }
 
-    private fun logConnectionEvent(
-        protocol: ConnectionLogProtocol,
-        event: ConnectionLogEvent,
-        detail: String = "",
-    ) {
-        c.repository.appendConnectionLog(
-            ConnectionLogEntry(
-                id = newId(),
-                hostLabel = c.host.name.ifBlank { c.host.hostname },
-                endpoint = "${c.host.username}@${c.host.hostname}:${c.host.port}",
-                protocol = protocol,
-                event = event,
-                detail = detail,
-                timestamp = c.nowMs(),
-            ),
-        )
+    private fun ensureRecorder(protocol: ConnectionLogProtocol): SessionLogRecorder {
+        val existing = c.sessionLogRecorder
+        if (existing != null && !existing.isFinalized && existing.protocol == protocol) {
+            return existing
+        }
+        return SessionLogRecorder(c.host, protocol, c.sessionLogSink, clock = { c.nowMs() }).also {
+            c.sessionLogRecorder = it
+        }
     }
 }
 

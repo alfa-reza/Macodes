@@ -1,8 +1,8 @@
 package dev.macodes.data
 
 import com.russhwolf.settings.MapSettings
-import dev.macodes.ui.formatConnectionLogTarget
 import dev.macodes.ui.formatDisplayEndpoint
+import dev.macodes.ui.formatSessionDuration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -280,38 +280,91 @@ class HostRepositoryTest {
     }
 
     @Test
-    fun connectionLogsAppendCapAndClear() {
+    fun sessionLogsRetentionCapExpiryAndCrud() {
         val r = repo()
-        repeat(105) { i ->
-            r.appendConnectionLog(
-                ConnectionLogEntry(
+        val now = 1_760_000_000_000L
+        // Older than 30 days should be pruned on save/list
+        r.saveSessionLog(
+            SessionLog(
+                id = "expired",
+                hostLabel = "Expired Host",
+                username = "root",
+                hostname = "10.0.0.1",
+                port = 22,
+                protocol = ConnectionLogProtocol.SSH,
+                startedAt = now - (31L * 24L * 60L * 60L * 1000L),
+                endedAt = now - (31L * 24L * 60L * 60L * 1000L) + 1_000L,
+                durationMs = 1_000L,
+                status = SessionLogStatus.COMPLETED,
+            ),
+            now = now,
+        )
+        repeat(505) { i ->
+            r.saveSessionLog(
+                SessionLog(
                     id = "log-$i",
                     hostLabel = "Host $i",
-                    endpoint = "root@10.0.0.$i:22",
+                    username = "root",
+                    hostname = "10.0.0.${i % 250}",
+                    port = 22,
                     protocol = ConnectionLogProtocol.SSH,
-                    event = ConnectionLogEvent.CONNECTED,
-                    timestamp = i.toLong(),
+                    startedAt = now - 10_000L + i,
+                    endedAt = now - 9_000L + i,
+                    durationMs = 1_000L,
+                    status = SessionLogStatus.COMPLETED,
                 ),
+                now = now,
             )
         }
-        val logs = r.listConnectionLogs()
-        assertEquals(100, logs.size)
-        assertEquals(104L, logs.first().timestamp)
+        val logs = r.listSessionLogs(now = now)
+        assertEquals(500, logs.size)
+        assertEquals("log-504", logs.first().id)
+        assertNull(r.getSessionLog("expired", now = now))
 
-        r.deleteConnectionLogs(setOf("log-104", "log-103"))
-        assertEquals(98, r.listConnectionLogs().size)
-        assertEquals(102L, r.listConnectionLogs().first().timestamp)
+        r.deleteSessionLogs(setOf("log-504", "log-503"))
+        assertEquals(498, r.listSessionLogs(now = now).size)
+        assertEquals("log-502", r.listSessionLogs(now = now).first().id)
 
-        r.clearConnectionLogs()
-        assertTrue(r.listConnectionLogs().isEmpty())
+        r.clearSessionLogs()
+        assertTrue(r.listSessionLogs(now = now).isEmpty())
     }
 
     @Test
-    fun formatsEndpointsAndLogTargetsWithoutRedundancy() {
+    fun formatsEndpointsAndDurations() {
         assertEquals("10.0.1.20", formatDisplayEndpoint("10.0.1.20:22"))
         assertEquals("10.0.1.20:2222", formatDisplayEndpoint("10.0.1.20:2222"))
-        assertEquals("ubuntu@10.0.1.20", formatConnectionLogTarget("Prod API", "ubuntu@10.0.1.20:22"))
-        assertNull(formatConnectionLogTarget("dev@10.0.0.5", "dev@10.0.0.5:22"))
-        assertEquals(":2222", formatConnectionLogTarget("dev@10.0.0.5", "dev@10.0.0.5:2222"))
+        assertEquals("18m 12s", formatSessionDuration(1_092_000L))
+        assertEquals("1h 04m", formatSessionDuration(3_840_000L))
+        assertEquals("42s", formatSessionDuration(42_000L))
+    }
+
+    @Test
+    fun hostFoldersCrudCyclePreventionAndSafeDelete() {
+        val r = repo()
+        val prod = HostFolder(id = "f-prod", name = "Production", createdAt = 1L)
+        val eu = HostFolder(id = "f-eu", name = "EU West", parentId = "f-prod", createdAt = 2L)
+        r.upsertFolder(prod)
+        r.upsertFolder(eu)
+        assertEquals(listOf("f-prod", "f-eu"), r.listFolders().map { it.id })
+
+        // Self/descendant parent must be ignored to prevent cycles
+        r.upsertFolder(prod.copy(parentId = "f-eu"))
+        assertNull(r.listFolders().first { it.id == "f-prod" }.parentId)
+
+        r.upsertHost(host("h1").copy(folderId = "f-eu"))
+        r.upsertHost(host("h2").copy(folderId = "f-prod"))
+        r.moveHostsToFolder(setOf("h2"), "f-eu")
+        assertEquals("f-eu", r.getHost("h2")!!.folderId)
+
+        // Deleting "f-eu" reparents its hosts up to "f-prod"
+        r.deleteFolder("f-eu")
+        assertEquals(listOf("f-prod"), r.listFolders().map { it.id })
+        assertEquals("f-prod", r.getHost("h1")!!.folderId)
+        assertEquals("f-prod", r.getHost("h2")!!.folderId)
+
+        // Deleting root folder "f-prod" moves hosts back to root (null)
+        r.deleteFolder("f-prod")
+        assertTrue(r.listFolders().isEmpty())
+        assertNull(r.getHost("h1")!!.folderId)
     }
 }

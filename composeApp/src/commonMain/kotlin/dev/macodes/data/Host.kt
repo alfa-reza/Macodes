@@ -58,6 +58,16 @@ data class Host(
     val moshServerCommand: String = "",
     /** Optional Keychain credential ID; when set, auth secrets resolve from Keychain first. */
     val credentialId: String? = null,
+    /** Optional folder ID for hierarchical host organization; null places the host at root. */
+    val folderId: String? = null,
+)
+
+@Serializable
+data class HostFolder(
+    val id: String,
+    val name: String,
+    val parentId: String? = null,
+    val createdAt: Long = 0L,
 )
 
 @Serializable

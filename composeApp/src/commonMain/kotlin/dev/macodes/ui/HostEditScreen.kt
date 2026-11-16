@@ -35,6 +35,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -77,13 +78,14 @@ import dev.macodes.data.ConnectionMode
 import dev.macodes.data.CredentialKind
 import dev.macodes.data.Host
 import dev.macodes.data.HostAuthMethod
+import dev.macodes.data.HostFolder
 import dev.macodes.data.HostRepository
 import dev.macodes.data.newId
 import dev.macodes.ui.theme.Corners
 import dev.macodes.ui.theme.Sizes
 import dev.macodes.ui.theme.Spacing
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun HostEditScreen(
     existing: Host?,
@@ -91,6 +93,9 @@ fun HostEditScreen(
     onCancel: () -> Unit,
     /** Command snippet entry: Tap to open the snippet management/create page (global library, reuses across hosts). */
     repository: HostRepository = HostRepository(),
+    folders: List<HostFolder> = emptyList(),
+    existingTags: List<String> = emptyList(),
+    initialFolderId: String? = null,
 ) {
     val s = LocalAppStrings.current
     var name by remember { mutableStateOf(existing?.name ?: "") }
@@ -104,6 +109,10 @@ fun HostEditScreen(
     var password by remember { mutableStateOf("") }
     var privateKey by remember { mutableStateOf("") }
     var tags by remember { mutableStateOf(existing?.tags ?: emptyList()) }
+    var folderId by remember {
+        mutableStateOf((existing?.folderId ?: initialFolderId)?.takeIf { fid -> folders.any { it.id == fid } })
+    }
+    var showFolderPicker by remember { mutableStateOf(false) }
     // Command Snippet Management Page Overlay (Entry Point for Host Editor Page)
     var showSnippets by remember { mutableStateOf(false) }
     var startupCommand by remember { mutableStateOf(existing?.startupCommand ?: "") }
@@ -146,6 +155,7 @@ fun HostEditScreen(
                                 moshThemeSync = moshThemeSync,
                                 moshUdpPort = moshUdpPort.toIntOrNull()?.takeIf { it in 1024..65535 } ?: 0,
                                 credentialId = credentialId,
+                                folderId = folderId?.takeIf { fid -> folders.any { it.id == fid } },
                             )
                         onSave(host, password, privateKey)
                     }) { Text(s.editSave) }
@@ -350,7 +360,7 @@ fun HostEditScreen(
                 }
             }
 
-            // Section 3: Tags, Snippets & Startup Command
+            // Section 3: Folder, Tags, Snippets & Startup Command
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(Corners.Lg),
@@ -361,12 +371,82 @@ fun HostEditScreen(
                     Modifier.fillMaxWidth().padding(Spacing.Lg),
                     verticalArrangement = Arrangement.spacedBy(Spacing.Md),
                 ) {
+                    if (folders.isNotEmpty()) {
+                        val selectedFolderName =
+                            folders.firstOrNull { it.id == folderId }?.name ?: s.workspace.hostsFolderRoot
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(Corners.Md))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .clickable { showFolderPicker = true }
+                                .padding(horizontal = Spacing.Lg, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Filled.Folder,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                            Spacer(Modifier.width(Spacing.Md))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    s.workspace.editFolder,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    selectedFolderName,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Icon(
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = s.workspace.editFolder,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     TagInputField(
                         tags = tags,
                         onTagsChange = { tags = it },
                         label = s.editTags,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    if (existingTags.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.Xs)) {
+                            Text(
+                                s.workspace.hostsSuggestedTags,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
+                                verticalArrangement = Arrangement.spacedBy(Spacing.Xs),
+                            ) {
+                                existingTags.forEach { tag ->
+                                    val active = tags.any { it.equals(tag, ignoreCase = true) }
+                                    FilterChip(
+                                        selected = active,
+                                        onClick = {
+                                            tags =
+                                                if (active) {
+                                                    tags.filterNot { it.equals(tag, ignoreCase = true) }
+                                                } else {
+                                                    tags + tag
+                                                }
+                                        },
+                                        label = { Text("#$tag") },
+                                        colors = chipColors,
+                                    )
+                                }
+                            }
+                        }
+                    }
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -456,6 +536,19 @@ fun HostEditScreen(
             }
             Spacer(Modifier.size(Spacing.Lg))
         }
+    }
+
+    if (showFolderPicker) {
+        FolderPickerDialog(
+            title = s.workspace.editFolder,
+            folders = folders,
+            selectedFolderId = folderId,
+            onSelect = {
+                folderId = it
+                showFolderPicker = false
+            },
+            onDismiss = { showFolderPicker = false },
+        )
     }
 
     // Intercept system responses when the overlay is open: first close the overlay page and back to the host to edit the form,

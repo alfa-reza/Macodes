@@ -25,11 +25,13 @@ class HostRepository(
 ) {
     private val lock = Any()
     private val hostsKey = "macodes.hosts.v1"
+    private val hostFoldersKey = "macodes.host_folders.v1"
     private val settingsKey = "macodes.settings.v1"
     private val tagGroupsKey = "macodes.tag_groups.v1"
     private val snippetsKey = "macodes.snippets.v1"
     private val credentialsKey = "macodes.keychain.v1"
     private val connectionLogsKey = "macodes.connection_logs.v1"
+    private val sessionLogsKey = "macodes.session_logs.v1"
     private val mutableAppSettings = MutableStateFlow(readSettings())
 
     /**
@@ -107,6 +109,73 @@ class HostRepository(
 
     private fun saveHosts(hosts: List<Host>) {
         settings.putString(hostsKey, json.encodeToString(hosts))
+    }
+
+    // ---------- host folders ----------
+
+    fun listFolders(): List<HostFolder> {
+        val raw = settings.getStringOrNull(hostFoldersKey) ?: return emptyList()
+        return try {
+            json.decodeFromString<List<HostFolder>>(raw)
+        } catch (e: Exception) {
+            backupCorrupt(hostFoldersKey, raw)
+            TermLog.w("data") { "corrupt host folders backed up: ${e.message}" }
+            emptyList()
+        }
+    }
+
+    fun upsertFolder(folder: HostFolder) {
+        val cleanName = folder.name.trim()
+        if (cleanName.isEmpty()) return
+        withRepoLock(lock) {
+            val folders = listFolders().toMutableList()
+            val validParent =
+                folder.parentId
+                    ?.takeIf { pid -> folders.any { it.id == pid } }
+                    ?.takeUnless { pid -> wouldCreateFolderCycle(folders, folder.id, pid) }
+            val normalized = folder.copy(name = cleanName, parentId = validParent)
+            val idx = folders.indexOfFirst { it.id == normalized.id }
+            if (idx >= 0) folders[idx] = normalized else folders.add(normalized)
+            settings.putString(hostFoldersKey, json.encodeToString(folders))
+        }
+    }
+
+    /**
+     * Delete folder without losing hosts or subfolders:
+     * Direct child folders and hosts are reparented to the deleted folder's parent (or root).
+     */
+    fun deleteFolder(id: String) {
+        withRepoLock(lock) {
+            val folders = listFolders()
+            val target = folders.firstOrNull { it.id == id } ?: return@withRepoLock
+            val fallbackParent = target.parentId?.takeIf { pid -> pid != id && folders.any { it.id == pid } }
+            val updatedFolders =
+                folders
+                    .filter { it.id != id }
+                    .map { f -> if (f.parentId == id) f.copy(parentId = fallbackParent) else f }
+            settings.putString(hostFoldersKey, json.encodeToString(updatedFolders))
+
+            val hosts = listHosts()
+            val updatedHosts = hosts.map { h -> if (h.folderId == id) h.copy(folderId = fallbackParent) else h }
+            if (updatedHosts != hosts) {
+                saveHosts(updatedHosts)
+            }
+        }
+    }
+
+    fun moveHostsToFolder(
+        hostIds: Set<String>,
+        folderId: String?,
+    ) {
+        if (hostIds.isEmpty()) return
+        withRepoLock(lock) {
+            val validFolderId = folderId?.takeIf { fid -> listFolders().any { it.id == fid } }
+            val hosts = listHosts()
+            val updated = hosts.map { h -> if (h.id in hostIds) h.copy(folderId = validFolderId) else h }
+            if (updated != hosts) {
+                saveHosts(updated)
+            }
+        }
     }
 
     // ---------- Tag Groups (Global, Snippet References) ----------
@@ -363,7 +432,6 @@ class HostRepository(
 
     private companion object {
         const val MAX_QUICK_CONNECT_HOST_KEYS = 100
-        const val MAX_CONNECTION_LOGS = 100
     }
 
     // ---------- Keychain Credentials (Global Library) ----------
@@ -476,42 +544,64 @@ class HostRepository(
         }
     }
 
-    // ---------- Connection Logs ----------
+    // ---------- Session Logs ----------
 
-    fun listConnectionLogs(): List<ConnectionLogEntry> {
-        val raw = settings.getStringOrNull(connectionLogsKey) ?: return emptyList()
-        return try {
-            json
-                .decodeFromString<List<ConnectionLogEntry>>(raw)
-                .sortedByDescending { it.timestamp }
-        } catch (e: Exception) {
-            backupCorrupt(connectionLogsKey, raw)
-            emptyList()
-        }
+    fun listSessionLogs(
+        query: SessionLogQuery = SessionLogQuery(),
+        now: Long = currentTimeMillis(),
+        resolveErrorText: (SessionLogErrorCode) -> String = { it.name },
+    ): List<SessionLog> {
+        val stored =
+            withRepoLock(lock) {
+                val rawLogs = loadRawSessionLogsLocked()
+                val retained = applySessionLogRetention(rawLogs, now)
+                if (retained.size != rawLogs.size) {
+                    settings.putString(sessionLogsKey, json.encodeToString(retained))
+                }
+                retained
+            }
+        return filterAndSortSessionLogs(stored, query, resolveErrorText)
     }
 
-    fun appendConnectionLog(entry: ConnectionLogEntry) {
+    fun getSessionLog(
+        id: String,
+        now: Long = currentTimeMillis(),
+    ): SessionLog? = listSessionLogs(now = now).firstOrNull { it.id == id }
+
+    fun saveSessionLog(
+        entry: SessionLog,
+        now: Long = currentTimeMillis(),
+    ) {
         withRepoLock(lock) {
-            val updated = listConnectionLogs().toMutableList()
+            val updated = loadRawSessionLogsLocked().filterNot { it.id == entry.id }.toMutableList()
             updated.add(0, entry)
-            settings.putString(
-                connectionLogsKey,
-                json.encodeToString(updated.take(MAX_CONNECTION_LOGS)),
-            )
+            val retained = applySessionLogRetention(updated, now)
+            settings.putString(sessionLogsKey, json.encodeToString(retained))
         }
     }
 
-    fun clearConnectionLogs() {
+    fun clearSessionLogs() {
         withRepoLock(lock) {
+            settings.remove(sessionLogsKey)
             settings.remove(connectionLogsKey)
         }
     }
 
-    fun deleteConnectionLogs(ids: Set<String>) {
+    fun deleteSessionLogs(ids: Set<String>) {
         if (ids.isEmpty()) return
         withRepoLock(lock) {
-            val remaining = listConnectionLogs().filterNot { it.id in ids }
-            settings.putString(connectionLogsKey, json.encodeToString(remaining))
+            val remaining = loadRawSessionLogsLocked().filterNot { it.id in ids }
+            settings.putString(sessionLogsKey, json.encodeToString(remaining))
+        }
+    }
+
+    private fun loadRawSessionLogsLocked(): List<SessionLog> {
+        val raw = settings.getStringOrNull(sessionLogsKey) ?: return emptyList()
+        return try {
+            json.decodeFromString<List<SessionLog>>(raw)
+        } catch (e: Exception) {
+            backupCorrupt(sessionLogsKey, raw)
+            emptyList()
         }
     }
 

@@ -1,283 +1,429 @@
 package dev.macodes.ui
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import dev.macodes.data.ConnectionLogEntry
-import dev.macodes.data.ConnectionLogEvent
 import dev.macodes.data.ConnectionLogProtocol
 import dev.macodes.data.HostRepository
+import dev.macodes.data.SessionLog
+import dev.macodes.data.SessionLogEvent
+import dev.macodes.data.SessionLogEventType
+import dev.macodes.data.SessionLogQuery
+import dev.macodes.data.SessionLogSortOrder
+import dev.macodes.data.SessionLogStatus
+import dev.macodes.data.filterAndSortSessionLogs
 import dev.macodes.ui.theme.Corners
 import dev.macodes.ui.theme.Sizes
 import dev.macodes.ui.theme.Spacing
 import dev.macodes.ui.theme.StatusColors
-import dev.macodes.util.monospaceFontFamily
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
+import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.minus
+import kotlinx.datetime.toLocalDateTime
 
-private enum class LogFilter {
-    ALL,
-    FAILED,
-    SSH,
-    MOSH,
-    SFTP,
-}
-
+/** Workspace Logs screen: ended SSH, Mosh, and SFTP sessions grouped by date. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ConnectionLogsScreen(
     repository: HostRepository,
-    onLogsChanged: () -> Unit,
     onBack: () -> Unit,
+    onLogsChanged: () -> Unit = {},
+    initialSelectedLogId: String? = null,
+    initialFilterSheetOpen: Boolean = false,
 ) {
     val s = LocalAppStrings.current
     val ws = s.workspace
-    var logs by remember { mutableStateOf(repository.listConnectionLogs()) }
-    var query by remember { mutableStateOf("") }
-    var searchExpanded by remember { mutableStateOf(false) }
-    var activeFilter by remember { mutableStateOf(LogFilter.ALL) }
-    var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var inspecting by remember { mutableStateOf<ConnectionLogEntry?>(null) }
-    var pendingDeleteIds by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var showClearConfirm by remember { mutableStateOf(false) }
+    var allLogs by remember { mutableStateOf(repository.listSessionLogs()) }
+    var searchOpen by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var statusFilter by remember { mutableStateOf<SessionLogStatus?>(null) }
+    var protocolFilter by remember { mutableStateOf<ConnectionLogProtocol?>(null) }
+    var sortOrder by remember { mutableStateOf(SessionLogSortOrder.NEWEST_FIRST) }
+    var filterSheetOpen by remember { mutableStateOf(initialFilterSheetOpen) }
     var menuExpanded by remember { mutableStateOf(false) }
-    val searchFocusRequester = remember { FocusRequester() }
-    val clipboard = LocalClipboardManager.current
-    val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
+    var confirmClear by remember { mutableStateOf(false) }
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf(emptySet<String>()) }
+    var confirmDeleteSelected by remember { mutableStateOf(false) }
+    var selectedLogId by remember { mutableStateOf(initialSelectedLogId) }
 
-    val selectionMode = selectedIds.isNotEmpty()
+    val selectedLog =
+        remember(allLogs, selectedLogId) {
+            selectedLogId?.let { id -> allLogs.firstOrNull { it.id == id } }
+        }
 
-    LaunchedEffect(searchExpanded) {
-        if (searchExpanded) {
-            delay(150)
-            searchFocusRequester.requestFocus()
+    PlatformBackHandler(enabled = selectedLog != null || selectionMode || filterSheetOpen) {
+        when {
+            filterSheetOpen -> filterSheetOpen = false
+            selectedLog != null -> selectedLogId = null
+            selectionMode -> {
+                selectionMode = false
+                selectedIds = emptySet()
+            }
         }
     }
 
-    val q = query.trim()
-    val filtered =
-        logs.filter { entry ->
-            val filterMatches =
-                when (activeFilter) {
-                    LogFilter.ALL -> true
-                    LogFilter.FAILED -> entry.event == ConnectionLogEvent.FAILED
-                    LogFilter.SSH -> entry.protocol == ConnectionLogProtocol.SSH
-                    LogFilter.MOSH -> entry.protocol == ConnectionLogProtocol.MOSH
-                    LogFilter.SFTP -> entry.protocol == ConnectionLogProtocol.SFTP
-                }
-            val queryMatches =
-                q.isEmpty() ||
-                    entry.hostLabel.contains(q, ignoreCase = true) ||
-                    entry.endpoint.contains(q, ignoreCase = true) ||
-                    entry.detail.contains(q, ignoreCase = true)
-            filterMatches && queryMatches
-        }
-
-    fun toggleSelection(id: String) {
-        selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
+    if (selectedLog != null) {
+        SessionDetailsScreen(
+            log = selectedLog,
+            onBack = { selectedLogId = null },
+            onDelete = {
+                repository.deleteSessionLogs(setOf(selectedLog.id))
+                allLogs = repository.listSessionLogs()
+                onLogsChanged()
+                selectedLogId = null
+            },
+        )
+        return
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            if (selectionMode) {
-                WorkspaceSelectionHeader(
-                    count = selectedIds.size,
-                    onClose = { selectedIds = emptySet() },
-                    onSelectAll = { selectedIds = filtered.map { it.id }.toSet() },
-                    onRemove = {
-                        if (selectedIds.isNotEmpty()) pendingDeleteIds = selectedIds
-                    },
-                )
-            } else {
-                MacodesLargeHeader(
-                    title = ws.logsTitle,
-                    onBack = onBack,
-                    actions = {
-                        IconButton(
-                            onClick = {
-                                if (searchExpanded) {
-                                    searchExpanded = false
-                                    query = ""
-                                } else {
-                                    searchExpanded = true
-                                }
-                            },
-                        ) {
-                            Icon(
-                                if (searchExpanded) Icons.Filled.Close else Icons.Filled.Search,
-                                contentDescription = if (searchExpanded) s.navBack else ws.logsSearch,
-                            )
+    val query =
+        remember(searchQuery, statusFilter, protocolFilter, sortOrder) {
+            SessionLogQuery(
+                search = searchQuery,
+                status = statusFilter,
+                protocol = protocolFilter,
+                sortOrder = sortOrder,
+            )
+        }
+    val visibleLogs =
+        remember(allLogs, query, ws) {
+            filterAndSortSessionLogs(
+                logs = allLogs,
+                query = query,
+                resolveErrorText = ws.logsErrorDescription,
+            )
+        }
+    val hasActiveFilter = statusFilter != null || protocolFilter != null
+    val hasQueryOrFilter = searchQuery.isNotBlank() || hasActiveFilter
+
+    val timeZone = remember { TimeZone.currentSystemDefault() }
+    val now = remember(allLogs.size) { Clock.System.now() }
+    val groupedLogs =
+        remember(visibleLogs, ws, timeZone, now) {
+            groupSessionLogsByDate(
+                logs = visibleLogs,
+                ws = ws,
+                now = now,
+                timeZone = timeZone,
+            )
+        }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        if (selectionMode) {
+            WorkspaceSelectionHeader(
+                count = selectedIds.size,
+                onClose = {
+                    selectionMode = false
+                    selectedIds = emptySet()
+                },
+                onSelectAll = {
+                    selectedIds =
+                        if (selectedIds.size == visibleLogs.size) {
+                            emptySet()
+                        } else {
+                            visibleLogs.map { it.id }.toSet()
                         }
-                        if (logs.isNotEmpty()) {
+                },
+                onRemove = { confirmDeleteSelected = true },
+            )
+        } else {
+            MacodesHeader(
+                title = ws.logsTitle,
+                onBack = onBack,
+                actions = {
+                    IconButton(
+                        onClick = {
+                            if (searchOpen) {
+                                searchQuery = ""
+                                searchOpen = false
+                            } else {
+                                searchOpen = true
+                            }
+                        },
+                        modifier = Modifier.size(Sizes.TouchTarget),
+                    ) {
+                        Icon(
+                            imageVector = if (searchOpen) Icons.Filled.Close else Icons.Filled.Search,
+                            contentDescription = ws.logsSearch,
+                        )
+                    }
+                    Box {
+                        IconButton(
+                            onClick = { menuExpanded = true },
+                            modifier = Modifier.size(Sizes.TouchTarget),
+                        ) {
                             Box {
-                                IconButton(onClick = { menuExpanded = true }) {
-                                    Icon(
-                                        imageVector = Icons.Filled.MoreVert,
-                                        contentDescription = s.navMore,
-                                    )
-                                }
-                                DropdownMenu(
-                                    expanded = menuExpanded,
-                                    onDismissRequest = { menuExpanded = false },
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text(ws.logsClearAction, color = MaterialTheme.colorScheme.error) },
-                                        leadingIcon = {
-                                            Icon(
-                                                Icons.Filled.DeleteSweep,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.error,
-                                            )
-                                        },
-                                        onClick = {
-                                            menuExpanded = false
-                                            showClearConfirm = true
-                                        },
+                                Icon(
+                                    imageVector = Icons.Filled.MoreVert,
+                                    contentDescription = s.navMore,
+                                )
+                                if (hasActiveFilter) {
+                                    Box(
+                                        modifier =
+                                            Modifier
+                                                .align(Alignment.TopEnd)
+                                                .size(7.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.primary),
                                     )
                                 }
                             }
                         }
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(ws.logsFilterAction) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.FilterList,
+                                        contentDescription = null,
+                                    )
+                                },
+                                trailingIcon =
+                                    if (hasActiveFilter) {
+                                        {
+                                            Box(
+                                                Modifier
+                                                    .size(7.dp)
+                                                    .clip(CircleShape)
+                                                    .background(MaterialTheme.colorScheme.primary),
+                                            )
+                                        }
+                                    } else {
+                                        null
+                                    },
+                                onClick = {
+                                    menuExpanded = false
+                                    filterSheetOpen = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(ws.logsSortAction)
+                                        Text(
+                                            text =
+                                                if (sortOrder == SessionLogSortOrder.NEWEST_FIRST) {
+                                                    ws.logsSortNewestFirst
+                                                } else {
+                                                    ws.logsSortOldestFirst
+                                                },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.SwapVert,
+                                        contentDescription = null,
+                                    )
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    sortOrder =
+                                        if (sortOrder == SessionLogSortOrder.NEWEST_FIRST) {
+                                            SessionLogSortOrder.OLDEST_FIRST
+                                        } else {
+                                            SessionLogSortOrder.NEWEST_FIRST
+                                        }
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        ws.logsClearAction,
+                                        color =
+                                            if (allLogs.isNotEmpty()) {
+                                                MaterialTheme.colorScheme.error
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            },
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Outlined.DeleteSweep,
+                                        contentDescription = null,
+                                        tint =
+                                            if (allLogs.isNotEmpty()) {
+                                                MaterialTheme.colorScheme.error
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            },
+                                    )
+                                },
+                                enabled = allLogs.isNotEmpty(),
+                                onClick = {
+                                    menuExpanded = false
+                                    confirmClear = true
+                                },
+                            )
+                        }
+                    }
+                },
+            )
+        }
+
+        AnimatedVisibility(visible = !selectionMode && (searchOpen || searchQuery.isNotEmpty())) {
+            MacodesSearchPill(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = ws.logsSearch,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.Lg)
+                        .padding(bottom = Spacing.Sm),
+            )
+        }
+
+        if (hasActiveFilter && !selectionMode) {
+            ActiveFilterBanner(
+                status = statusFilter,
+                protocol = protocolFilter,
+                ws = ws,
+                onReset = {
+                    statusFilter = null
+                    protocolFilter = null
+                },
+            )
+        }
+
+        if (visibleLogs.isEmpty()) {
+            if (hasQueryOrFilter) {
+                WorkspaceEmptyState(
+                    icon = Icons.Filled.Search,
+                    message = "${ws.logsNoMatch}\n${ws.logsNoMatchHint}",
+                    actionLabel = ws.logsFilterReset,
+                    onAction = {
+                        searchQuery = ""
+                        searchOpen = false
+                        statusFilter = null
+                        protocolFilter = null
                     },
                 )
-            }
-        },
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            AnimatedVisibility(
-                visible = searchExpanded && !selectionMode,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut(),
-            ) {
-                MacodesSearchPill(
-                    value = query,
-                    onValueChange = { query = it },
-                    placeholder = ws.logsSearch,
-                    modifier =
-                        Modifier
-                            .padding(horizontal = Spacing.Lg, vertical = Spacing.Sm)
-                            .focusRequester(searchFocusRequester),
+            } else {
+                WorkspaceEmptyState(
+                    icon = Icons.Filled.History,
+                    message = "${ws.logsEmpty}\n${ws.logsEmptyHint}",
                 )
             }
-
-            if (logs.isNotEmpty()) {
-                val filterChips =
-                    listOf(
-                        LogFilter.ALL to ws.logsFilterAll,
-                        LogFilter.FAILED to ws.logsFilterFailed,
-                        LogFilter.SSH to ConnectionLogProtocol.SSH.name,
-                        LogFilter.MOSH to ConnectionLogProtocol.MOSH.name,
-                        LogFilter.SFTP to ConnectionLogProtocol.SFTP.name,
-                    )
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
-                            .padding(horizontal = Spacing.Lg, vertical = Spacing.Xs),
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
-                ) {
-                    filterChips.forEach { (filter, label) ->
-                        FilterChip(
-                            selected = activeFilter == filter,
-                            onClick = {
-                                activeFilter =
-                                    if (activeFilter == filter && filter != LogFilter.ALL) {
-                                        LogFilter.ALL
-                                    } else {
-                                        filter
-                                    }
-                            },
-                            label = { Text(label) },
+        } else {
+            LazyColumn(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .navigationBarsPadding(),
+                contentPadding = PaddingValues(horizontal = Spacing.Lg, vertical = Spacing.Sm),
+                verticalArrangement = Arrangement.spacedBy(Spacing.Sm),
+            ) {
+                groupedLogs.forEach { group ->
+                    item(key = "header:${group.dateLabel}") {
+                        Text(
+                            text = group.dateLabel,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = Spacing.Sm, bottom = Spacing.Xs),
                         )
                     }
-                }
-            }
-
-            if (filtered.isEmpty()) {
-                WorkspaceEmptyState(
-                    icon = Icons.Default.History,
-                    message = if (logs.isEmpty()) ws.logsEmpty else ws.logsNoMatch,
-                )
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = Spacing.Lg, vertical = Spacing.Sm),
-                    verticalArrangement = Arrangement.spacedBy(Spacing.Sm),
-                ) {
-                    items(filtered, key = { it.id }) { entry ->
-                        ConnectionLogCard(
+                    items(group.entries, key = { it.id }) { entry ->
+                        val isSelected = entry.id in selectedIds
+                        SessionLogCard(
                             entry = entry,
-                            selected = entry.id in selectedIds,
+                            ws = ws,
+                            timeZone = timeZone,
+                            selectionMode = selectionMode,
+                            selected = isSelected,
                             onClick = {
                                 if (selectionMode) {
-                                    toggleSelection(entry.id)
+                                    selectedIds =
+                                        if (isSelected) {
+                                            selectedIds - entry.id
+                                        } else {
+                                            selectedIds + entry.id
+                                        }
                                 } else {
-                                    inspecting = entry
+                                    selectedLogId = entry.id
                                 }
                             },
-                            onLongClick = { toggleSelection(entry.id) },
+                            onLongClick = {
+                                if (!selectionMode) {
+                                    selectionMode = true
+                                    selectedIds = setOf(entry.id)
+                                }
+                            },
                         )
                     }
                 }
@@ -285,208 +431,169 @@ fun ConnectionLogsScreen(
         }
     }
 
-    inspecting?.let { entry ->
-        val statusLabel =
-            when (entry.event) {
-                ConnectionLogEvent.CONNECTED -> ws.logsEventConnected
-                ConnectionLogEvent.DISCONNECTED -> ws.logsEventDisconnected
-                ConnectionLogEvent.FAILED -> ws.logsEventFailed
-            }
-        val copySummary =
-            buildString {
-                append("${entry.hostLabel} (${entry.protocol.name} · $statusLabel)\n")
-                append("${formatDisplayEndpoint(entry.endpoint)} · ${formatSessionCreatedAt(entry.timestamp, ws)}")
-                if (entry.detail.isNotBlank()) {
-                    append("\n${entry.detail}")
-                }
-            }
-        AlertDialog(
-            onDismissRequest = { inspecting = null },
-            title = { Text(ws.logsDetailTitle) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.Sm)) {
-                    LogDetailRow(label = ws.logsDetailTarget, value = formatDisplayEndpoint(entry.endpoint), monospace = true)
-                    LogDetailRow(label = ws.logsDetailProtocol, value = entry.protocol.name)
-                    LogDetailRow(label = ws.logsDetailStatus, value = statusLabel)
-                    LogDetailRow(label = ws.logsDetailTime, value = formatSessionCreatedAt(entry.timestamp, ws))
-                    if (entry.detail.isNotBlank()) {
-                        Surface(
-                            shape = RoundedCornerShape(Corners.Md),
-                            color = MaterialTheme.colorScheme.surfaceContainerLow,
-                            border = BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(
-                                text = entry.detail,
-                                style = MaterialTheme.typography.bodySmall,
-                                color =
-                                    if (entry.event == ConnectionLogEvent.FAILED) {
-                                        MaterialTheme.colorScheme.error
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurface
-                                    },
-                                modifier = Modifier.padding(Spacing.Md),
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        clipboard.setText(AnnotatedString(copySummary))
-                        inspecting = null
-                        scope.launch { snackbarHostState.showSnackbar(ws.logsCopiedMessage) }
-                    },
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.Xs),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ContentCopy,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Text(ws.logsCopyAction)
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { inspecting = null }) {
-                    Text(s.settingsClose)
-                }
+    if (filterSheetOpen) {
+        SessionLogFilterSheet(
+            initialStatus = statusFilter,
+            initialProtocol = protocolFilter,
+            ws = ws,
+            onDismiss = { filterSheetOpen = false },
+            onApply = { newStatus, newProtocol ->
+                statusFilter = newStatus
+                protocolFilter = newProtocol
+                filterSheetOpen = false
             },
         )
     }
 
-    if (pendingDeleteIds.isNotEmpty()) {
+    if (confirmDeleteSelected) {
+        val pendingDeleteIds = selectedIds
         AlertDialog(
-            onDismissRequest = { pendingDeleteIds = emptySet() },
-            title = { Text(ws.actionRemove) },
+            onDismissRequest = { confirmDeleteSelected = false },
+            title = { Text(s.hostsDelete) },
             text = { Text(ws.logsDeleteSelectedConfirm(pendingDeleteIds.size)) },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        repository.deleteConnectionLogs(pendingDeleteIds)
-                        logs = repository.listConnectionLogs()
-                        pendingDeleteIds = emptySet()
-                        selectedIds = emptySet()
+                        confirmDeleteSelected = false
+                        repository.deleteSessionLogs(pendingDeleteIds)
+                        allLogs = repository.listSessionLogs()
                         onLogsChanged()
+                        selectionMode = false
+                        selectedIds = emptySet()
                     },
                 ) {
-                    Text(ws.actionRemove, color = MaterialTheme.colorScheme.error)
+                    Text(s.hostsDelete, color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDeleteIds = emptySet() }) {
-                    Text(s.quickConnect.cancelAction)
+                TextButton(onClick = { confirmDeleteSelected = false }) {
+                    Text(s.terminalCancel)
                 }
             },
         )
     }
 
-    if (showClearConfirm) {
+    if (confirmClear) {
         AlertDialog(
-            onDismissRequest = { showClearConfirm = false },
+            onDismissRequest = { confirmClear = false },
             title = { Text(ws.logsClearAction) },
             text = { Text(ws.logsClearConfirm) },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        repository.clearConnectionLogs()
-                        logs = emptyList()
-                        selectedIds = emptySet()
+                        confirmClear = false
+                        repository.clearSessionLogs()
+                        allLogs = emptyList()
                         onLogsChanged()
-                        showClearConfirm = false
                     },
                 ) {
                     Text(ws.logsClearAction, color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showClearConfirm = false }) {
-                    Text(s.quickConnect.cancelAction)
+                TextButton(onClick = { confirmClear = false }) {
+                    Text(s.terminalCancel)
                 }
             },
         )
     }
 }
 
+@Composable
+private fun ActiveFilterBanner(
+    status: SessionLogStatus?,
+    protocol: ConnectionLogProtocol?,
+    ws: WorkspaceStrings,
+    onReset: () -> Unit,
+) {
+    val parts =
+        buildList {
+            status?.let { add(statusLabel(it, ws)) }
+            protocol?.let { add(it.name) }
+        }
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.Lg)
+                .padding(bottom = Spacing.Xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = "${ws.logsActiveFilterPrefix}: ${parts.joinToString(" · ")}",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(
+            onClick = onReset,
+            contentPadding = PaddingValues(horizontal = Spacing.Sm, vertical = Spacing.None),
+        ) {
+            Text(ws.logsFilterReset, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ConnectionLogCard(
-    entry: ConnectionLogEntry,
+private fun SessionLogCard(
+    entry: SessionLog,
+    ws: WorkspaceStrings,
+    timeZone: TimeZone,
+    selectionMode: Boolean,
     selected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
-    val ws = LocalAppStrings.current.workspace
-    val statusColor =
-        when (entry.event) {
-            ConnectionLogEvent.CONNECTED -> StatusColors.Connected
-            ConnectionLogEvent.DISCONNECTED -> StatusColors.Neutral
-            ConnectionLogEvent.FAILED -> StatusColors.Error
-        }
-    val eventLabel =
-        when (entry.event) {
-            ConnectionLogEvent.CONNECTED -> ws.logsEventConnected
-            ConnectionLogEvent.DISCONNECTED -> ws.logsEventDisconnected
-            ConnectionLogEvent.FAILED -> ws.logsEventFailed
-        }
-    val targetMeta = remember(entry.hostLabel, entry.endpoint) { formatConnectionLogTarget(entry.hostLabel, entry.endpoint) }
-
-    Card(
+    val accentColor = statusAccentColor(entry.status)
+    Surface(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(Corners.Lg))
+                .clip(RoundedCornerShape(Corners.Md))
                 .combinedClickable(
                     onClick = onClick,
                     onLongClick = onLongClick,
                 ),
-        shape = RoundedCornerShape(Corners.Lg),
-        colors =
-            CardDefaults.cardColors(
-                containerColor =
-                    if (selected) {
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-                    } else {
-                        MaterialTheme.colorScheme.surfaceContainer
-                    },
-            ),
+        shape = RoundedCornerShape(Corners.Md),
+        color =
+            if (selected) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerLow
+            },
         border =
             BorderStroke(
-                width = if (selected) 1.5.dp else Sizes.BorderThin,
-                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                Sizes.BorderThin,
+                if (selected) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                } else {
+                    MaterialTheme.colorScheme.outlineVariant
+                },
             ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.Lg, vertical = Spacing.Md),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Spacing.Lg, vertical = Spacing.Md),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
         ) {
-            if (selected) {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp),
-                )
-            } else {
-                Box(
-                    modifier =
-                        Modifier
-                            .size(Sizes.StatusDot)
-                            .clip(CircleShape)
-                            .background(statusColor),
+            if (selectionMode) {
+                Checkbox(
+                    checked = selected,
+                    onCheckedChange = { onClick() },
                 )
             }
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(Spacing.Xs),
             ) {
+                // 1. Host name left + 24h local time right
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -496,50 +603,68 @@ private fun ConnectionLogCard(
                         text = entry.hostLabel,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
                     Text(
-                        text = formatSessionCreatedAt(entry.timestamp, ws),
-                        style = MaterialTheme.typography.labelMedium,
+                        text = formatLocalTime24(entry.startedAt, includeSeconds = false, timeZone = timeZone),
+                        style =
+                            MaterialTheme.typography.labelMedium.copy(
+                                fontFamily = FontFamily.Monospace,
+                            ),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
                     )
                 }
+
+                // 2. username@hostname:port
+                Text(
+                    text = "${entry.username}@${entry.hostname}:${entry.port}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+
+                // 3. Protocol, status indicator, and duration (when opened)
                 Row(
+                    modifier = Modifier.padding(top = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.Xs),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
                 ) {
-                    ProtocolBadge(label = entry.protocol.name)
-                    Text(
-                        text = eventLabel,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = statusColor,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                    )
-                    if (targetMeta != null) {
+                    ProtocolBadge(entry.protocol.name)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.Xs),
+                    ) {
+                        Icon(
+                            imageVector = statusIcon(entry.status),
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier.size(14.dp),
+                        )
                         Text(
-                            text = "· $targetMeta",
-                            style = MaterialTheme.typography.bodySmall,
+                            text = statusLabel(entry.status, ws),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = accentColor,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                    if (entry.durationMs != null) {
+                        Text(
+                            text = "· ${formatSessionDuration(entry.durationMs)}",
+                            style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
-                if (entry.detail.isNotBlank()) {
+
+                // 4. Safe failure reason only when failed
+                if (entry.status == SessionLogStatus.FAILED && entry.errorCode != null) {
                     Text(
-                        text = entry.detail,
+                        text = ws.logsErrorDescription(entry.errorCode),
                         style = MaterialTheme.typography.bodySmall,
-                        color =
-                            if (entry.event == ConnectionLogEvent.FAILED) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
+                        color = StatusColors.Error,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -549,50 +674,278 @@ private fun ConnectionLogCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun LogDetailRow(
-    label: String,
-    value: String,
-    monospace: Boolean = false,
+internal fun SessionLogFilterSheet(
+    initialStatus: SessionLogStatus?,
+    initialProtocol: ConnectionLogProtocol?,
+    ws: WorkspaceStrings,
+    onDismiss: () -> Unit,
+    onApply: (SessionLogStatus?, ConnectionLogProtocol?) -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+    var draftStatus by remember(initialStatus) { mutableStateOf(initialStatus) }
+    var draftProtocol by remember(initialProtocol) { mutableStateOf(initialProtocol) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = value,
-            style =
-                if (monospace) {
-                    MaterialTheme.typography.bodySmall.copy(fontFamily = monospaceFontFamily())
-                } else {
-                    MaterialTheme.typography.bodySmall
-                },
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Spacing.Lg)
+                    .padding(bottom = Spacing.Xl)
+                    .navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(Spacing.Lg),
+        ) {
+            Text(
+                text = ws.logsFilterTitle,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.Sm)) {
+                Text(
+                    text = ws.logsFilterStatusLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.Xs),
+                ) {
+                    val statusOptions =
+                        listOf(
+                            null to ws.logsFilterAll,
+                            SessionLogStatus.COMPLETED to ws.logsStatusCompleted,
+                            SessionLogStatus.FAILED to ws.logsStatusFailed,
+                            SessionLogStatus.INTERRUPTED to ws.logsStatusInterrupted,
+                        )
+                    statusOptions.forEach { (option, label) ->
+                        val selected = draftStatus == option
+                        FilterChip(
+                            selected = selected,
+                            onClick = { draftStatus = option },
+                            label = { Text(label) },
+                            leadingIcon =
+                                if (selected) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Filled.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    }
+                                } else {
+                                    null
+                                },
+                            modifier = Modifier.heightIn(min = Sizes.TouchTarget),
+                        )
+                    }
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.Sm)) {
+                Text(
+                    text = ws.logsFilterProtocolLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.Xs),
+                ) {
+                    val protocolOptions =
+                        listOf(
+                            null to ws.logsFilterAll,
+                            ConnectionLogProtocol.SSH to ConnectionLogProtocol.SSH.name,
+                            ConnectionLogProtocol.MOSH to ConnectionLogProtocol.MOSH.name,
+                            ConnectionLogProtocol.SFTP to ConnectionLogProtocol.SFTP.name,
+                        )
+                    protocolOptions.forEach { (option, label) ->
+                        val selected = draftProtocol == option
+                        FilterChip(
+                            selected = selected,
+                            onClick = { draftProtocol = option },
+                            label = { Text(label) },
+                            leadingIcon =
+                                if (selected) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Filled.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    }
+                                } else {
+                                    null
+                                },
+                            modifier = Modifier.heightIn(min = Sizes.TouchTarget),
+                        )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    onClick = {
+                        draftStatus = null
+                        draftProtocol = null
+                    },
+                    modifier = Modifier.heightIn(min = Sizes.TouchTarget),
+                ) {
+                    Text(ws.logsFilterReset)
+                }
+                Spacer(Modifier.size(Spacing.Sm))
+                Button(
+                    onClick = { onApply(draftStatus, draftProtocol) },
+                    modifier = Modifier.heightIn(min = Sizes.TouchTarget),
+                ) {
+                    Text(ws.logsFilterApply)
+                }
+            }
+        }
     }
 }
 
-/**
- * Omit redundant target info when [hostLabel] already names the exact user@host and omit default port `:22`.
- * When [hostLabel] matches `user@host` on a custom port (`user@host:2222`), keep only `:2222`.
- */
-internal fun formatConnectionLogTarget(
-    hostLabel: String,
-    endpoint: String,
-): String? {
-    val cleanEndpoint = formatDisplayEndpoint(endpoint.trim())
-    val cleanLabel = hostLabel.trim()
-    if (cleanEndpoint.isBlank()) return null
-    if (cleanEndpoint.equals(cleanLabel, ignoreCase = true)) return null
-    if (cleanLabel.isNotBlank() && cleanEndpoint.startsWith("$cleanLabel:", ignoreCase = true)) {
-        return cleanEndpoint.substring(cleanLabel.length)
+private data class SessionLogDateGroup(
+    val dateLabel: String,
+    val entries: List<SessionLog>,
+)
+
+private fun groupSessionLogsByDate(
+    logs: List<SessionLog>,
+    ws: WorkspaceStrings,
+    now: Instant,
+    timeZone: TimeZone,
+): List<SessionLogDateGroup> {
+    if (logs.isEmpty()) return emptyList()
+    val grouped = LinkedHashMap<String, MutableList<SessionLog>>()
+    for (entry in logs) {
+        val label = formatSessionDateGroupHeader(entry.startedAt, ws, now, timeZone)
+        grouped.getOrPut(label) { mutableListOf() }.add(entry)
     }
-    return cleanEndpoint
+    return grouped.map { (label, entries) -> SessionLogDateGroup(label, entries) }
 }
+
+internal fun formatSessionDateGroupHeader(
+    millis: Long,
+    ws: WorkspaceStrings,
+    now: Instant = Clock.System.now(),
+    timeZone: TimeZone = TimeZone.currentSystemDefault(),
+): String {
+    val today = now.toLocalDateTime(timeZone).date
+    val yesterday = today.minus(DatePeriod(days = 1))
+    val date = Instant.fromEpochMilliseconds(millis).toLocalDateTime(timeZone).date
+    return when (date) {
+        today -> ws.dateToday
+        yesterday -> ws.dateYesterday
+        else -> ws.formatMonthDay(date.dayOfMonth, date.monthNumber, date.year)
+    }
+}
+
+internal fun formatLocalTime24(
+    millis: Long,
+    includeSeconds: Boolean = false,
+    timeZone: TimeZone = TimeZone.currentSystemDefault(),
+): String {
+    val dt = Instant.fromEpochMilliseconds(millis).toLocalDateTime(timeZone)
+    val hh = dt.hour.toString().padStart(2, '0')
+    val mm = dt.minute.toString().padStart(2, '0')
+    return if (includeSeconds) {
+        val ss = dt.second.toString().padStart(2, '0')
+        "$hh:$mm:$ss"
+    } else {
+        "$hh:$mm"
+    }
+}
+
+internal fun formatSessionDateTimeFull(
+    millis: Long,
+    ws: WorkspaceStrings,
+    now: Instant = Clock.System.now(),
+    timeZone: TimeZone = TimeZone.currentSystemDefault(),
+): String {
+    val dayLabel = formatSessionDateGroupHeader(millis, ws, now, timeZone)
+    val timeLabel = formatLocalTime24(millis, includeSeconds = true, timeZone = timeZone)
+    return "$dayLabel · $timeLabel"
+}
+
+internal fun formatSessionDuration(durationMs: Long): String {
+    val totalSeconds = (durationMs.coerceAtLeast(0L)) / 1000L
+    val hours = totalSeconds / 3600L
+    val minutes = (totalSeconds % 3600L) / 60L
+    val seconds = totalSeconds % 60L
+    return when {
+        hours > 0L -> "${hours}h ${minutes.toString().padStart(2, '0')}m"
+        minutes > 0L -> "${minutes}m ${seconds.toString().padStart(2, '0')}s"
+        else -> "${seconds}s"
+    }
+}
+
+internal fun statusLabel(
+    status: SessionLogStatus,
+    ws: WorkspaceStrings,
+): String =
+    when (status) {
+        SessionLogStatus.COMPLETED -> ws.logsStatusCompleted
+        SessionLogStatus.FAILED -> ws.logsStatusFailed
+        SessionLogStatus.INTERRUPTED -> ws.logsStatusInterrupted
+    }
+
+internal fun statusAccentColor(status: SessionLogStatus): Color =
+    when (status) {
+        SessionLogStatus.COMPLETED -> StatusColors.Connected
+        SessionLogStatus.FAILED -> StatusColors.Error
+        SessionLogStatus.INTERRUPTED -> StatusColors.Warning
+    }
+
+internal fun statusIcon(status: SessionLogStatus): ImageVector =
+    when (status) {
+        SessionLogStatus.COMPLETED -> Icons.Filled.CheckCircle
+        SessionLogStatus.FAILED -> Icons.Filled.Error
+        SessionLogStatus.INTERRUPTED -> Icons.Filled.Warning
+    }
+
+internal fun formatTimelineEventMessage(
+    entry: SessionLog,
+    event: SessionLogEvent,
+    ws: WorkspaceStrings,
+): String =
+    when (event.type) {
+        SessionLogEventType.CONNECTION_STARTED ->
+            ws.logsEventConnectingTo("${entry.hostname}:${entry.port}")
+        SessionLogEventType.CONNECTION_ESTABLISHED ->
+            ws.logsEventConnectionEstablished
+        SessionLogEventType.HOST_VERIFICATION_SUCCEEDED ->
+            ws.logsEventHostVerified
+        SessionLogEventType.HOST_VERIFICATION_FAILED ->
+            ws.logsEventHostVerifyFailed
+        SessionLogEventType.AUTHENTICATION_SUCCEEDED ->
+            ws.logsEventAuthSucceeded(event.detailCode)
+        SessionLogEventType.AUTHENTICATION_FAILED ->
+            ws.logsEventAuthFailed
+        SessionLogEventType.SSH_BOOTSTRAP_STARTED ->
+            ws.logsEventMoshBootstrapStarted
+        SessionLogEventType.SSH_BOOTSTRAP_SUCCEEDED ->
+            ws.logsEventMoshServerStarted
+        SessionLogEventType.UDP_CONNECTION_ESTABLISHED ->
+            ws.logsEventMoshUdpEstablished
+        SessionLogEventType.UDP_CONNECTION_TIMED_OUT ->
+            ws.logsEventMoshUdpTimedOut
+        SessionLogEventType.SESSION_OPENED ->
+            ws.logsEventSessionOpened(entry.protocol)
+        SessionLogEventType.SESSION_CLOSED ->
+            ws.logsEventSessionClosed
+        SessionLogEventType.CONNECTION_FAILED ->
+            ws.logsEventConnectionFailed
+        SessionLogEventType.CONNECTION_INTERRUPTED ->
+            ws.logsEventConnectionInterrupted
+    }

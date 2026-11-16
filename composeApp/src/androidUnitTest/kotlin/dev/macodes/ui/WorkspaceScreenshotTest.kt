@@ -19,13 +19,16 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalInspectionMode
 import com.russhwolf.settings.MapSettings
 import dev.macodes.MacodesApplication
-import dev.macodes.data.ConnectionLogEntry
-import dev.macodes.data.ConnectionLogEvent
 import dev.macodes.data.ConnectionLogProtocol
 import dev.macodes.data.CredentialKind
 import dev.macodes.data.Host
 import dev.macodes.data.HostRepository
 import dev.macodes.data.KeychainCredential
+import dev.macodes.data.SessionLog
+import dev.macodes.data.SessionLogErrorCode
+import dev.macodes.data.SessionLogEvent
+import dev.macodes.data.SessionLogEventType
+import dev.macodes.data.SessionLogStatus
 import dev.macodes.data.ThemeMode
 import dev.macodes.ui.theme.MacodesTheme
 import java.io.File
@@ -100,35 +103,74 @@ class WorkspaceScreenshotTest {
             minute: Int,
         ): Long = LocalDateTime(date, LocalTime(hour, minute)).toInstant(tz).toEpochMilliseconds()
 
-        repo.appendConnectionLog(
-            ConnectionLogEntry(
+        val t1 = at(today, 16, 20)
+        repo.saveSessionLog(
+            SessionLog(
                 id = "l1",
+                hostId = "h1",
                 hostLabel = "Prod API",
-                endpoint = "ubuntu@10.0.1.20:22",
+                username = "ubuntu",
+                hostname = "10.0.1.20",
+                port = 2222,
                 protocol = ConnectionLogProtocol.SSH,
-                event = ConnectionLogEvent.CONNECTED,
-                timestamp = at(today, 16, 20),
+                startedAt = t1 + 3_000L,
+                endedAt = t1 + 1_097_000L,
+                durationMs = 1_092_000L,
+                status = SessionLogStatus.COMPLETED,
+                events =
+                    listOf(
+                        SessionLogEvent("e1", "l1", SessionLogEventType.CONNECTION_STARTED, t1 + 3_000L),
+                        SessionLogEvent("e2", "l1", SessionLogEventType.HOST_VERIFICATION_SUCCEEDED, t1 + 4_000L),
+                        SessionLogEvent("e3", "l1", SessionLogEventType.AUTHENTICATION_SUCCEEDED, t1 + 5_000L, "key"),
+                        SessionLogEvent("e4", "l1", SessionLogEventType.SESSION_OPENED, t1 + 5_000L),
+                        SessionLogEvent("e5", "l1", SessionLogEventType.SESSION_CLOSED, t1 + 1_097_000L, "user"),
+                    ),
             ),
         )
-        repo.appendConnectionLog(
-            ConnectionLogEntry(
+        val t2 = at(yesterday, 10, 26)
+        repo.saveSessionLog(
+            SessionLog(
                 id = "l2",
                 hostLabel = "dev@10.0.0.5",
-                endpoint = "dev@10.0.0.5:22",
+                username = "dev",
+                hostname = "10.0.0.5",
+                port = 22,
                 protocol = ConnectionLogProtocol.MOSH,
-                event = ConnectionLogEvent.FAILED,
-                detail = "Mosh UDP handshake timed out",
-                timestamp = at(yesterday, 10, 26),
+                startedAt = t2 + 1_000L,
+                endedAt = t2 + 13_000L,
+                durationMs = null,
+                status = SessionLogStatus.FAILED,
+                errorCode = SessionLogErrorCode.UDP_TIMED_OUT,
+                events =
+                    listOf(
+                        SessionLogEvent("e6", "l2", SessionLogEventType.SSH_BOOTSTRAP_STARTED, t2 + 1_000L),
+                        SessionLogEvent("e7", "l2", SessionLogEventType.AUTHENTICATION_SUCCEEDED, t2 + 2_000L, "key"),
+                        SessionLogEvent("e8", "l2", SessionLogEventType.SSH_BOOTSTRAP_SUCCEEDED, t2 + 3_000L),
+                        SessionLogEvent("e9", "l2", SessionLogEventType.UDP_CONNECTION_TIMED_OUT, t2 + 13_000L),
+                    ),
             ),
         )
-        repo.appendConnectionLog(
-            ConnectionLogEntry(
+        val t3 = at(threeDaysAgo, 8, 15)
+        repo.saveSessionLog(
+            SessionLog(
                 id = "l3",
+                hostId = "h2",
                 hostLabel = "Backup Node",
-                endpoint = "backup@files.internal:22",
+                username = "backup",
+                hostname = "files.internal",
+                port = 22,
                 protocol = ConnectionLogProtocol.SFTP,
-                event = ConnectionLogEvent.DISCONNECTED,
-                timestamp = at(threeDaysAgo, 8, 15),
+                startedAt = t3,
+                endedAt = t3 + 245_000L,
+                durationMs = 244_000L,
+                status = SessionLogStatus.INTERRUPTED,
+                errorCode = SessionLogErrorCode.TRANSPORT_DISCONNECTED,
+                events =
+                    listOf(
+                        SessionLogEvent("e10", "l3", SessionLogEventType.CONNECTION_STARTED, t3),
+                        SessionLogEvent("e11", "l3", SessionLogEventType.SESSION_OPENED, t3 + 1_000L),
+                        SessionLogEvent("e12", "l3", SessionLogEventType.CONNECTION_INTERRUPTED, t3 + 245_000L),
+                    ),
             ),
         )
 
@@ -175,6 +217,97 @@ class WorkspaceScreenshotTest {
             ConnectionLogsScreen(
                 repository = repo,
                 onLogsChanged = {},
+                onBack = {},
+            )
+        }
+        renderAndSave("06-logs-details-ssh.png") {
+            ConnectionLogsScreen(
+                repository = repo,
+                onLogsChanged = {},
+                onBack = {},
+                initialSelectedLogId = "l1",
+            )
+        }
+        renderAndSave("07-logs-details-mosh-failed.png") {
+            ConnectionLogsScreen(
+                repository = repo,
+                onLogsChanged = {},
+                onBack = {},
+                initialSelectedLogId = "l2",
+            )
+        }
+        renderAndSave("08-logs-filter-sheet.png") {
+            ConnectionLogsScreen(
+                repository = repo,
+                onLogsChanged = {},
+                onBack = {},
+                initialFilterSheetOpen = true,
+            )
+        }
+        val emptyRepo = HostRepository(MapSettings())
+        renderAndSave("09-logs-empty.png") {
+            ConnectionLogsScreen(
+                repository = emptyRepo,
+                onLogsChanged = {},
+                onBack = {},
+            )
+        }
+        val sampleFolders =
+            listOf(
+                dev.macodes.data.HostFolder(id = "f-prod", name = "Production", createdAt = 1L),
+                dev.macodes.data.HostFolder(id = "f-eu", name = "EU West", parentId = "f-prod", createdAt = 2L),
+                dev.macodes.data.HostFolder(id = "f-lab", name = "Home Lab", createdAt = 3L),
+            )
+        val sampleHosts =
+            listOf(
+                Host(
+                    id = "h1",
+                    name = "bastion-edge",
+                    hostname = "192.168.1.10",
+                    username = "ubuntu",
+                    system = "ubuntu",
+                    tags = listOf("prod", "edge", "eu-west", "nginx"),
+                    createdAt = 1L,
+                ),
+                Host(
+                    id = "h2",
+                    name = "db-primary",
+                    hostname = "10.0.1.25",
+                    port = 2222,
+                    username = "deploy",
+                    system = "debian",
+                    connectionMode = dev.macodes.data.ConnectionMode.MOSH,
+                    tags = listOf("db", "prod"),
+                    createdAt = 2L,
+                ),
+                Host(
+                    id = "h3",
+                    name = "api-eu-01",
+                    hostname = "10.0.2.15",
+                    username = "root",
+                    system = "alpine",
+                    folderId = "f-prod",
+                    tags = listOf("api"),
+                    createdAt = 3L,
+                ),
+            )
+        renderAndSave("05-hosts-folders-tags.png") {
+            HostListScreen(
+                hosts = sampleHosts,
+                hostSessions = emptyMap(),
+                folders = sampleFolders,
+                onAdd = {},
+                onEdit = {},
+                onConnect = {},
+                onOpenHerdr = {},
+                onConnectBatch = {},
+                onDisconnect = {},
+                onDelete = {},
+                onAgents = {},
+                onOpenSession = {},
+                onOpenSftp = { _, _ -> },
+                onStartSftp = {},
+                onCloseAllSessions = {},
                 onBack = {},
             )
         }
