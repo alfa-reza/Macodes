@@ -99,4 +99,15 @@ object Sizes {
 
     /** When there is no Header element, this content space is reserved for the top floating navigation buttons. */
     val AgentChromeClearance = 56.dp
+
+    /** Monospace timestamp column width on Session Details timeline. */
+    val LogTimelineTimeWidth = 68.dp
+}
+
+/** Alpha tokens for subtle surfaces, borders, and selection states. */
+object Alphas {
+    const val SUBTLE = 0.10f
+    const val SELECTION_CONTAINER = 0.25f
+    const val BORDER_ACCENT = 0.30f
+    const val SELECTION_BORDER = 0.60f
 }

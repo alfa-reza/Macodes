@@ -1,6 +1,7 @@
 package dev.macodes.data
 
 import com.russhwolf.settings.MapSettings
+import dev.macodes.ui.appStringsFor
 import dev.macodes.ui.formatDisplayEndpoint
 import dev.macodes.ui.formatSessionDuration
 import kotlin.test.Test
@@ -333,9 +334,10 @@ class HostRepositoryTest {
     fun formatsEndpointsAndDurations() {
         assertEquals("10.0.1.20", formatDisplayEndpoint("10.0.1.20:22"))
         assertEquals("10.0.1.20:2222", formatDisplayEndpoint("10.0.1.20:2222"))
-        assertEquals("18m 12s", formatSessionDuration(1_092_000L))
-        assertEquals("1h 04m", formatSessionDuration(3_840_000L))
-        assertEquals("42s", formatSessionDuration(42_000L))
+        val ws = appStringsFor("en").workspace
+        assertEquals("18m 12s", formatSessionDuration(1_092_000L, ws))
+        assertEquals("1h 04m", formatSessionDuration(3_840_000L, ws))
+        assertEquals("42s", formatSessionDuration(42_000L, ws))
     }
 
     @Test

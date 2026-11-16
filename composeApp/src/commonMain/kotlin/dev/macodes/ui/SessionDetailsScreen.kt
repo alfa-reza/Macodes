@@ -44,11 +44,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import dev.macodes.data.SessionLog
 import dev.macodes.data.SessionLogEvent
 import dev.macodes.data.SessionLogEventType
 import dev.macodes.data.SessionLogStatus
+import dev.macodes.ui.theme.Alphas
 import dev.macodes.ui.theme.Corners
 import dev.macodes.ui.theme.Sizes
 import dev.macodes.ui.theme.Spacing
@@ -217,7 +217,7 @@ private fun SessionOverviewCard(
                 SessionMetaRow(
                     label = ws.logsDetailDuration,
                     value =
-                        log.durationMs?.let(::formatSessionDuration) ?: ws.logsDetailNotOpened,
+                        log.durationMs?.let { formatSessionDuration(it, ws) } ?: ws.logsDetailNotOpened,
                 )
             }
         }
@@ -268,8 +268,8 @@ private fun SessionSafeErrorCard(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(Corners.Md),
-        color = accent.copy(alpha = 0.10f),
-        border = BorderStroke(Sizes.BorderThin, accent.copy(alpha = 0.30f)),
+        color = accent.copy(alpha = Alphas.SUBTLE),
+        border = BorderStroke(Sizes.BorderThin, accent.copy(alpha = Alphas.BORDER_ACCENT)),
     ) {
         Row(
             modifier = Modifier.padding(Spacing.Md),
@@ -356,8 +356,8 @@ private fun TimelineEventRow(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier =
                 Modifier
-                    .width(68.dp)
-                    .padding(top = 2.dp),
+                    .width(Sizes.LogTimelineTimeWidth)
+                    .padding(top = Sizes.AgentTimelineLineWidth),
         )
         Box(
             modifier =
@@ -374,7 +374,7 @@ private fun TimelineEventRow(
                     modifier =
                         Modifier
                             .width(Sizes.AgentTimelineLineWidth)
-                            .height(6.dp)
+                            .height(Sizes.AgentTypingDot)
                             .background(if (isFirst) Color.Transparent else railLineColor),
                 )
                 Box(

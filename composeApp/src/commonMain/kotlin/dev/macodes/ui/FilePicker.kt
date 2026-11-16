@@ -53,3 +53,9 @@ internal fun closePickedFiles(files: List<PickedFile>) {
  */
 @Composable
 expect fun rememberFilePicker(onPicked: (PickedFile) -> Unit): () -> Unit
+
+/**
+ * Platform file exporter (Android SAF `CreateDocument`): writes UTF-8 text to a user-chosen file.
+ */
+@Composable
+expect fun rememberTextFileExporter(onDone: (Boolean) -> Unit): (suggestedFileName: String, content: String) -> Unit

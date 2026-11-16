@@ -7,7 +7,7 @@ import dev.macodes.data.HostRepository
 import dev.macodes.data.HostRepository.RecentSftpEntry
 import dev.macodes.data.HostRepository.RecentTerminalEntry
 import dev.macodes.data.SessionLogRecorder
-import dev.macodes.data.resolveCredentials
+import dev.macodes.data.resolveSshAuth
 import dev.macodes.ssh.SftpSession
 import dev.macodes.util.ForegroundSshRecovery
 import dev.macodes.util.TermLog
@@ -145,16 +145,18 @@ class SessionManager(
         val byId = hosts.associateBy { it.id }
         repository.loadRecentTerminalEntries().forEach { entry ->
             val host = byId[entry.hostId] ?: return@forEach
-            val (pw, key) = resolveCredentials(host)
+            val auth = resolveSshAuth(host, repository)
             TerminalController(
                 host,
-                pw,
-                key,
+                auth.password,
+                auth.privateKeyPem,
                 repository,
                 autoReconnect,
                 launchMode = if (entry.launchHerdr) TerminalLaunchMode.HERDR else TerminalLaunchMode.SHELL,
                 strings = strings,
                 createdAt = entry.createdAt.takeIf { it > 0L } ?: Clock.System.now().toEpochMilliseconds(),
+                privateKeyPassphrase = auth.privateKeyPassphrase,
+                certificateText = auth.certificateText,
             ).also {
                 it.onSystemDetected = onSystemDetected
                 sessions.add(it)
@@ -217,16 +219,18 @@ class SessionManager(
         TermLog.i("session") { "open ${host.name} (${sessions.count { it.host.id == host.id } + 1}th)" }
         // Support for multiple sessions on the same host (Termius-style): a new session is created each time it is opened,
         // Old sessions are retained in the list and can be re-entered via card dropdown / the Connections page.
-        val (pw, key) = resolveCredentials(host)
+        val auth = resolveSshAuth(host, repository)
         val controller =
             TerminalController(
                 host,
-                pw,
-                key,
+                auth.password,
+                auth.privateKeyPem,
                 repository,
                 autoReconnect,
                 launchMode = launchMode,
                 strings = strings,
+                privateKeyPassphrase = auth.privateKeyPassphrase,
+                certificateText = auth.certificateText,
             )
         controller.onSystemDetected = onSystemDetected
         sessions.add(controller)
@@ -252,8 +256,12 @@ class SessionManager(
      * Inconsistencies indicate that host configuration or credentials have changed—old sessions should not be reused; a new one should be created (old sessions can be manually closed).
      */
     fun signatureFor(host: Host): String {
-        val (pw, key) = resolveCredentials(host)
-        return credentialSignature(host, pw, key)
+        val auth = resolveSshAuth(host, repository)
+        val keyMaterial =
+            listOfNotNull(auth.privateKeyPem, auth.certificateText, auth.privateKeyPassphrase)
+                .takeIf { it.isNotEmpty() }
+                ?.joinToString("|")
+        return credentialSignature(host, auth.password, keyMaterial)
     }
 
     /**

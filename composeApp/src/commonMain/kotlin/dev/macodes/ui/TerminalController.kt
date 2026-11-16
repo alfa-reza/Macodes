@@ -111,6 +111,8 @@ class TerminalController(
     private val strings: () -> AppStrings = { appStringsFor("en") },
     /** The time the entry was first created; this remains unchanged after a reconnection following a disconnection or after resuming a process. */
     val createdAt: Long = Clock.System.now().toEpochMilliseconds(),
+    internal val privateKeyPassphrase: String? = null,
+    internal val certificateText: String? = null,
     /** SSH session factory (performs injection of `fake` in tests; uses the platform engine by default in production). */
     internal val sessionFactory: (SshConnection, SshCallbacks) -> SshSession = ::createSshSession,
 ) {

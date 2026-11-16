@@ -88,6 +88,8 @@ data class SshConnection(
     val username: String,
     val password: String? = null,
     val privateKeyPem: String? = null,
+    val privateKeyPassphrase: String? = null,
+    val certificateText: String? = null,
     val connectTimeoutMillis: Long = 15_000,
     /** Idle keepalive interval (seconds); <=0 indicates that no app-layer keepalives are sent. */
     val keepAliveSeconds: Int = 30,

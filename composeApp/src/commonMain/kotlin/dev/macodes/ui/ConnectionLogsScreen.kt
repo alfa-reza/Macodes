@@ -51,6 +51,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,7 +65,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import dev.macodes.data.ConnectionLogProtocol
 import dev.macodes.data.HostRepository
 import dev.macodes.data.SessionLog
@@ -73,6 +74,7 @@ import dev.macodes.data.SessionLogQuery
 import dev.macodes.data.SessionLogSortOrder
 import dev.macodes.data.SessionLogStatus
 import dev.macodes.data.filterAndSortSessionLogs
+import dev.macodes.ui.theme.Alphas
 import dev.macodes.ui.theme.Corners
 import dev.macodes.ui.theme.Sizes
 import dev.macodes.ui.theme.Spacing
@@ -96,7 +98,11 @@ fun ConnectionLogsScreen(
 ) {
     val s = LocalAppStrings.current
     val ws = s.workspace
+    val logsVersion by repository.sessionLogsVersion.collectAsState()
     var allLogs by remember { mutableStateOf(repository.listSessionLogs()) }
+    LaunchedEffect(logsVersion) {
+        allLogs = repository.listSessionLogs()
+    }
     var searchOpen by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var statusFilter by remember { mutableStateOf<SessionLogStatus?>(null) }
@@ -226,14 +232,7 @@ fun ConnectionLogsScreen(
                                     contentDescription = s.navMore,
                                 )
                                 if (hasActiveFilter) {
-                                    Box(
-                                        modifier =
-                                            Modifier
-                                                .align(Alignment.TopEnd)
-                                                .size(7.dp)
-                                                .clip(CircleShape)
-                                                .background(MaterialTheme.colorScheme.primary),
-                                    )
+                                    ActiveFilterDot(Modifier.align(Alignment.TopEnd))
                                 }
                             }
                         }
@@ -251,14 +250,7 @@ fun ConnectionLogsScreen(
                                 },
                                 trailingIcon =
                                     if (hasActiveFilter) {
-                                        {
-                                            Box(
-                                                Modifier
-                                                    .size(7.dp)
-                                                    .clip(CircleShape)
-                                                    .background(MaterialTheme.colorScheme.primary),
-                                            )
-                                        }
+                                        { ActiveFilterDot() }
                                     } else {
                                         null
                                     },
@@ -561,7 +553,7 @@ private fun SessionLogCard(
         shape = RoundedCornerShape(Corners.Md),
         color =
             if (selected) {
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = Alphas.SELECTION_CONTAINER)
             } else {
                 MaterialTheme.colorScheme.surfaceContainerLow
             },
@@ -569,7 +561,7 @@ private fun SessionLogCard(
             BorderStroke(
                 Sizes.BorderThin,
                 if (selected) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                    MaterialTheme.colorScheme.primary.copy(alpha = Alphas.SELECTION_BORDER)
                 } else {
                     MaterialTheme.colorScheme.outlineVariant
                 },
@@ -628,7 +620,7 @@ private fun SessionLogCard(
 
                 // 3. Protocol, status indicator, and duration (when opened)
                 Row(
-                    modifier = Modifier.padding(top = 2.dp),
+                    modifier = Modifier.padding(top = Sizes.AgentTimelineLineWidth),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
                 ) {
@@ -641,7 +633,7 @@ private fun SessionLogCard(
                             imageVector = statusIcon(entry.status),
                             contentDescription = null,
                             tint = accentColor,
-                            modifier = Modifier.size(14.dp),
+                            modifier = Modifier.size(Sizes.IconSmall),
                         )
                         Text(
                             text = statusLabel(entry.status, ws),
@@ -652,7 +644,7 @@ private fun SessionLogCard(
                     }
                     if (entry.durationMs != null) {
                         Text(
-                            text = "· ${formatSessionDuration(entry.durationMs)}",
+                            text = "· ${formatSessionDuration(entry.durationMs, ws)}",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -732,13 +724,7 @@ internal fun SessionLogFilterSheet(
                             label = { Text(label) },
                             leadingIcon =
                                 if (selected) {
-                                    {
-                                        Icon(
-                                            imageVector = Icons.Filled.Check,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                    }
+                                    { SelectedChipCheckIcon() }
                                 } else {
                                     null
                                 },
@@ -773,13 +759,7 @@ internal fun SessionLogFilterSheet(
                             label = { Text(label) },
                             leadingIcon =
                                 if (selected) {
-                                    {
-                                        Icon(
-                                            imageVector = Icons.Filled.Check,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                    }
+                                    { SelectedChipCheckIcon() }
                                 } else {
                                     null
                                 },
@@ -878,16 +858,39 @@ internal fun formatSessionDateTimeFull(
     return "$dayLabel · $timeLabel"
 }
 
-internal fun formatSessionDuration(durationMs: Long): String {
+internal fun formatSessionDuration(
+    durationMs: Long,
+    ws: WorkspaceStrings,
+): String {
     val totalSeconds = (durationMs.coerceAtLeast(0L)) / 1000L
     val hours = totalSeconds / 3600L
     val minutes = (totalSeconds % 3600L) / 60L
     val seconds = totalSeconds % 60L
     return when {
-        hours > 0L -> "${hours}h ${minutes.toString().padStart(2, '0')}m"
-        minutes > 0L -> "${minutes}m ${seconds.toString().padStart(2, '0')}s"
-        else -> "${seconds}s"
+        hours > 0L -> ws.logsDurationHoursMinutes(hours, minutes.toString().padStart(2, '0'))
+        minutes > 0L -> ws.logsDurationMinutesSeconds(minutes, seconds.toString().padStart(2, '0'))
+        else -> ws.logsDurationSeconds(seconds)
     }
+}
+
+@Composable
+private fun ActiveFilterDot(modifier: Modifier = Modifier) {
+    Box(
+        modifier =
+            modifier
+                .size(Sizes.AgentTimelineDot)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary),
+    )
+}
+
+@Composable
+private fun SelectedChipCheckIcon() {
+    Icon(
+        imageVector = Icons.Filled.Check,
+        contentDescription = null,
+        modifier = Modifier.size(Spacing.Lg),
+    )
 }
 
 internal fun statusLabel(

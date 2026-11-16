@@ -141,6 +141,8 @@ internal class SessionConnector(
             username = c.host.username,
             password = c.password,
             privateKeyPem = c.privateKeyPem,
+            privateKeyPassphrase = c.privateKeyPassphrase,
+            certificateText = c.certificateText,
             keepAliveSeconds = settings.keepaliveSeconds,
             terminalType = settings.terminalType,
             // Network connections are often already lost when attempting to reconnect: TCP timeout reduced from 15s to 5s—
@@ -486,7 +488,7 @@ internal class SessionConnector(
                     terminalEvent = SessionLogEventType.UDP_CONNECTION_TIMED_OUT,
                 )
                 c.sessionLogRecorder =
-                    SessionLogRecorder(c.host, ConnectionLogProtocol.SSH, c.sessionLogSink, clock = { c.nowMs() }).also {
+                    SessionLogRecorder(c.host, ConnectionLogProtocol.SSH, c.sessionLogSink).also {
                         it.record(SessionLogEventType.CONNECTION_STARTED)
                     }
                 finishConnected(s, generation)
@@ -818,6 +820,12 @@ internal class SessionConnector(
         c.moshNeedsInstall = false
         c.moshNeedsSudoPassword = false
         c.moshDegradedToSsh = true
+        c.sessionLogRecorder?.fail(explicitCode = SessionLogErrorCode.MOSH_SESSION_ERROR)
+        c.sessionLogRecorder =
+            SessionLogRecorder(c.host, ConnectionLogProtocol.SSH, c.sessionLogSink).also {
+                it.record(SessionLogEventType.CONNECTION_STARTED)
+                it.markSessionOpened()
+            }
         val cmd =
             if (c.launchHerdr) {
                 c.herdrBin
@@ -861,7 +869,9 @@ internal class SessionConnector(
             return
         }
         c.status = ConnStatus.CONNECTED
-        c.sessionLogRecorder?.markSessionOpened()
+        if (!c.moshNeedsInstall) {
+            c.sessionLogRecorder?.markSessionOpened()
+        }
         // Silent detection start point: Counting from the completion of the connection. MOTD has finished → Herdr injection after 250 ms;
         // Still processing → lastOutputAtMs is being continuously refreshed by the consumer loop; wait until it finishes processing before performing injection.
         c.lastOutputAtMs = c.nowMs()
@@ -1233,7 +1243,7 @@ internal class SessionConnector(
         if (existing != null && !existing.isFinalized && existing.protocol == protocol) {
             return existing
         }
-        return SessionLogRecorder(c.host, protocol, c.sessionLogSink, clock = { c.nowMs() }).also {
+        return SessionLogRecorder(c.host, protocol, c.sessionLogSink).also {
             c.sessionLogRecorder = it
         }
     }

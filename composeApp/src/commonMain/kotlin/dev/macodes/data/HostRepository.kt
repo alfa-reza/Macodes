@@ -33,12 +33,14 @@ class HostRepository(
     private val connectionLogsKey = "macodes.connection_logs.v1"
     private val sessionLogsKey = "macodes.session_logs.v1"
     private val mutableAppSettings = MutableStateFlow(readSettings())
+    private val mutableSessionLogsVersion = MutableStateFlow(0L)
 
     /**
      * A single source of truth for settings within the process. The Settings page, Agent page, and connection layer all read from here to avoid each having their own
      * After maintaining the entire [AppSettings] snapshot for an extended period, the fields will overwrite each other.
      */
     val appSettings: StateFlow<AppSettings> = mutableAppSettings.asStateFlow()
+    val sessionLogsVersion: StateFlow<Long> = mutableSessionLogsVersion.asStateFlow()
 
     // ---------- host ----------
 
@@ -461,9 +463,19 @@ class HostRepository(
 
     fun deleteCredential(id: String) {
         withRepoLock(lock) {
+            val remaining =
+                listCredentials()
+                    .filter { it.id != id }
+                    .map { cred ->
+                        if (cred.linkedPrivateKeyId == id) {
+                            cred.copy(linkedPrivateKeyId = null, isActive = false)
+                        } else {
+                            cred
+                        }
+                    }
             settings.putString(
                 credentialsKey,
-                json.encodeToString(listCredentials().filter { it.id != id }),
+                json.encodeToString(remaining),
             )
             // Detach credential references from saved hosts without deleting the hosts themselves.
             val before = listHosts()
@@ -578,6 +590,7 @@ class HostRepository(
             val retained = applySessionLogRetention(updated, now)
             settings.putString(sessionLogsKey, json.encodeToString(retained))
         }
+        mutableSessionLogsVersion.value++
     }
 
     fun clearSessionLogs() {
@@ -585,6 +598,7 @@ class HostRepository(
             settings.remove(sessionLogsKey)
             settings.remove(connectionLogsKey)
         }
+        mutableSessionLogsVersion.value++
     }
 
     fun deleteSessionLogs(ids: Set<String>) {
@@ -593,6 +607,7 @@ class HostRepository(
             val remaining = loadRawSessionLogsLocked().filterNot { it.id in ids }
             settings.putString(sessionLogsKey, json.encodeToString(remaining))
         }
+        mutableSessionLogsVersion.value++
     }
 
     private fun loadRawSessionLogsLocked(): List<SessionLog> {

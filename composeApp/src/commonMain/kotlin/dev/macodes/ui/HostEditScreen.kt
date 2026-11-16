@@ -292,19 +292,25 @@ fun HostEditScreen(
                             credentials.forEach { cred ->
                                 FilterChip(
                                     selected = credentialId == cred.id,
+                                    enabled = cred.isActive,
                                     onClick = {
                                         credentialId = cred.id
                                         authMethod =
-                                            if (cred.kind == CredentialKind.PRIVATE_KEY) {
-                                                HostAuthMethod.PRIVATE_KEY
-                                            } else {
-                                                HostAuthMethod.PASSWORD
+                                            when (cred.kind) {
+                                                CredentialKind.PRIVATE_KEY,
+                                                CredentialKind.CERTIFICATE,
+                                                -> HostAuthMethod.PRIVATE_KEY
+                                                CredentialKind.PASSWORD -> HostAuthMethod.PASSWORD
                                             }
                                         if ((username.isBlank() || username == "root") && cred.usernameHint.isNotBlank()) {
                                             username = cred.usernameHint
                                         }
                                     },
-                                    label = { Text(cred.name) },
+                                    label = {
+                                        Text(
+                                            if (cred.isActive) cred.name else "${cred.name} (${s.workspace.credentialsInactiveBadge})",
+                                        )
+                                    },
                                     colors = chipColors,
                                 )
                             }

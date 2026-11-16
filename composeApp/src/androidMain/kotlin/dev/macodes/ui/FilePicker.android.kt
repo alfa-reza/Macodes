@@ -6,6 +6,10 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 
 private const val CHUNK = 64 * 1024
@@ -54,6 +58,32 @@ actual fun rememberFilePicker(onPicked: (PickedFile) -> Unit): () -> Unit {
             }
         }
     return { launcher.launch(arrayOf("*/*")) }
+}
+
+@Composable
+actual fun rememberTextFileExporter(onDone: (Boolean) -> Unit): (suggestedFileName: String, content: String) -> Unit {
+    val context = LocalContext.current
+    var pendingContent by remember { mutableStateOf<String?>(null) }
+    val launcher =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri: Uri? ->
+            val content = pendingContent
+            pendingContent = null
+            if (uri == null || content == null) {
+                onDone(false)
+                return@rememberLauncherForActivityResult
+            }
+            val ok =
+                runCatching {
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        out.write(content.encodeToByteArray())
+                    } ?: error("Cannot open output stream")
+                }.isSuccess
+            onDone(ok)
+        }
+    return { suggestedFileName, content ->
+        pendingContent = content
+        launcher.launch(suggestedFileName)
+    }
 }
 
 private fun queryName(

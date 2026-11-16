@@ -391,7 +391,11 @@ class SshSessionSshj(
         val methods = ArrayList<AuthMethod>()
 
         connection.privateKeyPem?.let { pem ->
-            loadKeyProvider(pem)?.let { methods.add(AuthPublickey(it)) }
+            loadKeyProvider(
+                pem = pem,
+                certText = connection.certificateText,
+                savedPassphrase = connection.privateKeyPassphrase,
+            )?.let { methods.add(AuthPublickey(it)) }
         }
         connection.password?.let { pw ->
             val finder =
@@ -432,8 +436,13 @@ class SshSessionSshj(
         }
     }
 
-    private fun loadKeyProvider(pem: String): FileKeyProvider? {
+    private fun loadKeyProvider(
+        pem: String,
+        certText: String? = null,
+        savedPassphrase: String? = null,
+    ): FileKeyProvider? {
         val isOpenSsh = pem.contains("OPENSSH PRIVATE KEY")
+        val certReader = certText?.takeIf { it.isNotBlank() }?.let(::StringReader)
 
         fun newProvider(): FileKeyProvider =
             if (isOpenSsh) {
@@ -447,16 +456,17 @@ class SshSessionSshj(
         // Must first perform a static check and display a prompt asking the user to enter the passphrase
         if (isEncryptedPem(pem)) {
             val passphrase =
-                runBlocking {
-                    callbacks.onPrompt(
-                        AuthPrompt(
-                            method = SshAuthMethod.PASSPHRASE,
-                            name = "Private key passphrase",
-                            instruction = "This private key is passphrase-protected. Enter the passphrase.",
-                            prompts = listOf(PromptField("Passphrase", echo = false)),
-                        ),
-                    )
-                }?.firstOrNull()
+                savedPassphrase?.takeIf { it.isNotEmpty() }
+                    ?: runBlocking {
+                        callbacks.onPrompt(
+                            AuthPrompt(
+                                method = SshAuthMethod.PASSPHRASE,
+                                name = "Private key passphrase",
+                                instruction = "This private key is passphrase-protected. Enter the passphrase.",
+                                prompts = listOf(PromptField("Passphrase", echo = false)),
+                            ),
+                        )
+                    }?.firstOrNull()
             if (passphrase.isNullOrEmpty()) {
                 privateKeyError = "Private key passphrase entry cancelled"
                 return null
@@ -465,7 +475,7 @@ class SshSessionSshj(
                 val kp = newProvider()
                 kp.init(
                     StringReader(pem),
-                    null,
+                    certReader,
                     object : PasswordFinder {
                         override fun reqPassword(resource: Resource<*>?): CharArray = passphrase.toCharArray()
 
@@ -483,7 +493,7 @@ class SshSessionSshj(
         // Private key in plain text
         return try {
             val kp = newProvider()
-            kp.init(StringReader(pem), null, null)
+            kp.init(StringReader(pem), certReader, null)
             privateKeyError = null
             kp
         } catch (e: Exception) {

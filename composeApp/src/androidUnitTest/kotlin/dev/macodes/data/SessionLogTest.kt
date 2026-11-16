@@ -261,4 +261,17 @@ class SessionLogTest {
             )
         assertEquals(listOf("s1", "s2", "s3"), oldestFirst.map { it.id })
     }
+
+    @Test
+    fun defaultEpochClockSurvivesRepositoryRetention() {
+        val repo = HostRepository(MapSettings())
+        val rec = SessionLogRecorder(host(), ConnectionLogProtocol.SSH, { repo.saveSessionLog(it) })
+        rec.record(SessionLogEventType.CONNECTION_STARTED)
+        rec.markSessionOpened()
+        rec.completeNormal("user")
+
+        val logs = repo.listSessionLogs()
+        assertEquals(1, logs.size)
+        assertTrue(logs.single().startedAt > 1_700_000_000_000L)
+    }
 }

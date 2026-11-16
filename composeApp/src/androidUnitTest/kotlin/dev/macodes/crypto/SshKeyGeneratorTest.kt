@@ -30,4 +30,24 @@ class SshKeyGeneratorTest {
         assertNotEquals(pair.publicKeyLine, second.publicKeyLine)
         assertEquals("macodes", second.publicKeyLine.substringAfterLast(' '))
     }
+
+    @Test
+    fun generatesAndValidatesAllSupportedKeyAlgorithmsWithAndWithoutPassphrase() {
+        for (algo in SshKeyAlgorithm.entries) {
+            val plain = generateSshKeyPair(algorithm = algo, passphrase = "", comment = "test")
+            val plainRes = inspectSshPrivateKey(plain.privateKeyPem)
+            assertTrue(plainRes is SshKeyValidationResult.Valid, "Plain $algo failed: $plainRes")
+            assertFalse(plainRes.encrypted)
+            assertTrue(plainRes.fingerprintSha256.startsWith("SHA256:"))
+
+            val encrypted = generateSshKeyPair(algorithm = algo, passphrase = "correct-horse-battery", comment = "test")
+            assertEquals(SshKeyValidationResult.NeedsPassphrase, inspectSshPrivateKey(encrypted.privateKeyPem))
+            assertEquals(SshKeyValidationResult.WrongPassphrase, inspectSshPrivateKey(encrypted.privateKeyPem, "wrong"))
+            val encRes = inspectSshPrivateKey(encrypted.privateKeyPem, "correct-horse-battery")
+            assertTrue(encRes is SshKeyValidationResult.Valid, "Encrypted $algo failed: $encRes")
+            assertTrue(encRes.encrypted)
+            assertTrue(encRes.fingerprintSha256.startsWith("SHA256:"))
+        }
+        assertTrue(inspectSshPrivateKey("not a key") is SshKeyValidationResult.Invalid)
+    }
 }
