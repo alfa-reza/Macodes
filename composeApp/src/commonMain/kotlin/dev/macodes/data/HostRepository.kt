@@ -26,6 +26,7 @@ class HostRepository(
     private val lock = Any()
     private val hostsKey = "macodes.hosts.v1"
     private val hostFoldersKey = "macodes.host_folders.v1"
+    private val hostTagsKey = "macodes.host_tags.v1"
     private val settingsKey = "macodes.settings.v1"
     private val tagGroupsKey = "macodes.tag_groups.v1"
     private val snippetsKey = "macodes.snippets.v1"
@@ -64,6 +65,7 @@ class HostRepository(
             val idx = hosts.indexOfFirst { it.id == host.id }
             if (idx >= 0) hosts[idx] = host else hosts.add(host)
             saveHosts(hosts)
+            ensureHostTagsDefinedLocked(host.tags)
         }
     }
 
@@ -143,27 +145,45 @@ class HostRepository(
     }
 
     /**
-     * Delete folder without losing hosts or subfolders:
-     * Direct child folders and hosts are reparented to the deleted folder's parent (or root).
+     * Delete folder:
+     * - When [deleteContents] is false (default), child folders and hosts move up to the deleted folder's parent (or root).
+     * - When [deleteContents] is true, the folder, all descendant subfolders, and hosts inside them are deleted,
+     *   returning the deleted host IDs so callers can close sessions and remove secrets.
      */
-    fun deleteFolder(id: String) {
+    fun deleteFolder(
+        id: String,
+        deleteContents: Boolean = false,
+    ): Set<String> =
         withRepoLock(lock) {
             val folders = listFolders()
-            val target = folders.firstOrNull { it.id == id } ?: return@withRepoLock
-            val fallbackParent = target.parentId?.takeIf { pid -> pid != id && folders.any { it.id == pid } }
-            val updatedFolders =
-                folders
-                    .filter { it.id != id }
-                    .map { f -> if (f.parentId == id) f.copy(parentId = fallbackParent) else f }
-            settings.putString(hostFoldersKey, json.encodeToString(updatedFolders))
+            val target = folders.firstOrNull { it.id == id } ?: return@withRepoLock emptySet()
+            if (deleteContents) {
+                val doomedFolders = collectDescendantFolderIds(folders, id)
+                val updatedFolders = folders.filter { it.id !in doomedFolders }
+                settings.putString(hostFoldersKey, json.encodeToString(updatedFolders))
 
-            val hosts = listHosts()
-            val updatedHosts = hosts.map { h -> if (h.folderId == id) h.copy(folderId = fallbackParent) else h }
-            if (updatedHosts != hosts) {
-                saveHosts(updatedHosts)
+                val hosts = listHosts()
+                val doomedHostIds = hosts.filter { it.folderId in doomedFolders }.mapTo(HashSet()) { it.id }
+                if (doomedHostIds.isNotEmpty()) {
+                    saveHosts(hosts.filter { it.id !in doomedHostIds })
+                }
+                doomedHostIds
+            } else {
+                val fallbackParent = target.parentId?.takeIf { pid -> pid != id && folders.any { it.id == pid } }
+                val updatedFolders =
+                    folders
+                        .filter { it.id != id }
+                        .map { f -> if (f.parentId == id) f.copy(parentId = fallbackParent) else f }
+                settings.putString(hostFoldersKey, json.encodeToString(updatedFolders))
+
+                val hosts = listHosts()
+                val updatedHosts = hosts.map { h -> if (h.folderId == id) h.copy(folderId = fallbackParent) else h }
+                if (updatedHosts != hosts) {
+                    saveHosts(updatedHosts)
+                }
+                emptySet()
             }
         }
-    }
 
     fun moveHostsToFolder(
         hostIds: Set<String>,
@@ -177,6 +197,176 @@ class HostRepository(
             if (updated != hosts) {
                 saveHosts(updated)
             }
+        }
+    }
+
+    // ---------- host tags ----------
+
+    fun listHostTags(): List<HostTag> {
+        val raw = settings.getStringOrNull(hostTagsKey)
+        if (raw == null) {
+            val seedNames = collectAllTags(listHosts())
+            if (seedNames.isEmpty()) return emptyList()
+            val seeded = seedNames.map { HostTag(id = newId(), name = it) }
+            withRepoLock(lock) {
+                if (settings.getStringOrNull(hostTagsKey) == null) {
+                    settings.putString(hostTagsKey, json.encodeToString(seeded))
+                }
+            }
+            return listHostTags()
+        }
+        return try {
+            json
+                .decodeFromString<List<HostTag>>(raw)
+                .sortedBy { it.name.lowercase() }
+        } catch (e: Exception) {
+            backupCorrupt(hostTagsKey, raw)
+            emptyList()
+        }
+    }
+
+    fun upsertHostTag(tag: HostTag): HostTag? {
+        val cleanName = tag.name.trim().removePrefix("#")
+        if (cleanName.isEmpty()) return null
+        return withRepoLock(lock) {
+            val existing = listHostTagsLocked().toMutableList()
+            val byIdIdx = existing.indexOfFirst { it.id == tag.id }
+            val conflictIdx =
+                existing.indexOfFirst { it.id != tag.id && it.name.equals(cleanName, ignoreCase = true) }
+            if (conflictIdx >= 0) {
+                val merged = existing[conflictIdx].copy(colorIndex = tag.colorIndex ?: existing[conflictIdx].colorIndex)
+                existing[conflictIdx] = merged
+                saveHostTagsLocked(existing)
+                return@withRepoLock merged
+            }
+            if (byIdIdx >= 0) {
+                val oldName = existing[byIdIdx].name
+                val updated = existing[byIdIdx].copy(name = cleanName, colorIndex = tag.colorIndex)
+                existing[byIdIdx] = updated
+                saveHostTagsLocked(existing)
+                if (!oldName.equals(cleanName, ignoreCase = false)) {
+                    renameTagOnHostsLocked(oldName, cleanName)
+                }
+                updated
+            } else {
+                val created = tag.copy(name = cleanName)
+                existing.add(created)
+                saveHostTagsLocked(existing)
+                created
+            }
+        }
+    }
+
+    fun deleteHostTag(id: String) {
+        withRepoLock(lock) {
+            val tags = listHostTagsLocked()
+            val target = tags.firstOrNull { it.id == id } ?: return@withRepoLock
+            saveHostTagsLocked(tags.filter { it.id != id })
+            val before = listHosts()
+            val updated =
+                before.map { host ->
+                    val filtered = host.tags.filterNot { it.trim().removePrefix("#").equals(target.name, ignoreCase = true) }
+                    if (filtered.size != host.tags.size) host.copy(tags = filtered) else host
+                }
+            if (updated != before) {
+                saveHosts(updated)
+            }
+        }
+    }
+
+    fun updateHostsTags(
+        hostIds: Set<String>,
+        addTags: Set<String> = emptySet(),
+        removeTags: Set<String> = emptySet(),
+    ) {
+        if (hostIds.isEmpty()) return
+        val normalizedAdd = addTags.map { it.trim().removePrefix("#") }.filter { it.isNotEmpty() }
+        val normalizedRemoveKeys = removeTags.mapTo(HashSet()) { it.trim().removePrefix("#").lowercase() }
+        withRepoLock(lock) {
+            ensureHostTagsDefinedLocked(normalizedAdd)
+            val before = listHosts()
+            val updated =
+                before.map { host ->
+                    if (host.id !in hostIds) {
+                        host
+                    } else {
+                        val next =
+                            host.tags
+                                .filterNot { it.trim().removePrefix("#").lowercase() in normalizedRemoveKeys }
+                                .toMutableList()
+                        for (tag in normalizedAdd) {
+                            if (next.none { it.trim().removePrefix("#").equals(tag, ignoreCase = true) }) {
+                                next.add(tag)
+                            }
+                        }
+                        host.copy(tags = next)
+                    }
+                }
+            if (updated != before) {
+                saveHosts(updated)
+            }
+        }
+    }
+
+    private fun listHostTagsLocked(): List<HostTag> {
+        val raw = settings.getStringOrNull(hostTagsKey) ?: return emptyList()
+        return try {
+            json.decodeFromString<List<HostTag>>(raw)
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun saveHostTagsLocked(tags: List<HostTag>) {
+        settings.putString(hostTagsKey, json.encodeToString(tags.sortedBy { it.name.lowercase() }))
+    }
+
+    private fun ensureHostTagsDefinedLocked(names: List<String>) {
+        val clean = names.map { it.trim().removePrefix("#") }.filter { it.isNotEmpty() }
+        if (clean.isEmpty()) return
+        val current =
+            if (settings.getStringOrNull(hostTagsKey) == null) {
+                collectAllTags(listHosts()).map { HostTag(id = newId(), name = it) }.toMutableList()
+            } else {
+                listHostTagsLocked().toMutableList()
+            }
+        var changed = settings.getStringOrNull(hostTagsKey) == null && current.isNotEmpty()
+        for (name in clean) {
+            if (current.none { it.name.equals(name, ignoreCase = true) }) {
+                current.add(HostTag(id = newId(), name = name))
+                changed = true
+            }
+        }
+        if (changed) {
+            saveHostTagsLocked(current)
+        }
+    }
+
+    private fun renameTagOnHostsLocked(
+        oldName: String,
+        newName: String,
+    ) {
+        val before = listHosts()
+        val updated =
+            before.map { host ->
+                var hostChanged = false
+                val next = ArrayList<String>(host.tags.size)
+                for (raw in host.tags) {
+                    val mapped =
+                        if (raw.trim().removePrefix("#").equals(oldName, ignoreCase = true)) {
+                            hostChanged = true
+                            newName
+                        } else {
+                            raw
+                        }
+                    if (next.none { it.trim().removePrefix("#").equals(mapped, ignoreCase = true) }) {
+                        next.add(mapped)
+                    }
+                }
+                if (hostChanged) host.copy(tags = next) else host
+            }
+        if (updated != before) {
+            saveHosts(updated)
         }
     }
 

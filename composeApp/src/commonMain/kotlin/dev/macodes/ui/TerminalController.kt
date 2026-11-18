@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import dev.macodes.data.ConnectionLogProtocol
 import dev.macodes.data.Host
 import dev.macodes.data.HostAuthMethod
+import dev.macodes.data.HostInventory
 import dev.macodes.data.HostRepository
 import dev.macodes.data.RepositorySessionLogSink
 import dev.macodes.data.SessionLogErrorCode
@@ -161,6 +162,9 @@ class TerminalController(
 
     /** Callback when a remote system is automatically detected and saved (Termius-style recognition; the UI refreshes the host list accordingly). */
     var onSystemDetected: ((Host) -> Unit)? = null
+
+    /** Callback when opt-in VPS inventory specs are detected and cached. */
+    var onInventoryDetected: ((HostInventory) -> Unit)? = null
 
     /** When a Herdr session is launched, Herdr is not installed on the remote machine (the banner shows installation instructions). */
     var herdrNeedsInstall by mutableStateOf(false)

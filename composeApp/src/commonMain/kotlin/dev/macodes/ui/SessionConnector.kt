@@ -9,6 +9,7 @@ import dev.macodes.herdr.HerdrProbe
 import dev.macodes.mosh.MoshExitReason
 import dev.macodes.notify.NotificationCenter
 import dev.macodes.notify.NotificationEvent
+import dev.macodes.ssh.INVENTORY_PROBE_COMMAND
 import dev.macodes.ssh.MoshSession
 import dev.macodes.ssh.SYSTEM_PROBE_COMMAND
 import dev.macodes.ssh.SshConnection
@@ -16,6 +17,7 @@ import dev.macodes.ssh.SshException
 import dev.macodes.ssh.SshSession
 import dev.macodes.ssh.createKmpMoshSession
 import dev.macodes.ssh.detectSystemFromOutput
+import dev.macodes.ssh.parseHostInventoryOutput
 import dev.macodes.ssh.parseMoshConnect
 import dev.macodes.ssh.parseMoshServerPid
 import dev.macodes.util.NetworkChangeKind
@@ -499,6 +501,14 @@ internal class SessionConnector(
             // 3d. UDP confirmation success: mosh connection success—first gate the SSH prompt output, then close the connection (PAM MOTD
             //     (These bytes will be written into the UI buffer of the mosh session and permanently remain beneath the herdr TUI),
             //     close sync: Triggers onClosed; use swallowClosed to short-circuit and prevent false positives.
+            if (c.host.autoDetectInventory) {
+                val rawInv = runCatching { s.runCommand(INVENTORY_PROBE_COMMAND, 3_000) }.getOrNull()
+                val detected = rawInv?.let { parseHostInventoryOutput(it, c.nowMs()) }
+                if (detected != null && isCurrentSession(generation, s)) {
+                    c.repository.patchHost(c.host.id) { it.copy(inventory = detected) }
+                    c.onInventoryDetected?.invoke(detected)
+                }
+            }
             c.moshDisplayTakeover = true
             c.swallowClosed = true
             c.session = null
@@ -893,6 +903,16 @@ internal class SessionConnector(
                     // The entire upsert will overwrite the recently recorded TOFU fingerprint (causing the dialog to reappear when a new host reconnects).
                     c.repository.patchHost(c.host.id) { it.copy(system = detected) }
                     c.onSystemDetected?.invoke(c.host.copy(system = detected))
+                }
+            }
+        }
+        if (c.host.autoDetectInventory) {
+            c.scope.launch {
+                val raw = runCatching { s.runCommand(INVENTORY_PROBE_COMMAND, 5_000) }.getOrNull()
+                val detected = raw?.let { parseHostInventoryOutput(it, c.nowMs()) }
+                if (detected != null && c.status == ConnStatus.CONNECTED) {
+                    c.repository.patchHost(c.host.id) { it.copy(inventory = detected) }
+                    c.onInventoryDetected?.invoke(detected)
                 }
             }
         }

@@ -3,6 +3,7 @@ package dev.macodes.ui
 import androidx.compose.runtime.mutableStateListOf
 import dev.macodes.crypto.Sha256
 import dev.macodes.data.Host
+import dev.macodes.data.HostInventory
 import dev.macodes.data.HostRepository
 import dev.macodes.data.HostRepository.RecentSftpEntry
 import dev.macodes.data.HostRepository.RecentTerminalEntry
@@ -136,6 +137,7 @@ class SessionManager(
     fun restoreRecent(
         hosts: List<Host>,
         autoReconnect: Boolean,
+        onInventoryDetected: ((HostInventory) -> Unit)? = null,
         onSystemDetected: ((Host) -> Unit)? = null,
     ) {
         if (sessions.isNotEmpty()) return
@@ -159,6 +161,7 @@ class SessionManager(
                 certificateText = auth.certificateText,
             ).also {
                 it.onSystemDetected = onSystemDetected
+                it.onInventoryDetected = onInventoryDetected
                 sessions.add(it)
             }
         }
@@ -214,6 +217,7 @@ class SessionManager(
         host: Host,
         autoReconnect: Boolean,
         launchMode: TerminalLaunchMode = TerminalLaunchMode.SHELL,
+        onInventoryDetected: ((HostInventory) -> Unit)? = null,
         onSystemDetected: ((Host) -> Unit)? = null,
     ): TerminalController {
         TermLog.i("session") { "open ${host.name} (${sessions.count { it.host.id == host.id } + 1}th)" }
@@ -233,6 +237,7 @@ class SessionManager(
                 certificateText = auth.certificateText,
             )
         controller.onSystemDetected = onSystemDetected
+        controller.onInventoryDetected = onInventoryDetected
         sessions.add(controller)
         persist()
         return controller
