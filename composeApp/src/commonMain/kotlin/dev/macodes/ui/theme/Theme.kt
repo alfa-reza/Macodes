@@ -1,5 +1,6 @@
 package dev.macodes.ui.theme
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -457,10 +458,11 @@ fun MacodesTheme(
     mode: ThemeMode,
     content: @Composable () -> Unit,
 ) {
-    val scheme =
+    val dark =
         when (mode) {
-            ThemeMode.LIGHT -> LightColors
-            else -> DarkColors
+            ThemeMode.DARK -> true
+            ThemeMode.LIGHT -> false
+            ThemeMode.SYSTEM -> isSystemInDarkTheme()
         }
-    MaterialTheme(colorScheme = scheme, content = content)
+    MaterialTheme(colorScheme = if (dark) DarkColors else LightColors, content = content)
 }

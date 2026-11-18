@@ -1,5 +1,6 @@
 package dev.macodes.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -24,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.macodes.ui.theme.Corners
+import dev.macodes.ui.theme.Sizes
 import dev.macodes.ui.theme.Spacing
 import dev.macodes.util.TermLog
 import dev.macodes.util.monospaceFontFamily
@@ -62,6 +64,7 @@ fun SettingsDiagnosticsScreen(
                 Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(Corners.Lg),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                border = BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {
                 Column {

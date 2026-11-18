@@ -11,6 +11,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
@@ -70,11 +72,14 @@ import dev.macodes.data.ConnectionLogProtocol
 import dev.macodes.data.ConnectionMode
 import dev.macodes.data.Host
 import dev.macodes.data.HostAuthMethod
+import dev.macodes.data.HostFilterState
 import dev.macodes.data.HostRepository
+import dev.macodes.data.HostTag
 import dev.macodes.data.QuickConnectHistoryEntry
 import dev.macodes.data.QuickConnectParser
 import dev.macodes.data.RepositorySessionLogSink
 import dev.macodes.data.SECRET_SERVICE
+import dev.macodes.data.ScreenProtectionMode
 import dev.macodes.data.SecretStore
 import dev.macodes.data.SessionLogErrorCode
 import dev.macodes.data.SessionLogEventType
@@ -251,6 +256,11 @@ private sealed interface Screen {
 
     data class Edit(
         val hostId: String?,
+        val duplicateFromId: String? = null,
+    ) : Screen
+
+    data class Details(
+        val hostId: String,
     ) : Screen
 
     data class Agents(
@@ -267,7 +277,7 @@ enum class SettingsSubPage {
     TERMINAL,
     NOTIFICATION,
     DIAGNOSTICS,
-    SNIPPETS,
+    STORAGE,
     VOICE,
     PRIVACY,
 }
@@ -333,7 +343,13 @@ fun AppRoot(repository: HostRepository) {
     var showBackgroundProtectionGuide by remember { mutableStateOf(false) }
     var hosts by remember { mutableStateOf(repository.listHosts()) }
     var folders by remember { mutableStateOf(repository.listFolders()) }
+    var hostTags by remember { mutableStateOf(repository.listHostTags()) }
     var pendingNewHostFolderId by remember { mutableStateOf<String?>(null) }
+    val hostListState = rememberLazyListState()
+    var hostCurrentFolderId by remember { mutableStateOf<String?>(null) }
+    var hostSearchQuery by remember { mutableStateOf("") }
+    var hostSearchExpanded by remember { mutableStateOf(false) }
+    var hostFilterState by remember { mutableStateOf(HostFilterState()) }
     val navigation = remember { NavigationStack<Screen>(Screen.Home) }
     val screen = navigation.current
     val scope = rememberCoroutineScope()
@@ -854,7 +870,12 @@ fun AppRoot(repository: HostRepository) {
             return
         }
         pendingNavigate =
-            sessionManager.open(host, settings.autoReconnect, launchMode) {
+            sessionManager.open(
+                host = host,
+                autoReconnect = settings.autoReconnect,
+                launchMode = launchMode,
+                onInventoryDetected = { hosts = repository.listHosts() },
+            ) {
                 hosts = repository.listHosts()
             }
     }
@@ -892,7 +913,11 @@ fun AppRoot(repository: HostRepository) {
     // Resume the session list from the last run (only once; if the process dies, the connection will be lost; resuming to an unconnected state allows for reconnection)
     var sessionsRestored by remember { mutableStateOf(false) }
     if (!sessionsRestored) {
-        sessionManager.restoreRecent(hosts, settings.autoReconnect) {
+        sessionManager.restoreRecent(
+            hosts = hosts,
+            autoReconnect = settings.autoReconnect,
+            onInventoryDetected = { hosts = repository.listHosts() },
+        ) {
             hosts = repository.listHosts()
         }
         sessionsRestored = true
@@ -972,14 +997,34 @@ fun AppRoot(repository: HostRepository) {
 
     fun refreshHosts() {
         hosts = repository.listHosts()
+        folders = repository.listFolders()
+        hostTags = repository.listHostTags()
         workspaceRevision++
+    }
+
+    fun deleteHostAndSecrets(hostId: String) {
+        sessionManager.closeForHost(hostId)
+        agentControllerPool.remove(hostId)
+        SecretStore.delete(SECRET_SERVICE, secretAccountFor(hostId, "password"))
+        SecretStore.delete(SECRET_SERVICE, secretAccountFor(hostId, "privateKey"))
+        repository.deleteHost(hostId)
     }
 
     val terminalTheme = TerminalThemes.ALL.getOrElse(settings.terminalThemeIndex) { TerminalThemes.ALL[0] }
     val agentSessionItems =
-        agentControllers.values
-            .filter { it.currentSession != null || it.busy || it.pendingApprovals.isNotEmpty() }
-            .map { HostSessionItem.Agent(it) }
+        if (settings.aiAgentEnabled) {
+            agentControllers.values
+                .filter { it.currentSession != null || it.busy || it.pendingApprovals.isNotEmpty() }
+                .map { HostSessionItem.Agent(it) }
+        } else {
+            emptyList()
+        }
+    LaunchedEffect(settings.aiAgentEnabled) {
+        if (!settings.aiAgentEnabled) {
+            agentControllerPool.closeAll()
+        }
+    }
+    val screenProtectionController = remember { ScreenProtectionController() }
     val activeSessionCount =
         sessionManager.sessions.count { isActiveStatus(it.status) } +
             sessionManager.sftpSessions.count { it.session != null } +
@@ -1009,16 +1054,29 @@ fun AppRoot(repository: HostRepository) {
     CompositionLocalProvider(
         LocalAppStrings provides appStrings,
         LocalTerminalFont provides TerminalFont.byId(settings.terminalFontId),
+        LocalScreenProtectionController provides screenProtectionController,
     ) {
+        val screenProtectionActive =
+            when (settings.screenProtectionMode) {
+                ScreenProtectionMode.FULL -> true
+                ScreenProtectionMode.PARTIAL -> screenProtectionController.sensitiveCount > 0
+                ScreenProtectionMode.OFF -> false
+            }
+        ScreenProtectionEffect(active = screenProtectionActive)
         MacodesTheme(settings.theme) {
             // The status bar icon color depends solely on the actual brightness of the current screen’s background:
             // - Terminal tab → Adjust brightness based on terminal theme background brightness
             // - Other screens → Adjust brightness based on app theme
+            val systemDark = isSystemInDarkTheme()
             val pageDark =
                 if (screen is Screen.Terminal && currentTab is SessionTab.Terminal) {
                     terminalTheme.background().luminance() < 0.5f
                 } else {
-                    settings.theme != ThemeMode.LIGHT
+                    when (settings.theme) {
+                        ThemeMode.DARK -> true
+                        ThemeMode.LIGHT -> false
+                        ThemeMode.SYSTEM -> systemDark
+                    }
                 }
             PlatformStatusBarIcons(lightIcons = pageDark)
             Box(Modifier.fillMaxSize()) {
@@ -1164,6 +1222,7 @@ fun AppRoot(repository: HostRepository) {
                                                                 navigate(Screen.Edit(null))
                                                             },
                                                             folders = folders,
+                                                            tagDefinitions = hostTags,
                                                             onAddInFolder = { folderId ->
                                                                 pendingNewHostFolderId = folderId
                                                                 navigate(Screen.Edit(null))
@@ -1172,15 +1231,54 @@ fun AppRoot(repository: HostRepository) {
                                                                 repository.upsertFolder(folder)
                                                                 folders = repository.listFolders()
                                                             },
-                                                            onDeleteFolder = { folderId ->
-                                                                repository.deleteFolder(folderId)
-                                                                folders = repository.listFolders()
-                                                                hosts = repository.listHosts()
+                                                            onDeleteFolder = { folderId, deleteContents ->
+                                                                val deletedHostIds =
+                                                                    repository.deleteFolder(folderId, deleteContents)
+                                                                deletedHostIds.forEach { hid ->
+                                                                    sessionManager.closeForHost(hid)
+                                                                    agentControllerPool.remove(hid)
+                                                                    SecretStore.delete(
+                                                                        SECRET_SERVICE,
+                                                                        secretAccountFor(hid, "password"),
+                                                                    )
+                                                                    SecretStore.delete(
+                                                                        SECRET_SERVICE,
+                                                                        secretAccountFor(hid, "privateKey"),
+                                                                    )
+                                                                }
+                                                                refreshHosts()
                                                             },
                                                             onMoveHostsToFolder = { hostIds, folderId ->
                                                                 repository.moveHostsToFolder(hostIds, folderId)
                                                                 hosts = repository.listHosts()
                                                             },
+                                                            onOpenDetails = { navigate(Screen.Details(it.id)) },
+                                                            onDuplicate = { navigate(Screen.Edit(null, duplicateFromId = it.id)) },
+                                                            onTogglePin = { host ->
+                                                                repository.patchHost(host.id) { it.copy(isPinned = !it.isPinned) }
+                                                                hosts = repository.listHosts()
+                                                            },
+                                                            onUpsertTag = { tag ->
+                                                                repository.upsertHostTag(tag)
+                                                                refreshHosts()
+                                                            },
+                                                            onDeleteTag = { tagId ->
+                                                                repository.deleteHostTag(tagId)
+                                                                refreshHosts()
+                                                            },
+                                                            onUpdateHostsTags = { hostIds, addTags, removeTags ->
+                                                                repository.updateHostsTags(hostIds, addTags, removeTags)
+                                                                refreshHosts()
+                                                            },
+                                                            listState = hostListState,
+                                                            currentFolderId = hostCurrentFolderId,
+                                                            onCurrentFolderChange = { hostCurrentFolderId = it },
+                                                            query = hostSearchQuery,
+                                                            onQueryChange = { hostSearchQuery = it },
+                                                            searchExpanded = hostSearchExpanded,
+                                                            onSearchExpandedChange = { hostSearchExpanded = it },
+                                                            filterState = hostFilterState,
+                                                            onFilterStateChange = { hostFilterState = it },
                                                             onEdit = { navigate(Screen.Edit(it.id)) },
                                                             onConnect = { host ->
                                                                 openHostTerminal(host, TerminalLaunchMode.SHELL)
@@ -1189,29 +1287,32 @@ fun AppRoot(repository: HostRepository) {
                                                                 openHostTerminal(host, TerminalLaunchMode.HERDR)
                                                             },
                                                             onConnectBatch = { batch ->
-                                                                // Batch connection: Establish sessions one by one (run in the background) without redirecting to the terminal screen
                                                                 batch.forEach { host ->
-                                                                    sessionManager.open(host, settings.autoReconnect) {
+                                                                    sessionManager.open(
+                                                                        host = host,
+                                                                        autoReconnect = settings.autoReconnect,
+                                                                        onInventoryDetected = { hosts = repository.listHosts() },
+                                                                    ) {
                                                                         hosts = repository.listHosts()
                                                                     }
                                                                 }
                                                             },
                                                             onDisconnect = { host ->
-                                                                // Disconnect all sessions from this host: Keep terminal connections open + release SFTP connections (same as “Close All”)
                                                                 sessionManager.closeAllForHost(host.id)
                                                                 agentControllerPool.remove(host.id)
                                                             },
                                                             onOpenSession = { controller ->
-                                                                // Tap the card = Connect to this host using the current configuration: Old sessions with changed configurations or credentials will not be reused,
-                                                                // Create a new session using the current configuration (previous sessions remain on the Connections page and can be manually closed or re-entered).
                                                                 if (controller.credentialKey !=
                                                                     sessionManager.signatureFor(controller.host)
                                                                 ) {
                                                                     val fresh =
                                                                         sessionManager.open(
-                                                                            controller.host,
-                                                                            settings.autoReconnect,
-                                                                            controller.launchMode,
+                                                                            host = controller.host,
+                                                                            autoReconnect = settings.autoReconnect,
+                                                                            launchMode = controller.launchMode,
+                                                                            onInventoryDetected = {
+                                                                                hosts = repository.listHosts()
+                                                                            },
                                                                         ) {
                                                                             hosts = repository.listHosts()
                                                                         }
@@ -1222,11 +1323,9 @@ fun AppRoot(repository: HostRepository) {
                                                                 }
                                                             },
                                                             onOpenSftp = { host, session ->
-                                                                // Use the entry's `uiState` (if available): re-enter without resetting the browser state/path
                                                                 val entry =
                                                                     sessionManager.sftpSessions.firstOrNull {
-                                                                        it.host.id ==
-                                                                            host.id
+                                                                        it.host.id == host.id
                                                                     }
                                                                 currentTab =
                                                                     SessionTab.Sftp(host, session, entry?.uiState ?: SftpUiState())
@@ -1234,25 +1333,15 @@ fun AppRoot(repository: HostRepository) {
                                                             },
                                                             onStartSftp = { host -> connectSftp(host, null) },
                                                             onCloseAllSessions = { host ->
-                                                                // Close all sessions on this host: Disconnect terminal session + Release SFTP connection
                                                                 sessionManager.closeAllForHost(host.id)
                                                                 agentControllerPool.remove(host.id)
                                                             },
                                                             onDelete = { host ->
-                                                                sessionManager.closeForHost(host.id)
-                                                                agentControllerPool.remove(host.id)
-                                                                SecretStore.delete(
-                                                                    SECRET_SERVICE,
-                                                                    secretAccountFor(host.id, "password"),
-                                                                )
-                                                                SecretStore.delete(
-                                                                    SECRET_SERVICE,
-                                                                    secretAccountFor(host.id, "privateKey"),
-                                                                )
-                                                                repository.deleteHost(host.id)
+                                                                deleteHostAndSecrets(host.id)
                                                                 refreshHosts()
                                                             },
                                                             onAgents = { host -> navigate(Screen.Agents(host.id)) },
+                                                            aiAgentEnabled = settings.aiAgentEnabled,
                                                             onBack = { workspaceSubPage = null },
                                                         )
                                                     }
@@ -1478,13 +1567,16 @@ fun AppRoot(repository: HostRepository) {
 
                         is Screen.Edit -> {
                             val existing = hosts.firstOrNull { it.id == s.hostId }
-                            val existingTags = remember(hosts) { collectAllTags(hosts) }
+                            val duplicateTemplate = s.duplicateFromId?.let { did -> hosts.firstOrNull { it.id == did } }
+                            val existingTags = remember(hosts, hostTags) { collectAllTags(hosts, hostTags) }
                             HostEditScreen(
                                 existing = existing,
                                 repository = repository,
                                 folders = folders,
                                 existingTags = existingTags,
-                                initialFolderId = if (existing == null) pendingNewHostFolderId else null,
+                                initialFolderId = if (existing == null && duplicateTemplate == null) pendingNewHostFolderId else null,
+                                existingHosts = hosts,
+                                initialTemplate = duplicateTemplate,
                                 onSave = { host, pw, key ->
                                     if (pw.isNotBlank()) {
                                         SecretStore.set(
@@ -1510,6 +1602,85 @@ fun AppRoot(repository: HostRepository) {
                                     navigateBack()
                                 },
                             )
+                        }
+
+                        is Screen.Details -> {
+                            val host = hosts.firstOrNull { it.id == s.hostId }
+                            if (host == null) {
+                                navigateBack()
+                            } else {
+                                var showAssignTags by remember(host.id) { mutableStateOf(false) }
+                                val activeSshSession =
+                                    sessionManager.sessions
+                                        .firstOrNull {
+                                            it.host.id == host.id && it.status == ConnStatus.CONNECTED && it.session?.isActive() == true
+                                        }?.session
+                                HostDetailsScreen(
+                                    host = host,
+                                    folders = folders,
+                                    tagDefinitions = hostTags,
+                                    activeSshSession = activeSshSession,
+                                    repository = repository,
+                                    snackbarHostState = snackbarHostState,
+                                    onBack = ::navigateBack,
+                                    onConnect = { openHostTerminal(host, TerminalLaunchMode.SHELL) },
+                                    onSftp = {
+                                        val existingSftp =
+                                            sessionManager.sftpSessions.firstOrNull { it.host.id == host.id }
+                                        if (existingSftp != null) {
+                                            currentTab = SessionTab.Sftp(existingSftp.host, existingSftp.session, existingSftp.uiState)
+                                            navigate(Screen.Terminal)
+                                        } else {
+                                            connectSftp(host, null)
+                                        }
+                                    },
+                                    onAgents = { navigate(Screen.Agents(host.id)) },
+                                    aiAgentEnabled = settings.aiAgentEnabled,
+                                    onEdit = { navigate(Screen.Edit(host.id)) },
+                                    onDuplicate = { navigate(Screen.Edit(null, duplicateFromId = host.id)) },
+                                    onTogglePin = {
+                                        repository.patchHost(host.id) { it.copy(isPinned = !it.isPinned) }
+                                        refreshHosts()
+                                    },
+                                    onToggleAutoDetectInventory = { enabled ->
+                                        repository.patchHost(host.id) { it.copy(autoDetectInventory = enabled) }
+                                        refreshHosts()
+                                    },
+                                    onManageTags = { showAssignTags = true },
+                                    onInventoryRefreshed = { refreshHosts() },
+                                    onDelete = {
+                                        deleteHostAndSecrets(host.id)
+                                        refreshHosts()
+                                        navigateBack()
+                                    },
+                                )
+                                if (showAssignTags) {
+                                    HostAssignTagsDialog(
+                                        targetCount = 1,
+                                        initialSelectedTags = host.tags.toSet(),
+                                        availableTags = hostTags,
+                                        ws = currentStrings.value.workspace,
+                                        s = currentStrings.value,
+                                        onCreateTag = { name ->
+                                            repository.upsertHostTag(HostTag(id = newId(), name = name))
+                                            refreshHosts()
+                                        },
+                                        onApplySingleHost = { nextTags ->
+                                            val toRemove =
+                                                host.tags
+                                                    .filterNot { ex -> nextTags.any { it.equals(ex, ignoreCase = true) } }
+                                                    .toSet()
+                                            val toAdd =
+                                                nextTags
+                                                    .filterNot { nx -> host.tags.any { it.equals(nx, ignoreCase = true) } }
+                                                    .toSet()
+                                            repository.updateHostsTags(setOf(host.id), toAdd, toRemove)
+                                            refreshHosts()
+                                        },
+                                        onDismiss = { showAssignTags = false },
+                                    )
+                                }
+                            }
                         }
 
                         is Screen.Agents -> {

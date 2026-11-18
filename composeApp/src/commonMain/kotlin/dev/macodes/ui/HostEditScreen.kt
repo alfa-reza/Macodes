@@ -37,6 +37,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -74,12 +75,14 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.macodes.data.CloudProvider
 import dev.macodes.data.ConnectionMode
 import dev.macodes.data.CredentialKind
 import dev.macodes.data.Host
 import dev.macodes.data.HostAuthMethod
 import dev.macodes.data.HostFolder
 import dev.macodes.data.HostRepository
+import dev.macodes.data.findPotentialDuplicateHosts
 import dev.macodes.data.newId
 import dev.macodes.ui.theme.Corners
 import dev.macodes.ui.theme.Sizes
@@ -96,28 +99,77 @@ fun HostEditScreen(
     folders: List<HostFolder> = emptyList(),
     existingTags: List<String> = emptyList(),
     initialFolderId: String? = null,
+    existingHosts: List<Host> = emptyList(),
+    initialTemplate: Host? = null,
 ) {
     val s = LocalAppStrings.current
-    var name by remember { mutableStateOf(existing?.name ?: "") }
-    var hostname by remember { mutableStateOf(existing?.hostname ?: "") }
-    var port by remember { mutableStateOf((existing?.port ?: 22).toString()) }
-    var username by remember { mutableStateOf(existing?.username ?: "root") }
-    var authMethod by remember { mutableStateOf(existing?.authMethod ?: HostAuthMethod.PASSWORD) }
+    val ws = s.workspace
+    SensitiveScreenProtection()
+    val seed = existing ?: initialTemplate
+    var name by remember {
+        mutableStateOf(
+            when {
+                existing != null -> existing.name
+                initialTemplate != null -> "${initialTemplate.name.ifBlank { initialTemplate.hostname }} (Copy)"
+                else -> ""
+            },
+        )
+    }
+    var hostname by remember { mutableStateOf(seed?.hostname ?: "") }
+    var port by remember { mutableStateOf((seed?.port ?: 22).toString()) }
+    var username by remember { mutableStateOf(seed?.username ?: "root") }
+    var authMethod by remember { mutableStateOf(seed?.authMethod ?: HostAuthMethod.PASSWORD) }
     val credentials = remember(repository) { repository.listCredentials() }
-    var credentialId by remember { mutableStateOf(existing?.credentialId?.takeIf { id -> credentials.any { it.id == id } }) }
-    var connectionMode by remember { mutableStateOf(existing?.connectionMode ?: ConnectionMode.SSH) }
+    var credentialId by remember { mutableStateOf(seed?.credentialId?.takeIf { id -> credentials.any { it.id == id } }) }
+    var connectionMode by remember { mutableStateOf(seed?.connectionMode ?: ConnectionMode.SSH) }
     var password by remember { mutableStateOf("") }
     var privateKey by remember { mutableStateOf("") }
-    var tags by remember { mutableStateOf(existing?.tags ?: emptyList()) }
+    var tags by remember { mutableStateOf(seed?.tags ?: emptyList()) }
     var folderId by remember {
-        mutableStateOf((existing?.folderId ?: initialFolderId)?.takeIf { fid -> folders.any { it.id == fid } })
+        mutableStateOf((seed?.folderId ?: initialFolderId)?.takeIf { fid -> folders.any { it.id == fid } })
     }
+    var cloudProvider by remember { mutableStateOf(seed?.cloudProvider) }
+    var isPinned by remember { mutableStateOf(existing?.isPinned ?: false) }
+    var autoDetectInventory by remember { mutableStateOf(seed?.autoDetectInventory ?: false) }
     var showFolderPicker by remember { mutableStateOf(false) }
     // Command Snippet Management Page Overlay (Entry Point for Host Editor Page)
     var showSnippets by remember { mutableStateOf(false) }
-    var startupCommand by remember { mutableStateOf(existing?.startupCommand ?: "") }
-    var moshThemeSync by remember { mutableStateOf(existing?.moshThemeSync ?: false) }
-    var moshUdpPort by remember { mutableStateOf((existing?.moshUdpPort ?: 0).toString()) }
+    var startupCommand by remember { mutableStateOf(seed?.startupCommand ?: "") }
+    var moshThemeSync by remember { mutableStateOf(seed?.moshThemeSync ?: false) }
+    var moshUdpPort by remember { mutableStateOf((seed?.moshUdpPort ?: 0).toString()) }
+    var pendingDuplicateHost by remember { mutableStateOf<Host?>(null) }
+
+    fun buildHost(): Host {
+        val id = existing?.id ?: newId()
+        // Preserve repository-written runtime metadata (OS detection, TOFU fingerprint, lastConnectedAt, inventory).
+        val latest = repository.getHost(id)
+        return Host(
+            id = id,
+            name = name.ifBlank { hostname },
+            hostname = hostname.trim(),
+            port = port.toIntOrNull() ?: 22,
+            username = username.ifBlank { "root" },
+            system = latest?.system ?: existing?.system ?: "",
+            authMethod = authMethod,
+            connectionMode = connectionMode,
+            tags = tags,
+            createdAt =
+                existing?.createdAt ?: kotlinx.datetime.Clock.System
+                    .now()
+                    .toEpochMilliseconds(),
+            lastConnectedAt = latest?.lastConnectedAt ?: existing?.lastConnectedAt ?: 0L,
+            knownHostFingerprint = latest?.knownHostFingerprint ?: existing?.knownHostFingerprint,
+            startupCommand = startupCommand.trim(),
+            moshThemeSync = moshThemeSync,
+            moshUdpPort = moshUdpPort.toIntOrNull()?.takeIf { it in 1024..65535 } ?: 0,
+            credentialId = credentialId,
+            folderId = folderId?.takeIf { fid -> folders.any { it.id == fid } },
+            isPinned = isPinned,
+            cloudProvider = cloudProvider,
+            autoDetectInventory = autoDetectInventory,
+            inventory = latest?.inventory ?: existing?.inventory,
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -126,38 +178,18 @@ fun HostEditScreen(
                 onBack = onCancel,
                 actions = {
                     TextButton(onClick = {
-                        val id = existing?.id ?: newId()
-                        // Server record fields (detected system / TOFU fingerprint / last connection) are taken from the repository's latest values:
-                        // Latest value: The status on the hosts list page may be delayed (fingerprints are only written when a connection is established,
-                        // (No callback refresh in case of system failure); using an existing snapshot will retain the already authorized
-                        // Reset fingerprint to null → Repeatedly prompts “Confirm Server Identity” upon reconnecting
-                        val latest = repository.getHost(id)
-                        val host =
-                            Host(
-                                id = id,
-                                name = name.ifBlank { hostname },
-                                hostname = hostname.trim(),
-                                port = port.toIntOrNull() ?: 22,
-                                username = username.ifBlank { "root" },
-                                // The system automatically detects and writes these upon connection (Termius-style); do not enter them manually on the edit page;
-                                // Retain detected values; do not overwrite them.
-                                system = latest?.system ?: existing?.system ?: "",
-                                authMethod = authMethod,
-                                connectionMode = connectionMode,
-                                tags = tags,
-                                createdAt =
-                                    existing?.createdAt ?: kotlinx.datetime.Clock.System
-                                        .now()
-                                        .toEpochMilliseconds(),
-                                lastConnectedAt = latest?.lastConnectedAt ?: existing?.lastConnectedAt ?: 0L,
-                                knownHostFingerprint = latest?.knownHostFingerprint ?: existing?.knownHostFingerprint,
-                                startupCommand = startupCommand.trim(),
-                                moshThemeSync = moshThemeSync,
-                                moshUdpPort = moshUdpPort.toIntOrNull()?.takeIf { it in 1024..65535 } ?: 0,
-                                credentialId = credentialId,
-                                folderId = folderId?.takeIf { fid -> folders.any { it.id == fid } },
-                            )
-                        onSave(host, password, privateKey)
+                        val candidate = buildHost()
+                        val duplicates =
+                            if (existingHosts.isEmpty()) {
+                                emptyList()
+                            } else {
+                                findPotentialDuplicateHosts(candidate, existingHosts)
+                            }
+                        if (duplicates.isNotEmpty()) {
+                            pendingDuplicateHost = candidate
+                        } else {
+                            onSave(candidate, password, privateKey)
+                        }
                     }) { Text(s.editSave) }
                 },
             )
@@ -499,6 +531,83 @@ fun HostEditScreen(
                 }
             }
 
+            // Section 4: Cloud Provider, Pin & VPS Inventory Detection
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(Corners.Lg),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(Spacing.Lg),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.Md),
+                ) {
+                    Text(
+                        text = ws.hostOrg.cloudProviderLabel,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.Xs),
+                    ) {
+                        FilterChip(
+                            selected = cloudProvider == null,
+                            onClick = { cloudProvider = null },
+                            label = { Text(ws.hostOrg.providerNotSpecified) },
+                            colors = chipColors,
+                        )
+                        CloudProvider.entries.forEach { provider ->
+                            FilterChip(
+                                selected = cloudProvider == provider,
+                                onClick = { cloudProvider = if (cloudProvider == provider) null else provider },
+                                label = { Text(cloudProviderDisplayLabel(provider, ws)) },
+                                colors = chipColors,
+                            )
+                        }
+                    }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            ws.hostOrg.pinToggleLabel,
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Switch(
+                            checked = isPinned,
+                            onCheckedChange = { isPinned = it },
+                            colors = macodesSwitchColors(),
+                        )
+                    }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                ws.hostOrg.inventoryAutoDetectLabel,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                ws.hostOrg.inventoryAutoDetectHint,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = autoDetectInventory,
+                            onCheckedChange = { autoDetectInventory = it },
+                            colors = macodesSwitchColors(),
+                        )
+                    }
+                }
+            }
+
             if (connectionMode == ConnectionMode.MOSH) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -554,6 +663,35 @@ fun HostEditScreen(
                 showFolderPicker = false
             },
             onDismiss = { showFolderPicker = false },
+        )
+    }
+
+    pendingDuplicateHost?.let { duplicateCandidate ->
+        AlertDialog(
+            onDismissRequest = { pendingDuplicateHost = null },
+            title = { Text(ws.hostOrg.duplicateSaveTitle) },
+            text = {
+                Text(
+                    ws.hostOrg.duplicateSaveMessage(
+                        "${duplicateCandidate.username}@${duplicateCandidate.hostname}:${duplicateCandidate.port}",
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDuplicateHost = null
+                        onSave(duplicateCandidate, password, privateKey)
+                    },
+                ) {
+                    Text(ws.hostOrg.saveAnyway)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDuplicateHost = null }) {
+                    Text(s.terminalCancel)
+                }
+            },
         )
     }
 

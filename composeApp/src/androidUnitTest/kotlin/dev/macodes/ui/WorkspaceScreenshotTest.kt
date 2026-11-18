@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalInspectionMode
 import com.russhwolf.settings.MapSettings
 import dev.macodes.MacodesApplication
+import dev.macodes.data.AppSettings
 import dev.macodes.data.ConnectionLogProtocol
 import dev.macodes.data.CredentialKind
 import dev.macodes.data.Host
@@ -30,7 +31,10 @@ import dev.macodes.data.SessionLogEvent
 import dev.macodes.data.SessionLogEventType
 import dev.macodes.data.SessionLogStatus
 import dev.macodes.data.ThemeMode
+import dev.macodes.notify.NotificationPermissionController
+import dev.macodes.notify.NotificationPermissionState
 import dev.macodes.ui.theme.MacodesTheme
+import dev.macodes.util.BackgroundProtectionState
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertTrue
@@ -258,6 +262,12 @@ class WorkspaceScreenshotTest {
                 dev.macodes.data.HostFolder(id = "f-eu", name = "EU West", parentId = "f-prod", createdAt = 2L),
                 dev.macodes.data.HostFolder(id = "f-lab", name = "Home Lab", createdAt = 3L),
             )
+        val sampleTags =
+            listOf(
+                dev.macodes.data.HostTag(id = "t1", name = "prod", colorIndex = 0),
+                dev.macodes.data.HostTag(id = "t2", name = "edge", colorIndex = 1),
+                dev.macodes.data.HostTag(id = "t3", name = "db", colorIndex = 3),
+            )
         val sampleHosts =
             listOf(
                 Host(
@@ -267,6 +277,16 @@ class WorkspaceScreenshotTest {
                     username = "ubuntu",
                     system = "ubuntu",
                     tags = listOf("prod", "edge", "eu-west", "nginx"),
+                    cloudProvider = dev.macodes.data.CloudProvider.AWS,
+                    isPinned = true,
+                    inventory =
+                        dev.macodes.data.HostInventory(
+                            cpuCores = 4,
+                            memoryTotalMb = 8192L,
+                            diskTotalMb = 81920L,
+                            architecture = "x86_64",
+                            detectedAt = 1_731_600_000_000L,
+                        ),
                     createdAt = 1L,
                 ),
                 Host(
@@ -278,6 +298,12 @@ class WorkspaceScreenshotTest {
                     system = "debian",
                     connectionMode = dev.macodes.data.ConnectionMode.MOSH,
                     tags = listOf("db", "prod"),
+                    cloudProvider = dev.macodes.data.CloudProvider.DIGITALOCEAN,
+                    inventory =
+                        dev.macodes.data.HostInventory(
+                            cpuCores = 2,
+                            memoryTotalMb = 4096L,
+                        ),
                     createdAt = 2L,
                 ),
                 Host(
@@ -296,6 +322,7 @@ class WorkspaceScreenshotTest {
                 hosts = sampleHosts,
                 hostSessions = emptyMap(),
                 folders = sampleFolders,
+                tagDefinitions = sampleTags,
                 onAdd = {},
                 onEdit = {},
                 onConnect = {},
@@ -308,6 +335,73 @@ class WorkspaceScreenshotTest {
                 onOpenSftp = { _, _ -> },
                 onStartSftp = {},
                 onCloseAllSessions = {},
+                onBack = {},
+            )
+        }
+        renderAndSave("11-host-details.png") {
+            HostDetailsScreen(
+                host = sampleHosts.first(),
+                folders = sampleFolders,
+                tagDefinitions = sampleTags,
+                activeSshSession = null,
+                repository = repo,
+                snackbarHostState = androidx.compose.material3.SnackbarHostState(),
+                onBack = {},
+                onConnect = {},
+                onSftp = {},
+                onAgents = {},
+                onEdit = {},
+                onDuplicate = {},
+                onTogglePin = {},
+                onToggleAutoDetectInventory = {},
+                onManageTags = {},
+                onInventoryRefreshed = {},
+                onDelete = {},
+            )
+        }
+        renderAndSave("12-settings-main.png") {
+            Scaffold(
+                contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                bottomBar = {
+                    HomeBottomBar(
+                        selectedTab = HomeTab.SETTINGS,
+                        activeSessionCount = 1,
+                        onSelectTab = {},
+                    )
+                },
+            ) { padding ->
+                Box(Modifier.padding(padding)) {
+                    SettingsScreen(
+                        settings = AppSettings(),
+                        onChange = {},
+                        repository = repo,
+                        notificationPermissionState = NotificationPermissionState.UNKNOWN,
+                        notificationPermissionController =
+                            object : NotificationPermissionController {
+                                override fun refresh(onResult: (NotificationPermissionState) -> Unit) {}
+
+                                override fun request(onResult: (NotificationPermissionState) -> Unit) {}
+                            },
+                        onNotificationPermissionStateChange = {},
+                        backgroundProtectionState = BackgroundProtectionState.SYSTEM_MANAGED,
+                    )
+                }
+            }
+        }
+        renderAndSave("13-settings-terminal.png") {
+            SettingsTerminalScreen(
+                currentThemeIndex = 5,
+                currentFontId = "jetbrains",
+                fontSizeSp = 13,
+                cursorBlink = true,
+                onChangeTheme = {},
+                onChangeFont = {},
+                onBack = {},
+            )
+        }
+        renderAndSave("14-settings-storage.png") {
+            SettingsStorageScreen(
+                repository = repo,
                 onBack = {},
             )
         }

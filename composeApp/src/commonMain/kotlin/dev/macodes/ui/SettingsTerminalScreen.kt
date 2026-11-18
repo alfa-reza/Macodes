@@ -1,9 +1,11 @@
 package dev.macodes.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -22,8 +25,10 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,15 +37,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.macodes.ui.theme.Corners
+import dev.macodes.ui.theme.Sizes
 import dev.macodes.ui.theme.Spacing
 import dev.macodes.ui.theme.TerminalTheme
 import dev.macodes.ui.theme.TerminalThemes
 import dev.macodes.util.TerminalFont
 import dev.macodes.util.monospaceFontFamily
+import kotlinx.coroutines.delay
 
 /**
  * Terminal Themes and Fonts Screen (Termius Style):
@@ -50,6 +61,8 @@ import dev.macodes.util.monospaceFontFamily
 fun SettingsTerminalScreen(
     currentThemeIndex: Int,
     currentFontId: String,
+    fontSizeSp: Int = 12,
+    cursorBlink: Boolean = true,
     onChangeTheme: (Int) -> Unit,
     onChangeFont: (String) -> Unit,
     onBack: () -> Unit,
@@ -57,6 +70,18 @@ fun SettingsTerminalScreen(
     val s = LocalAppStrings.current
     var fontMenuOpen by remember { mutableStateOf(false) }
     val selectedFont = TerminalFont.byId(currentFontId)
+    val selectedTheme = TerminalThemes.ALL.getOrElse(currentThemeIndex) { TerminalThemes.ALL[0] }
+    var cursorVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(cursorBlink) {
+        if (!cursorBlink) {
+            cursorVisible = true
+        } else {
+            while (true) {
+                delay(550)
+                cursorVisible = !cursorVisible
+            }
+        }
+    }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         MacodesHeader(
@@ -64,8 +89,70 @@ fun SettingsTerminalScreen(
             onBack = onBack,
         )
 
-        // Fixed font area; theme grid scrolls independently (LazyVerticalGrid cannot be nested within verticalScroll)
+        // Fixed preview + font area; theme grid scrolls independently (LazyVerticalGrid cannot be nested within verticalScroll)
         Column(Modifier.fillMaxSize()) {
+            Text(
+                s.settingsExtra.terminalLivePreview,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = Spacing.Xl, top = Spacing.Sm, bottom = Spacing.Xs),
+            )
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.Lg),
+                shape = RoundedCornerShape(Corners.Lg),
+                color = selectedTheme.background(),
+                border = BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant),
+            ) {
+                val previewSize = fontSizeSp.coerceIn(10, 18).sp
+                val previewFont = monospaceFontFamily()
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(Spacing.Md),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text =
+                            buildAnnotatedString {
+                                withStyle(SpanStyle(color = selectedTheme.ansi(2), fontWeight = FontWeight.Bold)) {
+                                    append("deploy@prod-eu")
+                                }
+                                withStyle(SpanStyle(color = selectedTheme.foreground())) {
+                                    append(":")
+                                }
+                                withStyle(SpanStyle(color = selectedTheme.ansi(4), fontWeight = FontWeight.Bold)) {
+                                    append("~/srv")
+                                }
+                                withStyle(SpanStyle(color = selectedTheme.foreground())) {
+                                    append("$ systemctl status nginx")
+                                }
+                            },
+                        fontFamily = previewFont,
+                        fontSize = previewSize,
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text =
+                                buildAnnotatedString {
+                                    withStyle(SpanStyle(color = selectedTheme.ansi(2), fontWeight = FontWeight.Bold)) {
+                                        append("● active (running)")
+                                    }
+                                    withStyle(SpanStyle(color = selectedTheme.foreground())) {
+                                        append("  80/tcp, 443/tcp ")
+                                    }
+                                },
+                            fontFamily = previewFont,
+                            fontSize = previewSize,
+                        )
+                        Box(
+                            modifier =
+                                Modifier
+                                    .size(width = 7.dp, height = 14.dp)
+                                    .background(if (cursorVisible) selectedTheme.cursor() else Color.Transparent),
+                        )
+                    }
+                }
+            }
+
             Text(
                 s.settingsTerminalFontLabel,
                 style = MaterialTheme.typography.labelLarge,

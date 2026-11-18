@@ -112,6 +112,8 @@ internal fun CredentialEditKeyScreen(
             validInspect?.encrypted == true ||
             storedPassphrase.isNotEmpty()
 
+    SensitiveScreenProtection()
+
     Scaffold(
         topBar = {
             MacodesLargeHeader(
@@ -435,6 +437,8 @@ internal fun CredentialEditCertificateScreen(
                 }
             }
         }
+
+    SensitiveScreenProtection()
 
     Scaffold(
         topBar = {

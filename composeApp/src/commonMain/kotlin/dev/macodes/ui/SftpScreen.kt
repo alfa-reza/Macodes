@@ -331,6 +331,7 @@ fun SftpContent(
     onFavoritesChanged: (List<String>) -> Unit = {},
     /** Navigation path change callback (AppRoot provides persistence of data in real time; data is not lost upon crash or force kill). */
     onPathChanged: (String) -> Unit = {},
+    aiAgentEnabled: Boolean = true,
     /** Pass the selected remote path directly to the Agent on the same host; do not download to a phone or re-upload. */
     onAskAgent: (AgentLaunchContext) -> Unit = {},
 ) {
@@ -836,27 +837,29 @@ fun SftpContent(
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
                     )
-                    IconButton(
-                        onClick = {
-                            val selectedPaths =
-                                visible
-                                    .filter { it.name in state.selection }
-                                    .map { joinPath(path, it.name) }
-                            if (selectedPaths.isNotEmpty()) {
-                                clearSelection()
-                                sftpAgentLaunchContext(
-                                    selectedPaths,
-                                    path,
-                                    s.nativeAgents.fileContextPrompt,
-                                )?.let(onAskAgent)
-                            }
-                        },
-                    ) {
-                        Icon(
-                            Icons.Filled.SmartToy,
-                            contentDescription = s.nativeAgents.askAboutFiles,
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
+                    if (aiAgentEnabled) {
+                        IconButton(
+                            onClick = {
+                                val selectedPaths =
+                                    visible
+                                        .filter { it.name in state.selection }
+                                        .map { joinPath(path, it.name) }
+                                if (selectedPaths.isNotEmpty()) {
+                                    clearSelection()
+                                    sftpAgentLaunchContext(
+                                        selectedPaths,
+                                        path,
+                                        s.nativeAgents.fileContextPrompt,
+                                    )?.let(onAskAgent)
+                                }
+                            },
+                        ) {
+                            Icon(
+                                Icons.Filled.SmartToy,
+                                contentDescription = s.nativeAgents.askAboutFiles,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     }
                     TextButton(onClick = { selectAllVisible() }) {
                         Text(s.sftpExt.selectAll, style = MaterialTheme.typography.labelMedium)

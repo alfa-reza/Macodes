@@ -93,19 +93,26 @@ class HostRepositoryTest {
     @Test
     fun settingsRoundtrip() {
         val r = repo()
-        assertEquals(AppSettings(), r.loadSettings())
+        val defaults = r.loadSettings()
+        assertEquals(AppSettings(), defaults)
+        assertEquals(ScreenProtectionMode.PARTIAL, defaults.screenProtectionMode)
+        assertTrue(!defaults.aiAgentEnabled)
 
         r.saveSettings(
             AppSettings(
                 theme = ThemeMode.LIGHT,
                 terminalFontSize = 16,
                 autoReconnect = false,
+                screenProtectionMode = ScreenProtectionMode.FULL,
+                aiAgentEnabled = true,
             ),
         )
         val loaded = r.loadSettings()
         assertEquals(ThemeMode.LIGHT, loaded.theme)
         assertEquals(16, loaded.terminalFontSize)
         assertTrue(!loaded.autoReconnect)
+        assertEquals(ScreenProtectionMode.FULL, loaded.screenProtectionMode)
+        assertTrue(loaded.aiAgentEnabled)
     }
 
     @Test
@@ -368,5 +375,58 @@ class HostRepositoryTest {
         r.deleteFolder("f-prod")
         assertTrue(r.listFolders().isEmpty())
         assertNull(r.getHost("h1")!!.folderId)
+    }
+
+    @Test
+    fun deleteFolderWithContentsRemovesDescendantsAndHosts() {
+        val r = repo()
+        val prod = HostFolder(id = "f-prod", name = "Production", createdAt = 1L)
+        val eu = HostFolder(id = "f-eu", name = "EU West", parentId = "f-prod", createdAt = 2L)
+        r.upsertFolder(prod)
+        r.upsertFolder(eu)
+        r.upsertHost(host("h1").copy(folderId = "f-eu"))
+        r.upsertHost(host("h2").copy(folderId = "f-prod"))
+        r.upsertHost(host("h-root"))
+
+        val removed = r.deleteFolder("f-prod", deleteContents = true)
+        assertEquals(setOf("h1", "h2"), removed)
+        assertTrue(r.listFolders().isEmpty())
+        assertEquals(listOf("h-root"), r.listHosts().map { it.id })
+    }
+
+    @Test
+    fun hostTagsCrudCascadesRenameDeleteWithoutOrphaningDefinitions() {
+        val r = repo()
+        r.upsertHost(host("h1").copy(tags = listOf("prod", "web")))
+        val prodTag = r.listHostTags().first { it.name == "prod" }
+
+        // Removing a tag from a host keeps the tag definition intact
+        r.updateHostsTags(setOf("h1"), removeTags = setOf("prod"))
+        assertEquals(listOf("web"), r.getHost("h1")!!.tags)
+        assertTrue(r.listHostTags().any { it.id == prodTag.id })
+
+        // Re-adding and renaming updates both tag definition and referencing hosts
+        r.updateHostsTags(setOf("h1"), addTags = setOf("prod"))
+        r.upsertHostTag(prodTag.copy(name = "production", colorIndex = 2))
+        assertEquals(listOf("web", "production"), r.getHost("h1")!!.tags)
+
+        // Deleting a tag definition clears all host references
+        r.deleteHostTag(prodTag.id)
+        assertEquals(listOf("web"), r.getHost("h1")!!.tags)
+        assertFalse(r.listHostTags().any { it.id == prodTag.id })
+    }
+
+    @Test
+    fun legacyHostJsonDeserializesWithSafeDefaults() {
+        val settings = MapSettings()
+        settings.putString(
+            "macodes.hosts.v1",
+            """[{"id":"legacy-1","name":"legacy","hostname":"10.0.0.9","port":22,"username":"root"}]""",
+        )
+        val loaded = HostRepository(settings).listHosts().single()
+        assertFalse(loaded.isPinned)
+        assertNull(loaded.cloudProvider)
+        assertFalse(loaded.autoDetectInventory)
+        assertNull(loaded.inventory)
     }
 }

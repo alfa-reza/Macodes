@@ -146,6 +146,8 @@ fun KeychainScreen(
 
     val selectionMode = selectedIds.isNotEmpty()
 
+    SensitiveScreenProtection(enabled = showPasswordDialog || sheetStep != CredentialSheetStep.NONE)
+
     LaunchedEffect(searchExpanded) {
         if (searchExpanded) {
             delay(150)

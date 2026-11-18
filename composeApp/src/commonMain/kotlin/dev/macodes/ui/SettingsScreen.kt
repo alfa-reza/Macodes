@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.size
@@ -30,9 +31,13 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.FormatSize
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
@@ -40,16 +45,21 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.ScreenshotMonitor
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Vibration
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.ViewColumn
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -57,7 +67,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchColors
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -75,24 +85,32 @@ import dev.macodes.APP_VERSION
 import dev.macodes.data.AppSettings
 import dev.macodes.data.HostRepository
 import dev.macodes.data.SECRET_SERVICE
+import dev.macodes.data.ScreenProtectionMode
 import dev.macodes.data.SecretStore
 import dev.macodes.data.ThemeMode
 import dev.macodes.data.asrKeyAccount
 import dev.macodes.notify.NotificationPermissionController
 import dev.macodes.notify.NotificationPermissionState
+import dev.macodes.ui.theme.Alphas
 import dev.macodes.ui.theme.Corners
 import dev.macodes.ui.theme.Sizes
 import dev.macodes.ui.theme.Spacing
 import dev.macodes.ui.theme.TerminalThemes
 import dev.macodes.util.BackgroundProtectionState
 import dev.macodes.util.TermLog
+import dev.macodes.util.formatByteSize
+import dev.macodes.util.getAppCacheStats
 import dev.macodes.util.openApplicationSettings
 
-// ---- About External Links (Official Website / Contact Email) ----
 private const val WEBSITE_URL = "https://github.com/alfa-reza/Macodes"
 private const val WEBSITE_HOST = "github.com/alfa-reza/Macodes"
 private const val CONTACT_EMAIL = "research@alfareza.my.id"
 internal const val PRIVACY_POLICY_URL = "https://github.com/alfa-reza/Macodes/blob/main/docs/appstore/privacy-policy.md"
+
+private data class SettingsSheetChoice(
+    val label: String,
+    val description: String? = null,
+)
 
 private fun themeModeLabel(
     mode: ThemeMode,
@@ -114,290 +132,377 @@ private fun languageLabel(
         else -> s.settingsLanguageSystem
     }
 
+private fun screenProtectionLabel(
+    mode: ScreenProtectionMode,
+    extra: SettingsExtraStrings,
+): String =
+    when (mode) {
+        ScreenProtectionMode.FULL -> extra.screenProtectionFull
+        ScreenProtectionMode.PARTIAL -> extra.screenProtectionPartial
+        ScreenProtectionMode.OFF -> extra.screenProtectionOff
+    }
+
 @Composable
 fun SettingsScreen(
     settings: AppSettings,
-    /** Any modifications are called back immediately (i.e., modifications are saved as soon as they are made; there is no "Save" button). */
+    /** Any modifications are called back immediately (saved on change; no Save button). */
     onChange: (AppSettings) -> Unit,
-    /** The Snippets/Tags management tab reads from and writes to the library. */
     repository: HostRepository = HostRepository(),
     notificationPermissionState: NotificationPermissionState,
     notificationPermissionController: NotificationPermissionController,
     onNotificationPermissionStateChange: (NotificationPermissionState) -> Unit,
     backgroundProtectionState: BackgroundProtectionState,
-    /** Currently open subpages (centralized management by AppRoot: backlink + hidden tab in fullscreen mode). */
+    /** Currently open subpage (managed by AppRoot: back link + bottom tabs hidden). */
     subPage: SettingsSubPage? = null,
-    /** Toggle the secondary panel (null = off). */
     onOpenSub: (SettingsSubPage?) -> Unit = {},
-    /** Do not show the back arrow in tab-indented mode. */
-    showBack: Boolean = false,
     onBack: (() -> Unit)? = null,
 ) {
     val s = LocalAppStrings.current
+    val extra = s.settingsExtra
     val uriHandler = LocalUriHandler.current
-    var theme by remember { mutableStateOf(settings.theme) }
-    var terminalThemeIndex by remember { mutableStateOf(settings.terminalThemeIndex) }
-    var fontSize by remember { mutableStateOf(settings.terminalFontSize.toFloat()) }
-    var targetCols by remember { mutableStateOf(settings.terminalTargetCols.toFloat()) }
-    var terminalType by remember { mutableStateOf(settings.terminalType) }
-    var haptics by remember { mutableStateOf(settings.hapticFeedback) }
-    var autoReconnect by remember { mutableStateOf(settings.autoReconnect) }
-    var keepalive by remember { mutableStateOf(settings.keepaliveSeconds.toFloat()) }
-    var verifyHostKey by remember { mutableStateOf(settings.verifyHostKeyOnFirstUse) }
-    var osc52Clipboard by remember { mutableStateOf(settings.osc52Clipboard) }
-    var language by remember { mutableStateOf(settings.language) }
 
-    var showThemeDialog by remember { mutableStateOf(false) }
-    var showLanguageDialog by remember { mutableStateOf(false) }
-    var showTerminalTypeDialog by remember { mutableStateOf(false) }
-    var notificationEnabled by remember { mutableStateOf(settings.notificationEnabled) }
-    var notificationDisabledEvents by remember { mutableStateOf(settings.notificationDisabledEvents) }
-    var voiceInputEnabled by remember { mutableStateOf(settings.voiceInputEnabled) }
-    // Recognition service list (pluggable providers); keys stored per provider in SecretStore
-    var asrProviders by remember { mutableStateOf(settings.asrProviders) }
-    var showConnectionsSessionPreview by remember { mutableStateOf(settings.showConnectionsSessionPreview) }
-    var showQuickConnectHistory by remember { mutableStateOf(settings.showQuickConnectHistory) }
-    var showConnectionsSftp by remember { mutableStateOf(settings.showConnectionsSftp) }
+    var showThemeSheet by remember { mutableStateOf(false) }
+    var showLanguageSheet by remember { mutableStateOf(false) }
+    var showTerminalTypeSheet by remember { mutableStateOf(false) }
+    var showScreenProtectionSheet by remember { mutableStateOf(false) }
 
-    fun persist() =
-        onChange(
-            settings.copy(
-                theme = theme,
-                terminalThemeIndex = terminalThemeIndex,
-                terminalFontSize = fontSize.toInt(),
-                terminalTargetCols = targetCols.toInt(),
-                terminalType = terminalType,
-                hapticFeedback = haptics,
-                autoReconnect = autoReconnect,
-                keepaliveSeconds = keepalive.toInt(),
-                verifyHostKeyOnFirstUse = verifyHostKey,
-                osc52Clipboard = osc52Clipboard,
-                notificationEnabled = notificationEnabled,
-                notificationDisabledEvents = notificationDisabledEvents,
-                voiceInputEnabled = voiceInputEnabled,
-                asrProviders = asrProviders,
-                language = language,
-                showConnectionsSessionPreview = showConnectionsSessionPreview,
-                showQuickConnectHistory = showQuickConnectHistory,
-                showConnectionsSftp = showConnectionsSftp,
-            ),
-        )
+    val cacheStats = remember(subPage) { getAppCacheStats() }
+    val historyCount =
+        remember(subPage) {
+            repository.listQuickConnectHistory().size + repository.listSessionLogs().size
+        }
 
     Scaffold(
-        topBar = { MacodesLargeHeader(title = s.settingsTitle) },
+        topBar = { MacodesLargeHeader(title = s.settingsTitle, onBack = onBack) },
     ) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState()),
         ) {
-            // General Group: App Theme / Language / Notifications / Diagnostics / Snippets / Voice / Haptics
+            // 1. General
             SettingsGroup(s.settingsGroupGeneral) {
-                SettingsOptionItem(s.settingsAppTheme, themeModeLabel(theme, s), icon = Icons.Filled.Palette) {
-                    showThemeDialog = true
-                }
-                SettingsOptionItem(s.settingsLanguage, languageLabel(language, s), icon = Icons.Filled.Language) {
-                    showLanguageDialog = true
-                }
                 SettingsOptionItem(
-                    s.settingsNotifications,
-                    if (
-                        notificationEnabled &&
-                        notificationPermissionState == NotificationPermissionState.GRANTED
-                    ) {
-                        s.settingsOn
-                    } else {
-                        s.settingsOff
-                    },
+                    title = s.settingsAppTheme,
+                    value = themeModeLabel(settings.theme, s),
+                    icon = Icons.Filled.Palette,
+                ) { showThemeSheet = true }
+                SettingsDivider()
+                SettingsOptionItem(
+                    title = s.settingsLanguage,
+                    value = languageLabel(settings.language, s),
+                    icon = Icons.Filled.Language,
+                ) { showLanguageSheet = true }
+                SettingsDivider()
+                SettingsOptionItem(
+                    title = s.settingsNotifications,
+                    value =
+                        if (
+                            settings.notificationEnabled &&
+                            notificationPermissionState == NotificationPermissionState.GRANTED
+                        ) {
+                            s.settingsOn
+                        } else {
+                            s.settingsOff
+                        },
                     icon = Icons.Filled.Notifications,
                 ) { onOpenSub(SettingsSubPage.NOTIFICATION) }
+                SettingsDivider()
                 SettingsOptionItem(
-                    s.settingsDiagnostics,
-                    if (TermLog.diagnosticsEnabled) s.settingsOn else s.settingsOff,
-                    icon = Icons.Filled.BugReport,
-                ) { onOpenSub(SettingsSubPage.DIAGNOSTICS) }
-                SettingsOptionItem(
-                    s.settingsSnippets,
-                    "",
-                    icon = Icons.Filled.Code,
-                ) { onOpenSub(SettingsSubPage.SNIPPETS) }
-                SettingsOptionItem(
-                    s.voice.settingsVoice,
-                    if (voiceInputEnabled) {
-                        s.voice.providerCount(asrProviders.count { it.enabled })
-                    } else {
-                        s.settingsOff
-                    },
+                    title = s.voice.settingsVoice,
+                    value =
+                        if (settings.voiceInputEnabled) {
+                            s.voice.providerCount(settings.asrProviders.count { it.enabled })
+                        } else {
+                            s.settingsOff
+                        },
                     icon = Icons.Filled.Mic,
                 ) { onOpenSub(SettingsSubPage.VOICE) }
-                SettingsSwitchItem(s.settingsHaptics, haptics, icon = Icons.Filled.Vibration) {
-                    haptics = it
-                    persist()
-                }
             }
 
+            // 2. Terminal
             SettingsGroup(s.settingsGroupTerminal) {
                 SettingsOptionItem(
-                    s.settingsTerminalPalette,
-                    TerminalThemes.ALL.getOrElse(terminalThemeIndex) { TerminalThemes.ALL[0] }.name,
+                    title = s.settingsTerminalPalette,
+                    value = TerminalThemes.ALL.getOrElse(settings.terminalThemeIndex) { TerminalThemes.ALL[0] }.name,
                     icon = Icons.Filled.Palette,
                 ) { onOpenSub(SettingsSubPage.TERMINAL) }
-                SettingsOptionItem(s.settingsTerminalType, terminalType, icon = Icons.Filled.Terminal) {
-                    showTerminalTypeDialog = true
-                }
+                SettingsDivider()
+                SettingsOptionItem(
+                    title = s.settingsTerminalType,
+                    value = settings.terminalType,
+                    icon = Icons.Filled.Terminal,
+                ) { showTerminalTypeSheet = true }
+                SettingsDivider()
                 SettingsSliderItem(
                     title = s.settingsTerminalCols,
-                    valueText = if (targetCols < 1f) s.settingsManualFontSize else targetCols.toInt().toString(),
-                    value = targetCols,
-                    onValueChange = {
-                        targetCols = it
-                        persist()
-                    },
+                    valueText =
+                        if (settings.terminalTargetCols < 1) {
+                            s.settingsManualFontSize
+                        } else {
+                            settings.terminalTargetCols.toString()
+                        },
+                    value = settings.terminalTargetCols.toFloat(),
+                    onValueChange = { onChange(settings.copy(terminalTargetCols = it.toInt())) },
                     valueRange = 0f..160f,
+                    icon = Icons.Filled.ViewColumn,
                 )
+                SettingsDivider()
+                val fontEnabled = settings.terminalTargetCols < 1
                 SettingsSliderItem(
                     title = s.settingsTerminalFontSize,
-                    valueText = "${fontSize.toInt()}sp",
-                    value = fontSize,
-                    onValueChange = {
-                        fontSize = it
-                        persist()
-                    },
+                    valueText = "${settings.terminalFontSize}sp",
+                    subtitle = if (!fontEnabled) extra.fontSizeDisabledByCols else null,
+                    value = settings.terminalFontSize.toFloat(),
+                    onValueChange = { onChange(settings.copy(terminalFontSize = it.toInt())) },
                     valueRange = 6f..32f,
-                    enabled = targetCols < 1f,
+                    enabled = fontEnabled,
+                    icon = Icons.Filled.FormatSize,
                 )
-                SettingsSwitchItem(s.settingsOsc52Clipboard, osc52Clipboard, icon = Icons.Filled.ContentPaste) {
-                    osc52Clipboard = it
-                    persist()
-                }
+                SettingsDivider()
+                SettingsSwitchItem(
+                    title = extra.cursorBlinkTitle,
+                    subtitle = extra.cursorBlinkHint,
+                    checked = settings.cursorBlink,
+                    icon = Icons.Filled.Terminal,
+                ) { onChange(settings.copy(cursorBlink = it)) }
+                SettingsDivider()
+                SettingsSwitchItem(
+                    title = s.settingsHaptics,
+                    checked = settings.hapticFeedback,
+                    icon = Icons.Filled.Vibration,
+                ) { onChange(settings.copy(hapticFeedback = it)) }
+                SettingsDivider()
+                SettingsSwitchItem(
+                    title = s.settingsOsc52Clipboard,
+                    checked = settings.osc52Clipboard,
+                    icon = Icons.Filled.ContentPaste,
+                ) { onChange(settings.copy(osc52Clipboard = it)) }
             }
 
+            // 3. Security & Privacy
+            SettingsGroup(extra.groupSecurity) {
+                SettingsOptionItem(
+                    title = extra.screenProtectionTitle,
+                    value = screenProtectionLabel(settings.screenProtectionMode, extra),
+                    icon = Icons.Filled.ScreenshotMonitor,
+                ) { showScreenProtectionSheet = true }
+                SettingsDivider()
+                SettingsSwitchItem(
+                    title = s.settingsVerifyHostKey,
+                    checked = settings.verifyHostKeyOnFirstUse,
+                    icon = Icons.Filled.Security,
+                ) { onChange(settings.copy(verifyHostKeyOnFirstUse = it)) }
+                SettingsDivider()
+                SettingsOptionItem(
+                    title = s.permissions.privacyPolicy,
+                    value = "",
+                    icon = Icons.Filled.Lock,
+                ) { onOpenSub(SettingsSubPage.PRIVACY) }
+            }
+
+            // 4. Session & Connections
             SettingsGroup(s.settingsGroupSession) {
                 SettingsSliderItem(
                     title = s.settingsKeepalive,
-                    valueText = if (keepalive < 1f) s.settingsKeepaliveOff else "${keepalive.toInt()}s",
-                    value = keepalive,
-                    onValueChange = {
-                        keepalive = it
-                        persist()
-                    },
-                    valueRange = 0f..300f,
-                )
-                SettingsSwitchItem(s.settingsAutoReconnect, autoReconnect, icon = Icons.Filled.Autorenew) {
-                    autoReconnect = it
-                    persist()
-                }
-                if (backgroundProtectionState != BackgroundProtectionState.NOT_APPLICABLE) {
-                    SettingsOptionItem(
-                        s.permissions.backgroundProtection,
-                        if (backgroundProtectionState == BackgroundProtectionState.SYSTEM_EXEMPT) {
-                            s.permissions.backgroundProtectionExempt
+                    valueText =
+                        if (settings.keepaliveSeconds < 1) {
+                            s.settingsKeepaliveOff
                         } else {
-                            s.permissions.backgroundProtectionManaged
+                            "${settings.keepaliveSeconds}s"
                         },
+                    value = settings.keepaliveSeconds.toFloat(),
+                    onValueChange = { onChange(settings.copy(keepaliveSeconds = it.toInt())) },
+                    valueRange = 0f..300f,
+                    icon = Icons.Filled.Timer,
+                )
+                SettingsDivider()
+                SettingsSwitchItem(
+                    title = s.settingsAutoReconnect,
+                    checked = settings.autoReconnect,
+                    icon = Icons.Filled.Autorenew,
+                ) { onChange(settings.copy(autoReconnect = it)) }
+                if (backgroundProtectionState != BackgroundProtectionState.NOT_APPLICABLE) {
+                    SettingsDivider()
+                    SettingsOptionItem(
+                        title = s.permissions.backgroundProtection,
+                        value =
+                            if (backgroundProtectionState == BackgroundProtectionState.SYSTEM_EXEMPT) {
+                                s.permissions.backgroundProtectionExempt
+                            } else {
+                                s.permissions.backgroundProtectionManaged
+                            },
                         icon = Icons.Filled.BatteryChargingFull,
                         onClick = ::openApplicationSettings,
                     )
                 }
-                SettingsSwitchItem(s.settingsVerifyHostKey, verifyHostKey, icon = Icons.Filled.Security) {
-                    verifyHostKey = it
-                    persist()
-                }
+                SettingsDivider()
+                SettingsSwitchItem(
+                    title = extra.aiAgentTitle,
+                    subtitle = extra.aiAgentHint,
+                    checked = settings.aiAgentEnabled,
+                    icon = Icons.Filled.SmartToy,
+                ) { onChange(settings.copy(aiAgentEnabled = it)) }
+                SettingsDivider()
+                SettingsSwitchItem(
+                    title = s.quickConnect.settingsShowSessionPreview,
+                    checked = settings.showConnectionsSessionPreview,
+                    icon = Icons.Filled.Visibility,
+                ) { onChange(settings.copy(showConnectionsSessionPreview = it)) }
+                SettingsDivider()
+                SettingsSwitchItem(
+                    title = s.quickConnect.settingsShowQuickHistory,
+                    checked = settings.showQuickConnectHistory,
+                    icon = Icons.Filled.History,
+                ) { onChange(settings.copy(showQuickConnectHistory = it)) }
+                SettingsDivider()
+                SettingsSwitchItem(
+                    title = s.quickConnect.settingsShowSftpShortcut,
+                    checked = settings.showConnectionsSftp,
+                    icon = Icons.Filled.FolderOpen,
+                ) { onChange(settings.copy(showConnectionsSftp = it)) }
             }
 
-            SettingsGroup(s.quickConnect.settingsConnectionsGroup) {
-                SettingsSwitchItem(
-                    s.quickConnect.settingsShowSessionPreview,
-                    showConnectionsSessionPreview,
-                ) {
-                    showConnectionsSessionPreview = it
-                    persist()
-                }
-                SettingsSwitchItem(
-                    s.quickConnect.settingsShowQuickHistory,
-                    showQuickConnectHistory,
-                ) {
-                    showQuickConnectHistory = it
-                    persist()
-                }
-                SettingsSwitchItem(
-                    s.quickConnect.settingsShowSftpShortcut,
-                    showConnectionsSftp,
-                ) {
-                    showConnectionsSftp = it
-                    persist()
-                }
+            // 5. Storage & Diagnostics
+            SettingsGroup(extra.groupStorage) {
+                SettingsOptionItem(
+                    title = extra.storageAndHistoryTitle,
+                    value = extra.storageAndHistorySubtitle(formatByteSize(cacheStats.totalBytes), historyCount),
+                    icon = Icons.Filled.CleaningServices,
+                ) { onOpenSub(SettingsSubPage.STORAGE) }
+                SettingsDivider()
+                SettingsOptionItem(
+                    title = s.settingsDiagnostics,
+                    value = if (TermLog.diagnosticsEnabled) s.settingsOn else s.settingsOff,
+                    icon = Icons.Filled.BugReport,
+                ) { onOpenSub(SettingsSubPage.DIAGNOSTICS) }
             }
 
-            SettingsGroup(s.settingsGroupAbout) {
-                SettingsOptionItem(s.settingsVersion, APP_VERSION, showArrow = false, icon = Icons.Filled.Info) {}
-                SettingsOptionItem(s.settingsWebsite, WEBSITE_HOST, icon = Icons.Filled.Public) {
-                    uriHandler.openUri(WEBSITE_URL)
-                }
-                SettingsOptionItem(s.permissions.privacyPolicy, "", icon = Icons.Filled.Lock) {
-                    onOpenSub(SettingsSubPage.PRIVACY)
-                }
-                SettingsOptionItem(s.settingsContact, CONTACT_EMAIL, icon = Icons.Filled.Email) {
-                    uriHandler.openUri("mailto:$CONTACT_EMAIL")
-                }
+            // 6. About
+            SettingsGroup(extra.groupAbout) {
+                SettingsOptionItem(
+                    title = extra.version,
+                    value = APP_VERSION,
+                    showArrow = false,
+                    icon = Icons.Filled.Info,
+                ) {}
+                SettingsDivider()
+                SettingsOptionItem(
+                    title = extra.website,
+                    value = WEBSITE_HOST,
+                    icon = Icons.Filled.Public,
+                ) { uriHandler.openUri(WEBSITE_URL) }
+                SettingsDivider()
+                SettingsOptionItem(
+                    title = extra.contact,
+                    value = CONTACT_EMAIL,
+                    icon = Icons.Filled.Email,
+                ) { uriHandler.openUri("mailto:$CONTACT_EMAIL") }
             }
 
             Spacer(Modifier.height(Spacing.Xl))
         }
     }
 
-    if (showThemeDialog) {
-        SettingsChoiceDialog(
+    if (showThemeSheet) {
+        SettingsChoiceBottomSheet(
             title = s.settingsAppTheme,
-            options = ThemeMode.entries.map { themeModeLabel(it, s) },
-            selected = ThemeMode.entries.indexOf(theme),
-            onSelect = {
-                theme = ThemeMode.entries[it]
-                persist()
-            },
-            onDismiss = { showThemeDialog = false },
+            options = ThemeMode.entries.map { SettingsSheetChoice(themeModeLabel(it, s)) },
+            selected = ThemeMode.entries.indexOf(settings.theme),
+            onSelect = { onChange(settings.copy(theme = ThemeMode.entries[it])) },
+            onDismiss = { showThemeSheet = false },
         )
     }
-    // Secondary screen overlay: iOS-style swipe right to enter/exit (same animation as Termius’s secondary screens);
-    // Switch states are centrally managed by AppRoot (back chain + fullscreen tab that is hidden)
+
+    if (showLanguageSheet) {
+        val codes = listOf("", "zh", "en")
+        val options =
+            listOf(
+                SettingsSheetChoice(s.settingsLanguageSystem),
+                SettingsSheetChoice(s.languageZh),
+                SettingsSheetChoice(s.languageEn),
+            )
+        SettingsChoiceBottomSheet(
+            title = s.settingsLanguage,
+            options = options,
+            selected = codes.indexOf(settings.language).coerceAtLeast(0),
+            onSelect = { onChange(settings.copy(language = codes[it])) },
+            onDismiss = { showLanguageSheet = false },
+        )
+    }
+
+    if (showTerminalTypeSheet) {
+        val options = listOf("xterm-256color", "xterm", "vt100", "linux")
+        SettingsChoiceBottomSheet(
+            title = s.settingsTerminalType,
+            options = options.map { SettingsSheetChoice(it) },
+            selected = options.indexOf(settings.terminalType).coerceAtLeast(0),
+            onSelect = { onChange(settings.copy(terminalType = options[it])) },
+            onDismiss = { showTerminalTypeSheet = false },
+        )
+    }
+
+    if (showScreenProtectionSheet) {
+        val options =
+            listOf(
+                SettingsSheetChoice(extra.screenProtectionFull, extra.screenProtectionFullDesc),
+                SettingsSheetChoice(extra.screenProtectionPartial, extra.screenProtectionPartialDesc),
+                SettingsSheetChoice(extra.screenProtectionOff, extra.screenProtectionOffDesc),
+            )
+        SettingsChoiceBottomSheet(
+            title = extra.screenProtectionTitle,
+            options = options,
+            selected = ScreenProtectionMode.entries.indexOf(settings.screenProtectionMode),
+            onSelect = {
+                onChange(settings.copy(screenProtectionMode = ScreenProtectionMode.entries[it]))
+            },
+            onDismiss = { showScreenProtectionSheet = false },
+        )
+    }
+
+    // Secondary screen overlays
     AnimatedVisibility(
         visible = subPage == SettingsSubPage.TERMINAL,
         enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(animationSpec = tween(240)),
         exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(animationSpec = tween(200)),
     ) {
         SettingsTerminalScreen(
-            currentThemeIndex = terminalThemeIndex,
+            currentThemeIndex = settings.terminalThemeIndex,
             currentFontId = settings.terminalFontId,
-            onChangeTheme = {
-                terminalThemeIndex = it
-                persist()
-            },
+            fontSizeSp = settings.terminalFontSize,
+            cursorBlink = settings.cursorBlink,
+            onChangeTheme = { onChange(settings.copy(terminalThemeIndex = it)) },
             onChangeFont = { fontId -> onChange(settings.copy(terminalFontId = fontId)) },
             onBack = { onOpenSub(null) },
         )
     }
-    // Notification settings subpage (animation same as terminal theme page: swipe right to enter/exit)
+
     AnimatedVisibility(
         visible = subPage == SettingsSubPage.NOTIFICATION,
         enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(animationSpec = tween(240)),
         exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(animationSpec = tween(200)),
     ) {
         SettingsNotificationScreen(
-            enabled = notificationEnabled,
-            disabledEvents = notificationDisabledEvents,
+            enabled = settings.notificationEnabled,
+            disabledEvents = settings.notificationDisabledEvents,
             permissionState = notificationPermissionState,
             permissionController = notificationPermissionController,
             onPermissionStateChange = onNotificationPermissionStateChange,
-            onChangeEnabled = {
-                notificationEnabled = it
-                persist()
-            },
+            onChangeEnabled = { onChange(settings.copy(notificationEnabled = it)) },
             onChangeEvent = { id, disable ->
-                notificationDisabledEvents =
-                    if (disable) notificationDisabledEvents + id else notificationDisabledEvents - id
-                persist()
+                val updated =
+                    if (disable) {
+                        settings.notificationDisabledEvents + id
+                    } else {
+                        settings.notificationDisabledEvents - id
+                    }
+                onChange(settings.copy(notificationDisabledEvents = updated))
             },
             onBack = { onOpenSub(null) },
         )
     }
+
     AnimatedVisibility(
         visible = subPage == SettingsSubPage.DIAGNOSTICS,
         enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(animationSpec = tween(240)),
@@ -409,52 +514,50 @@ fun SettingsScreen(
             onBack = { onOpenSub(null) },
         )
     }
-    // Command Snippet Management Subpage (Global Library + Tag Group Management Entry Point)
+
     AnimatedVisibility(
-        visible = subPage == SettingsSubPage.SNIPPETS,
+        visible = subPage == SettingsSubPage.STORAGE,
         enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(animationSpec = tween(240)),
         exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(animationSpec = tween(200)),
     ) {
-        SnippetManageScreen(
+        SettingsStorageScreen(
             repository = repository,
             onBack = { onOpenSub(null) },
         )
     }
-    // Voice Input Settings Subpage (Volcano Engine Streamed Speech Recognition: Switch / API Key / Resource ID)
+
     AnimatedVisibility(
         visible = subPage == SettingsSubPage.VOICE,
         enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(animationSpec = tween(240)),
         exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(animationSpec = tween(200)),
     ) {
         SettingsVoiceScreen(
-            enabled = voiceInputEnabled,
-            providers = asrProviders,
+            enabled = settings.voiceInputEnabled,
+            providers = settings.asrProviders,
             apiKeyOf = { p -> SecretStore.get(SECRET_SERVICE, asrKeyAccount(p.id)) ?: "" },
-            onChangeEnabled = {
-                voiceInputEnabled = it
-                persist()
-            },
+            onChangeEnabled = { onChange(settings.copy(voiceInputEnabled = it)) },
             onAddProvider = { p, key ->
-                asrProviders = asrProviders + p
                 SecretStore.set(SECRET_SERVICE, asrKeyAccount(p.id), key)
-                persist()
+                onChange(settings.copy(asrProviders = settings.asrProviders + p))
             },
             onUpdateProvider = { p, key ->
-                asrProviders = asrProviders.map { if (it.id == p.id) p else it }
-                // If the key is empty, leave it unchanged; if it is not empty, overwrite it.
                 if (key.isNotBlank()) {
                     SecretStore.set(SECRET_SERVICE, asrKeyAccount(p.id), key)
                 }
-                persist()
+                onChange(
+                    settings.copy(
+                        asrProviders = settings.asrProviders.map { if (it.id == p.id) p else it },
+                    ),
+                )
             },
             onDeleteProvider = { p ->
-                asrProviders = asrProviders.filter { it.id != p.id }
                 SecretStore.delete(SECRET_SERVICE, asrKeyAccount(p.id))
-                persist()
+                onChange(settings.copy(asrProviders = settings.asrProviders.filter { it.id != p.id }))
             },
             onBack = { onOpenSub(null) },
         )
     }
+
     AnimatedVisibility(
         visible = subPage == SettingsSubPage.PRIVACY,
         enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(animationSpec = tween(240)),
@@ -462,43 +565,8 @@ fun SettingsScreen(
     ) {
         SettingsPrivacyScreen(onBack = { onOpenSub(null) })
     }
-    if (showLanguageDialog) {
-        val codes = listOf("", "zh", "en")
-        val options =
-            listOf(
-                s.settingsLanguageSystem,
-                s.languageZh,
-                s.languageEn,
-            )
-        SettingsChoiceDialog(
-            title = s.settingsLanguage,
-            options = options,
-            selected = codes.indexOf(language),
-            onSelect = {
-                language = codes[it]
-                persist()
-            },
-            onDismiss = { showLanguageDialog = false },
-        )
-    }
-    if (showTerminalTypeDialog) {
-        // TERM option: xterm-256color (default; matches the emulator’s 256-color capability);
-        // The rest are compatibility alternatives (the server will fallback according to terminfo; no new rendering capabilities are required).
-        val options = listOf("xterm-256color", "xterm", "vt100", "linux")
-        SettingsChoiceDialog(
-            title = s.settingsTerminalType,
-            options = options,
-            selected = options.indexOf(terminalType).coerceAtLeast(0),
-            onSelect = {
-                terminalType = options[it]
-                persist()
-            },
-            onDismiss = { showTerminalTypeDialog = false },
-        )
-    }
 }
 
-/** Termius-style Switch colors: electric blue active track with crisp white thumb. */
 @Composable
 internal fun macodesSwitchColors(): SwitchColors =
     SwitchDefaults.colors(
@@ -510,7 +578,6 @@ internal fun macodesSwitchColors(): SwitchColors =
         uncheckedBorderColor = Color.Transparent,
     )
 
-/** Bordered tonal section card grouping with crisp section label. */
 @Composable
 internal fun SettingsGroup(
     title: String,
@@ -535,7 +602,19 @@ internal fun SettingsGroup(
 }
 
 @Composable
-private fun SettingsLeadingIconBadge(icon: ImageVector) {
+internal fun SettingsDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(horizontal = Spacing.Lg),
+        thickness = Sizes.BorderThin,
+        color = MaterialTheme.colorScheme.outlineVariant,
+    )
+}
+
+@Composable
+private fun SettingsLeadingIconBadge(
+    icon: ImageVector,
+    enabled: Boolean = true,
+) {
     Box(
         modifier =
             Modifier
@@ -547,13 +626,17 @@ private fun SettingsLeadingIconBadge(icon: ImageVector) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(18.dp),
+            tint =
+                if (enabled) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                },
+            modifier = Modifier.size(Sizes.IconSmall),
         )
     }
 }
 
-/** Stacked settings row with optional leading tinted icon badge, subtitle/value, and trailing chevron. */
 @Composable
 internal fun SettingsOptionItem(
     title: String,
@@ -566,7 +649,7 @@ internal fun SettingsOptionItem(
         Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = Spacing.Lg, vertical = 14.dp),
+            .padding(horizontal = Spacing.Lg, vertical = Spacing.Md),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
     ) {
@@ -601,7 +684,6 @@ internal fun SettingsOptionItem(
     }
 }
 
-/** Numeric settings row: Title + current value, followed by a slim slider. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SettingsSliderItem(
@@ -610,21 +692,48 @@ internal fun SettingsSliderItem(
     value: Float,
     onValueChange: (Float) -> Unit,
     valueRange: ClosedFloatingPointRange<Float>,
+    subtitle: String? = null,
     enabled: Boolean = true,
+    icon: ImageVector? = null,
 ) {
-    Column(Modifier.fillMaxWidth().padding(start = Spacing.Lg, top = 14.dp, end = Spacing.Lg, bottom = 7.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                title,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.4f),
-            )
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(
+                start = Spacing.Lg,
+                top = Spacing.Md,
+                end = Spacing.Lg,
+                bottom = Spacing.Sm,
+            ),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
+        ) {
+            if (icon != null) {
+                SettingsLeadingIconBadge(icon, enabled = enabled)
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.45f),
+                )
+                if (!subtitle.isNullOrEmpty()) {
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.65f),
+                    )
+                }
+            }
             Text(
                 valueText,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.4f),
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.45f),
             )
         }
         Slider(
@@ -635,24 +744,27 @@ internal fun SettingsSliderItem(
             modifier = Modifier.fillMaxWidth().requiredHeight(32.dp),
             thumb = {
                 Box(
-                    Modifier.size(18.dp).clip(CircleShape).background(
-                        if (enabled) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
-                        },
-                    ),
+                    Modifier
+                        .size(Sizes.IconSmall)
+                        .clip(CircleShape)
+                        .background(
+                            if (enabled) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = Alphas.BORDER_ACCENT)
+                            },
+                        ),
                 )
             },
             track = { state ->
                 SliderDefaults.Track(
                     sliderState = state,
-                    modifier = Modifier.height(4.dp),
+                    modifier = Modifier.height(Spacing.Xs),
                     colors =
                         SliderDefaults.colors(
                             activeTrackColor =
                                 MaterialTheme.colorScheme.primary.copy(
-                                    alpha = if (enabled) 1f else 0.3f,
+                                    alpha = if (enabled) 1f else Alphas.BORDER_ACCENT,
                                 ),
                             inactiveTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                         ),
@@ -662,7 +774,6 @@ internal fun SettingsSliderItem(
     }
 }
 
-/** Switch settings row with optional leading tinted icon badge. */
 @Composable
 internal fun SettingsSwitchItem(
     title: String,
@@ -675,7 +786,7 @@ internal fun SettingsSwitchItem(
         Modifier
             .fillMaxWidth()
             .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = Spacing.Lg, vertical = 10.dp),
+            .padding(horizontal = Spacing.Lg, vertical = Spacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
     ) {
@@ -708,37 +819,87 @@ internal fun SettingsSwitchItem(
     }
 }
 
-/** Single-selection dialog: Click to apply the selection and close the dialog. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SettingsChoiceDialog(
+private fun SettingsChoiceBottomSheet(
     title: String,
-    options: List<String>,
+    options: List<SettingsSheetChoice>,
     selected: Int,
     onSelect: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column {
-                options.forEachIndexed { i, label ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                onSelect(i)
-                                onDismiss()
-                            }.padding(vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = Spacing.Lg, vertical = Spacing.Sm),
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(bottom = Spacing.Md),
+            )
+            options.forEachIndexed { i, item ->
+                val isSelected = i == selected
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(Corners.Md))
+                        .background(
+                            if (isSelected) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = Alphas.SUBTLE)
+                            } else {
+                                Color.Transparent
+                            },
+                        ).clickable {
+                            onSelect(i)
+                            onDismiss()
+                        }.padding(horizontal = Spacing.Md, vertical = Spacing.Md),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        RadioButton(selected = i == selected, onClick = null)
-                        Text(label, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            item.label,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                            color =
+                                if (isSelected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
+                        )
+                        if (!item.description.isNullOrBlank()) {
+                            Text(
+                                item.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    if (isSelected) {
+                        Icon(
+                            Icons.Filled.Check,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(Sizes.IconSmall),
+                        )
                     }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(LocalAppStrings.current.settingsClose) } },
-    )
+            Spacer(Modifier.height(Spacing.Lg))
+        }
+    }
 }

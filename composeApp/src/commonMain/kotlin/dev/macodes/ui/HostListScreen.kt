@@ -14,18 +14,23 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,19 +40,25 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentPasteGo
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.LaptopMac
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhoneIphone
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.SmartToy
@@ -62,24 +73,30 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -88,6 +105,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -97,9 +116,12 @@ import dev.macodes.agent.AgentBridgeController
 import dev.macodes.agent.AgentBridgeState
 import dev.macodes.data.ConnectionMode
 import dev.macodes.data.Host
+import dev.macodes.data.HostFilterState
 import dev.macodes.data.HostFolder
+import dev.macodes.data.HostTag
 import dev.macodes.data.countFolderContents
 import dev.macodes.data.filterHostOrganization
+import dev.macodes.data.formatSafeSshCommand
 import dev.macodes.data.newId
 import dev.macodes.data.wouldCreateFolderCycle
 import dev.macodes.generated.resources.Res
@@ -123,11 +145,14 @@ import dev.macodes.generated.resources.host_synology
 import dev.macodes.generated.resources.host_ubuntu
 import dev.macodes.generated.resources.host_windows
 import dev.macodes.ssh.SftpSession
+import dev.macodes.ssh.formatHostCardSpecs
+import dev.macodes.ui.theme.Alphas
 import dev.macodes.ui.theme.Corners
 import dev.macodes.ui.theme.Sizes
 import dev.macodes.ui.theme.Spacing
 import dev.macodes.ui.theme.StatusColors
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.Instant
@@ -192,7 +217,7 @@ sealed interface HostSessionItem {
 /** Active session determination: "Connection," "Authentication," and "Connected" are all counted (same as the connection page status). */
 internal fun isActiveStatus(status: ConnStatus): Boolean = status == ConnStatus.CONNECTED || status == ConnStatus.CONNECTING || status == ConnStatus.AUTH
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun HostListScreen(
     hosts: List<Host>,
@@ -205,56 +230,125 @@ fun HostListScreen(
     onDisconnect: (Host) -> Unit,
     onDelete: (Host) -> Unit,
     onAgents: (Host) -> Unit,
+    aiAgentEnabled: Boolean = true,
     onOpenSession: (TerminalController) -> Unit,
     onOpenSftp: (Host, SftpSession?) -> Unit,
     onStartSftp: (Host) -> Unit,
     onCloseAllSessions: (Host) -> Unit,
     onBack: (() -> Unit)? = null,
     folders: List<HostFolder> = emptyList(),
+    tagDefinitions: List<HostTag> = emptyList(),
     onAddInFolder: ((String?) -> Unit)? = null,
     onUpsertFolder: (HostFolder) -> Unit = {},
-    onDeleteFolder: (String) -> Unit = {},
+    onDeleteFolder: (String, Boolean) -> Unit = { _, _ -> },
     onMoveHostsToFolder: (Set<String>, String?) -> Unit = { _, _ -> },
+    onOpenDetails: (Host) -> Unit = onEdit,
+    onDuplicate: (Host) -> Unit = {},
+    onTogglePin: (Host) -> Unit = {},
+    onUpsertTag: (HostTag) -> Unit = {},
+    onDeleteTag: (String) -> Unit = {},
+    onUpdateHostsTags: (Set<String>, Set<String>, Set<String>) -> Unit = { _, _, _ -> },
+    listState: LazyListState = rememberLazyListState(),
+    currentFolderId: String? = null,
+    onCurrentFolderChange: ((String?) -> Unit)? = null,
+    query: String = "",
+    onQueryChange: ((String) -> Unit)? = null,
+    searchExpanded: Boolean = false,
+    onSearchExpandedChange: ((Boolean) -> Unit)? = null,
+    filterState: HostFilterState = HostFilterState(),
+    onFilterStateChange: ((HostFilterState) -> Unit)? = null,
 ) {
     val s = LocalAppStrings.current
-    var query by remember { mutableStateOf("") }
-    var searchExpanded by remember { mutableStateOf(false) }
-    var currentFolderId by remember { mutableStateOf<String?>(null) }
-    var selectedTag by remember { mutableStateOf<String?>(null) }
-    var addMenuOpen by remember { mutableStateOf(false) }
+    val ws = s.workspace
+    val clipboard = LocalClipboardManager.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    var internalQuery by remember { mutableStateOf(query) }
+    var internalSearchExpanded by remember { mutableStateOf(searchExpanded) }
+    var internalFolderId by remember { mutableStateOf(currentFolderId) }
+    var internalFilterState by remember { mutableStateOf(filterState) }
+
+    val activeQuery = if (onQueryChange != null) query else internalQuery
+    val activeSearchExpanded = if (onSearchExpandedChange != null) searchExpanded else internalSearchExpanded
+    val activeFolderId = if (onCurrentFolderChange != null) currentFolderId else internalFolderId
+    val activeFilterState = if (onFilterStateChange != null) filterState else internalFilterState
+
+    fun setQuery(v: String) {
+        if (onQueryChange != null) onQueryChange(v) else internalQuery = v
+    }
+
+    fun setSearchExpanded(v: Boolean) {
+        if (onSearchExpandedChange != null) onSearchExpandedChange(v) else internalSearchExpanded = v
+    }
+
+    fun setFolderId(v: String?) {
+        if (onCurrentFolderChange != null) onCurrentFolderChange(v) else internalFolderId = v
+    }
+
+    fun setFilterState(v: HostFilterState) {
+        if (onFilterStateChange != null) onFilterStateChange(v) else internalFilterState = v
+    }
+
+    var addSheetOpen by remember { mutableStateOf(false) }
+    var filterSheetOpen by remember { mutableStateOf(false) }
+    var tagManagerOpen by remember { mutableStateOf(false) }
     var editingFolder by remember { mutableStateOf<HostFolder?>(null) }
     var showNewFolderDialog by remember { mutableStateOf(false) }
     var showMoveToFolderDialog by remember { mutableStateOf(false) }
+    var singleMoveHost by remember { mutableStateOf<Host?>(null) }
     var pendingDeleteFolder by remember { mutableStateOf<HostFolder?>(null) }
+    var pendingDeleteHosts by remember { mutableStateOf<List<Host>>(emptyList()) }
+    var tagTargetHosts by remember { mutableStateOf<List<Host>>(emptyList()) }
 
     val searchFocusRequester = remember { FocusRequester() }
-    // Wait until the search results expand and the entrance animation begins before refocusing; the keyboard should then pop up.
-    LaunchedEffect(searchExpanded) {
-        if (searchExpanded) {
+    LaunchedEffect(activeSearchExpanded) {
+        if (activeSearchExpanded) {
             delay(150)
             searchFocusRequester.requestFocus()
         }
     }
 
-    LaunchedEffect(folders) {
-        if (currentFolderId != null && folders.none { it.id == currentFolderId }) {
-            currentFolderId = null
+    LaunchedEffect(folders, activeFolderId) {
+        if (activeFolderId != null && folders.none { it.id == activeFolderId }) {
+            setFolderId(null)
         }
     }
 
+    val tagColorsByName =
+        remember(tagDefinitions) {
+            tagDefinitions.associate { it.name.lowercase() to it.colorIndex }
+        }
+
+    val effectiveTagDefinitions =
+        remember(hosts, tagDefinitions) {
+            val seen = tagDefinitions.associateBy { it.name.lowercase() }.toMutableMap()
+            for (h in hosts) {
+                for (raw in h.tags) {
+                    val clean = raw.trim().removePrefix("#")
+                    if (clean.isNotEmpty() && clean.lowercase() !in seen) {
+                        seen[clean.lowercase()] = HostTag(id = clean, name = clean)
+                    }
+                }
+            }
+            seen.values.sortedBy { it.name.lowercase() }
+        }
+
     val orgView =
-        remember(hosts, folders, currentFolderId, selectedTag, query) {
+        remember(hosts, folders, activeFolderId, activeFilterState, activeQuery, tagDefinitions) {
             filterHostOrganization(
                 hosts = hosts,
                 folders = folders,
-                currentFolderId = currentFolderId,
-                selectedTag = selectedTag,
-                query = query,
+                currentFolderId = activeFolderId,
+                filterState = activeFilterState,
+                query = activeQuery,
+                tagDefinitions = tagDefinitions,
             )
         }
     val filtered = orgView.visibleHosts
+    val hasGlobalFilter = activeQuery.trim().isNotEmpty() || activeFilterState.hasActiveFilters
 
-    // Batch (multiple selections) mode: Tap the avatar / Long press a card to enter
+    // Multi-selection mode
     var selectionMode by remember { mutableStateOf(false) }
     val selected = remember { mutableStateMapOf<String, Host>() }
 
@@ -269,16 +363,19 @@ fun HostListScreen(
         selected.clear()
     }
 
-    // In multi-select mode the system Back key exits batch mode first; otherwise navigates up one folder level.
-    PlatformBackHandler(enabled = selectionMode || currentFolderId != null) {
-        if (selectionMode) {
-            exitSelection()
-        } else {
-            currentFolderId = folders.firstOrNull { it.id == currentFolderId }?.parentId
+    PlatformBackHandler(enabled = selectionMode || activeFolderId != null || activeSearchExpanded) {
+        when {
+            selectionMode -> exitSelection()
+            activeSearchExpanded -> {
+                setSearchExpanded(false)
+                setQuery("")
+            }
+            else -> setFolderId(folders.firstOrNull { it.id == activeFolderId }?.parentId)
         }
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             if (selectionMode) {
                 SelectionHeader(
@@ -289,6 +386,7 @@ fun HostListScreen(
                         exitSelection()
                     },
                     onMoveToFolder = { showMoveToFolderDialog = true },
+                    onManageTags = { tagTargetHosts = selected.values.toList() },
                     onSelectAll = { filtered.forEach { selected[it.id] = it } },
                     onConnect = {
                         onConnectBatch(selected.values.toList())
@@ -298,30 +396,49 @@ fun HostListScreen(
                         selected.values.forEach(onDisconnect)
                         exitSelection()
                     },
-                    onRemove = {
-                        selected.values.forEach(onDelete)
-                        exitSelection()
-                    },
+                    onRemove = { pendingDeleteHosts = selected.values.toList() },
                 )
             } else {
-                MacodesLargeHeader(
+                MacodesHeader(
                     title = s.appTabHosts,
                     onBack = onBack,
                     actions = {
                         IconButton(
                             onClick = {
-                                if (searchExpanded) {
-                                    searchExpanded = false
-                                    query = ""
+                                if (activeSearchExpanded) {
+                                    setSearchExpanded(false)
+                                    setQuery("")
                                 } else {
-                                    searchExpanded = true
+                                    setSearchExpanded(true)
                                 }
                             },
+                            modifier = Modifier.size(Sizes.TouchTarget),
                         ) {
                             Icon(
-                                if (searchExpanded) Icons.Filled.Close else Icons.Filled.Search,
-                                contentDescription = if (searchExpanded) s.navBack else s.hostsSearch,
+                                if (activeSearchExpanded) Icons.Filled.Close else Icons.Filled.Search,
+                                contentDescription = if (activeSearchExpanded) s.navBack else s.hostsSearch,
                             )
+                        }
+                        IconButton(
+                            onClick = { filterSheetOpen = true },
+                            modifier = Modifier.size(Sizes.TouchTarget),
+                        ) {
+                            Box {
+                                Icon(
+                                    Icons.Filled.FilterList,
+                                    contentDescription = ws.hostOrg.filterAction,
+                                )
+                                if (activeFilterState.hasActiveFilters) {
+                                    Box(
+                                        modifier =
+                                            Modifier
+                                                .align(Alignment.TopEnd)
+                                                .size(Sizes.AgentTimelineDot)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.primary),
+                                    )
+                                }
+                            }
                         }
                     },
                 )
@@ -329,51 +446,24 @@ fun HostListScreen(
         },
         floatingActionButton = {
             if (!selectionMode) {
-                Box {
-                    FloatingActionButton(
-                        onClick = { addMenuOpen = true },
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        shape = RoundedCornerShape(Corners.Lg),
-                    ) { Icon(Icons.Default.Add, s.hostsAdd) }
-                    DropdownMenu(
-                        expanded = addMenuOpen,
-                        onDismissRequest = { addMenuOpen = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(s.workspace.hostsNewHost) },
-                            leadingIcon = { Icon(Icons.Filled.Terminal, contentDescription = null) },
-                            onClick = {
-                                addMenuOpen = false
-                                if (onAddInFolder != null) {
-                                    onAddInFolder(currentFolderId)
-                                } else {
-                                    onAdd()
-                                }
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(s.workspace.hostsFolderNew) },
-                            leadingIcon = { Icon(Icons.Filled.CreateNewFolder, contentDescription = null) },
-                            onClick = {
-                                addMenuOpen = false
-                                showNewFolderDialog = true
-                            },
-                        )
-                    }
-                }
+                FloatingActionButton(
+                    onClick = { addSheetOpen = true },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = RoundedCornerShape(Corners.Lg),
+                ) { Icon(Icons.Default.Add, s.hostsAdd) }
             }
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             AnimatedVisibility(
-                visible = searchExpanded,
+                visible = activeSearchExpanded,
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut(),
             ) {
                 MacodesSearchPill(
-                    value = query,
-                    onValueChange = { query = it },
+                    value = activeQuery,
+                    onValueChange = { setQuery(it) },
                     placeholder = s.hostsSearch,
                     modifier =
                         Modifier
@@ -381,25 +471,41 @@ fun HostListScreen(
                             .focusRequester(searchFocusRequester),
                 )
             }
-            if (orgView.breadcrumbs.isNotEmpty()) {
-                FolderBreadcrumbsBar(
-                    breadcrumbs = orgView.breadcrumbs,
-                    onSelectFolder = { currentFolderId = it },
+            AnimatedVisibility(
+                visible = activeFilterState.hasActiveFilters,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+            ) {
+                ActiveHostFilterChipsBar(
+                    filterState = activeFilterState,
+                    ws = ws,
+                    onRemovePinned = { setFilterState(activeFilterState.copy(pinnedOnly = false)) },
+                    onRemoveTag = { tag ->
+                        setFilterState(
+                            activeFilterState.copy(
+                                selectedTags = activeFilterState.selectedTags.filterNot { it.equals(tag, ignoreCase = true) }.toSet(),
+                            ),
+                        )
+                    },
+                    onRemoveProtocol = { mode ->
+                        setFilterState(activeFilterState.copy(selectedProtocols = activeFilterState.selectedProtocols - mode))
+                    },
+                    onRemoveProvider = { provider ->
+                        setFilterState(activeFilterState.copy(selectedProviders = activeFilterState.selectedProviders - provider))
+                    },
+                    onClearAll = { setFilterState(activeFilterState.copy(selectedTags = emptySet(), selectedProtocols = emptySet(), selectedProviders = emptySet(), pinnedOnly = false)) },
                 )
             }
-            if (orgView.allTags.isNotEmpty()) {
-                TagFilterBar(
-                    tags = orgView.allTags,
-                    selectedTag = selectedTag,
-                    onSelectTag = { tag ->
-                        selectedTag = if (selectedTag.equals(tag, ignoreCase = true)) null else tag
+            if (orgView.breadcrumbs.isNotEmpty() && !hasGlobalFilter) {
+                FolderBreadcrumbsBar(
+                    breadcrumbs = orgView.breadcrumbs,
+                    onSelectFolder = { setFolderId(it) },
+                    onEditCurrentFolder = {
+                        orgView.breadcrumbs.lastOrNull()?.let { editingFolder = it }
                     },
                 )
             }
-            val activeCount =
-                hosts.sumOf { h ->
-                    hostSessions[h.id].orEmpty().count { it.isActive }
-                }
+
             val showEmptyState = orgView.visibleFolders.isEmpty() && filtered.isEmpty()
             if (showEmptyState) {
                 Box(Modifier.fillMaxSize().padding(Spacing.Lg), contentAlignment = Alignment.Center) {
@@ -414,7 +520,7 @@ fun HostListScreen(
                             verticalArrangement = Arrangement.spacedBy(Spacing.Md),
                         ) {
                             Icon(
-                                if (currentFolderId != null) Icons.Filled.FolderOpen else Icons.Filled.Terminal,
+                                if (activeFolderId != null) Icons.Filled.FolderOpen else Icons.Filled.Terminal,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(36.dp),
@@ -422,118 +528,112 @@ fun HostListScreen(
                             Text(
                                 when {
                                     hosts.isEmpty() && folders.isEmpty() -> s.hostsEmpty
-                                    currentFolderId != null && query.isBlank() && selectedTag == null -> s.workspace.hostsFolderEmpty
+                                    activeFolderId != null && !hasGlobalFilter -> ws.hostsFolderEmpty
+                                    hasGlobalFilter -> ws.hostOrg.noFilterResults
                                     else -> s.hostsNoMatch
                                 },
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodyMedium,
                             )
-                            if (hosts.isEmpty() && folders.isEmpty()) {
+                            if (hosts.isEmpty() && folders.isEmpty() || (activeFolderId != null && !hasGlobalFilter)) {
                                 Button(
                                     onClick = {
-                                        if (onAddInFolder != null) onAddInFolder(currentFolderId) else onAdd()
+                                        if (onAddInFolder != null) onAddInFolder(activeFolderId) else onAdd()
                                     },
                                     shape = RoundedCornerShape(Corners.Md),
+                                    modifier = Modifier.heightIn(min = Sizes.TouchTarget),
                                 ) {
                                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(Spacing.Xs))
                                     Text(s.hostsAdd)
+                                }
+                            } else if (hasGlobalFilter) {
+                                OutlinedButton(
+                                    onClick = {
+                                        setQuery("")
+                                        setFilterState(HostFilterState(sortOrder = activeFilterState.sortOrder))
+                                    },
+                                    shape = RoundedCornerShape(Corners.Md),
+                                    modifier = Modifier.heightIn(min = Sizes.TouchTarget),
+                                ) {
+                                    Text(ws.hostOrg.filterClearAll)
                                 }
                             }
                         }
                     }
                 }
             } else {
+                val activeFolder = orgView.breadcrumbs.lastOrNull()
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = Spacing.Lg, vertical = Spacing.Sm),
+                    contentPadding = PaddingValues(start = Spacing.Lg, end = Spacing.Lg, top = Spacing.Sm, bottom = 88.dp),
                     verticalArrangement = Arrangement.spacedBy(Spacing.Sm),
                 ) {
-                    item(key = "hosts-overview-bar") {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(bottom = Spacing.Xs),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
-                        ) {
+                    if (orgView.visibleFolders.isNotEmpty()) {
+                        item(key = "section-folders") {
+                            HostSectionHeader(title = ws.hostsFoldersLabel)
+                        }
+                        item(key = "folders-group") {
                             Surface(
-                                shape = RoundedCornerShape(Corners.Full),
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(Corners.Lg),
                                 color = MaterialTheme.colorScheme.surfaceContainer,
                                 border = BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant),
                             ) {
-                                Text(
-                                    text = "${s.appTabHosts} · ${hosts.size}",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.padding(horizontal = Spacing.Md, vertical = 6.dp),
-                                )
-                            }
-                            if (folders.isNotEmpty()) {
-                                Surface(
-                                    shape = RoundedCornerShape(Corners.Full),
-                                    color = MaterialTheme.colorScheme.surfaceContainer,
-                                    border = BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant),
-                                ) {
-                                    Text(
-                                        text = "${s.workspace.hostsFoldersLabel} · ${folders.size}",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(horizontal = Spacing.Md, vertical = 6.dp),
-                                    )
-                                }
-                            }
-                            if (activeCount > 0) {
-                                Surface(
-                                    shape = RoundedCornerShape(Corners.Full),
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = Spacing.Md, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    ) {
-                                        Box(
-                                            Modifier
-                                                .size(7.dp)
-                                                .clip(CircleShape)
-                                                .background(StatusColors.Connected),
+                                Column {
+                                    orgView.visibleFolders.forEachIndexed { idx, folder ->
+                                        val counts =
+                                            remember(hosts, folders, folder.id) {
+                                                countFolderContents(hosts, folders, folder.id)
+                                            }
+                                        FolderRow(
+                                            folder = folder,
+                                            hostCount = counts.hostCount,
+                                            subfolderCount = counts.subfolderCount,
+                                            onClick = { setFolderId(folder.id) },
+                                            onLongClick = { editingFolder = folder },
                                         )
-                                        Text(
-                                            text = "${s.hostsActive} · $activeCount",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        )
+                                        if (idx < orgView.visibleFolders.lastIndex) {
+                                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                    items(orgView.visibleFolders, key = { "folder:${it.id}" }) { folder ->
-                        val counts = remember(hosts, folders, folder.id) { countFolderContents(hosts, folders, folder.id) }
-                        FolderCard(
-                            folder = folder,
-                            hostCount = counts.hostCount,
-                            subfolderCount = counts.subfolderCount,
-                            onClick = { currentFolderId = folder.id },
-                            onLongClick = { editingFolder = folder },
-                        )
+
+                    if (filtered.isNotEmpty()) {
+                        item(key = "section-hosts") {
+                            val headerLabel =
+                                when {
+                                    hasGlobalFilter -> ws.hostOrg.resultsCount(filtered.size)
+                                    activeFolder != null -> activeFolder.name
+                                    else -> ws.hostOrg.allHostsSection
+                                }
+                            HostSectionHeader(
+                                title = headerLabel,
+                                modifier =
+                                    Modifier.padding(
+                                        top = if (orgView.visibleFolders.isNotEmpty()) Spacing.Sm else Spacing.None,
+                                    ),
+                            )
+                        }
                     }
+
                     items(filtered, key = { it.id }) { host ->
                         val isSelected = host.id in selected
                         val sessions = hostSessions[host.id].orEmpty()
                         HostCard(
                             host = host,
                             sessions = sessions,
+                            tagColorsByName = tagColorsByName,
                             selectionMode = selectionMode,
                             selected = isSelected,
                             onCardClick = {
                                 if (selectionMode) {
                                     if (isSelected) selected.remove(host.id) else selected[host.id] = host
                                 } else {
-                                    // If there is an active session, use the first active one; if all connections are disconnected, resume using the first disconnected one.
-                                    // (Automatically reconnect after entering the terminal screen); create a new session only if none exists
                                     when (val target = sessions.firstOrNull { it.isActive } ?: sessions.firstOrNull()) {
                                         is HostSessionItem.Terminal -> onOpenSession(target.controller)
                                         is HostSessionItem.Sftp -> onOpenSftp(target.host, target.session)
@@ -553,6 +653,21 @@ fun HostListScreen(
                                 if (!selectionMode) enterSelection(host)
                             },
                             onTerminal = { onConnect(host) },
+                            onDetails = { onOpenDetails(host) },
+                            onEdit = { onEdit(host) },
+                            onTogglePin = { onTogglePin(host) },
+                            onManageTags = { tagTargetHosts = listOf(host) },
+                            onMoveToFolder = { singleMoveHost = host },
+                            onDuplicate = { onDuplicate(host) },
+                            onCopyAddress = {
+                                clipboard.setText(AnnotatedString("${host.username}@${host.hostname}:${host.port}"))
+                                scope.launch { snackbarHostState.showSnackbar(ws.hostOrg.copiedAddressMessage) }
+                            },
+                            onCopySshCommand = {
+                                clipboard.setText(AnnotatedString(formatSafeSshCommand(host)))
+                                scope.launch { snackbarHostState.showSnackbar(ws.hostOrg.copiedSshCommandMessage) }
+                            },
+                            onDelete = { pendingDeleteHosts = listOf(host) },
                             onHerdr = { onOpenHerdr(host) },
                             onSftp = {
                                 val existing = sessions.filterIsInstance<HostSessionItem.Sftp>().firstOrNull()
@@ -563,6 +678,7 @@ fun HostListScreen(
                                 }
                             },
                             onAgents = { onAgents(host) },
+                            aiAgentEnabled = aiAgentEnabled,
                             onOpenSession = onOpenSession,
                             onOpenSftp = onOpenSftp,
                             onCloseAllSessions = { onCloseAllSessions(host) },
@@ -573,11 +689,104 @@ fun HostListScreen(
         }
     }
 
+    if (addSheetOpen) {
+        val addSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { addSheetOpen = false },
+            sheetState = addSheetState,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.Lg)
+                        .padding(bottom = Spacing.Xl)
+                        .navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(Spacing.Xs),
+            ) {
+                AddOptionRow(
+                    icon = Icons.Filled.Terminal,
+                    label = ws.hostsNewHost,
+                    onClick = {
+                        addSheetOpen = false
+                        if (onAddInFolder != null) onAddInFolder(activeFolderId) else onAdd()
+                    },
+                )
+                AddOptionRow(
+                    icon = Icons.Filled.CreateNewFolder,
+                    label = ws.hostsFolderNew,
+                    onClick = {
+                        addSheetOpen = false
+                        showNewFolderDialog = true
+                    },
+                )
+            }
+        }
+    }
+
+    if (filterSheetOpen) {
+        HostFilterBottomSheet(
+            initialFilter = activeFilterState,
+            availableTags = effectiveTagDefinitions,
+            ws = ws,
+            s = s,
+            onDismiss = { filterSheetOpen = false },
+            onManageTags = { tagManagerOpen = true },
+            onApply = { updated ->
+                setFilterState(updated)
+                filterSheetOpen = false
+            },
+        )
+    }
+
+    if (tagManagerOpen) {
+        HostTagManagerDialog(
+            tags = effectiveTagDefinitions,
+            ws = ws,
+            s = s,
+            onUpsertTag = onUpsertTag,
+            onDeleteTag = onDeleteTag,
+            onDismiss = { tagManagerOpen = false },
+        )
+    }
+
+    if (tagTargetHosts.isNotEmpty()) {
+        val isSingle = tagTargetHosts.size == 1
+        val initialSelected =
+            if (isSingle) {
+                tagTargetHosts.first().tags.toSet()
+            } else {
+                emptySet()
+            }
+        HostAssignTagsDialog(
+            targetCount = tagTargetHosts.size,
+            initialSelectedTags = initialSelected,
+            availableTags = effectiveTagDefinitions,
+            ws = ws,
+            s = s,
+            onCreateTag = { name ->
+                onUpsertTag(HostTag(id = newId(), name = name))
+            },
+            onApplySingleHost = { nextTags ->
+                val target = tagTargetHosts.firstOrNull() ?: return@HostAssignTagsDialog
+                val toRemove = target.tags.filterNot { existing -> nextTags.any { it.equals(existing, ignoreCase = true) } }.toSet()
+                val toAdd = nextTags.filterNot { next -> target.tags.any { it.equals(next, ignoreCase = true) } }.toSet()
+                onUpdateHostsTags(setOf(target.id), toAdd, toRemove)
+            },
+            onApplyBulk = { addTags, removeTags ->
+                onUpdateHostsTags(tagTargetHosts.mapTo(HashSet()) { it.id }, addTags, removeTags)
+                exitSelection()
+            },
+            onDismiss = { tagTargetHosts = emptyList() },
+        )
+    }
+
     if (showNewFolderDialog) {
         FolderEditDialog(
             existing = null,
             folders = folders,
-            defaultParentId = currentFolderId,
+            defaultParentId = activeFolderId,
             onSave = { folder ->
                 onUpsertFolder(folder)
                 showNewFolderDialog = false
@@ -605,32 +814,109 @@ fun HostListScreen(
     }
 
     pendingDeleteFolder?.let { target ->
+        val counts = countFolderContents(hosts, folders, target.id)
+        val hasContents = counts.hostCount > 0 || counts.subfolderCount > 0
         AlertDialog(
             onDismissRequest = { pendingDeleteFolder = null },
-            title = { Text(s.workspace.hostsFolderDelete) },
-            text = { Text(s.workspace.hostsFolderDeleteConfirm(target.name)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onDeleteFolder(target.id)
-                        if (currentFolderId == target.id) {
-                            currentFolderId = target.parentId
-                        }
-                        pendingDeleteFolder = null
+            title = { Text(ws.hostsFolderDelete) },
+            text = {
+                Text(
+                    if (hasContents) {
+                        ws.hostOrg.folderDeleteNonEmptyConfirm(target.name, counts.hostCount, counts.subfolderCount)
+                    } else {
+                        ws.hostsFolderDeleteConfirm(target.name)
                     },
-                ) {
-                    Text(s.workspace.hostsFolderDelete, color = MaterialTheme.colorScheme.error)
+                )
+            },
+            confirmButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    if (hasContents) {
+                        TextButton(
+                            onClick = {
+                                onDeleteFolder(target.id, false)
+                                if (activeFolderId == target.id) setFolderId(target.parentId)
+                                pendingDeleteFolder = null
+                            },
+                        ) {
+                            Text(ws.hostOrg.folderDeleteMoveContents)
+                        }
+                        TextButton(
+                            onClick = {
+                                onDeleteFolder(target.id, true)
+                                if (activeFolderId == target.id) setFolderId(target.parentId)
+                                pendingDeleteFolder = null
+                            },
+                        ) {
+                            Text(ws.hostOrg.folderDeleteEverything, color = MaterialTheme.colorScheme.error)
+                        }
+                    } else {
+                        TextButton(
+                            onClick = {
+                                onDeleteFolder(target.id, false)
+                                if (activeFolderId == target.id) setFolderId(target.parentId)
+                                pendingDeleteFolder = null
+                            },
+                        ) {
+                            Text(ws.hostsFolderDelete, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDeleteFolder = null }) { Text(s.navBack) }
+                TextButton(onClick = { pendingDeleteFolder = null }) { Text(s.terminalCancel) }
             },
+        )
+    }
+
+    if (pendingDeleteHosts.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { pendingDeleteHosts = emptyList() },
+            title = { Text(ws.hostOrg.deleteConfirmTitle) },
+            text = {
+                Text(
+                    if (pendingDeleteHosts.size == 1) {
+                        val h = pendingDeleteHosts.first()
+                        ws.hostOrg.deleteSingleConfirm(h.name.ifBlank { h.hostname })
+                    } else {
+                        ws.hostOrg.deleteSelectedConfirm(pendingDeleteHosts.size)
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDeleteHosts.forEach(onDelete)
+                        pendingDeleteHosts = emptyList()
+                        if (selectionMode) exitSelection()
+                    },
+                ) {
+                    Text(s.hostsDelete, color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteHosts = emptyList() }) {
+                    Text(s.terminalCancel)
+                }
+            },
+        )
+    }
+
+    singleMoveHost?.let { hostTarget ->
+        FolderPickerDialog(
+            title = ws.hostsFolderMoveTo,
+            folders = folders,
+            selectedFolderId = hostTarget.folderId,
+            onSelect = { targetFolderId ->
+                onMoveHostsToFolder(setOf(hostTarget.id), targetFolderId)
+                singleMoveHost = null
+            },
+            onDismiss = { singleMoveHost = null },
         )
     }
 
     if (showMoveToFolderDialog && selected.isNotEmpty()) {
         FolderPickerDialog(
-            title = s.workspace.hostsFolderMoveTo,
+            title = ws.hostsFolderMoveTo,
             folders = folders,
             selectedFolderId = selected.values.firstOrNull()?.folderId,
             onSelect = { targetFolderId ->
@@ -643,6 +929,128 @@ fun HostListScreen(
     }
 }
 
+@Composable
+private fun HostSectionHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier.padding(horizontal = Spacing.Xs, vertical = Spacing.Xs),
+    )
+}
+
+@Composable
+private fun AddOptionRow(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = Sizes.TouchTarget)
+                .clip(RoundedCornerShape(Corners.Md))
+                .clickable(onClick = onClick)
+                .padding(horizontal = Spacing.Md, vertical = Spacing.Md),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(Sizes.IconMedium),
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
+private fun ActiveHostFilterChipsBar(
+    filterState: HostFilterState,
+    ws: WorkspaceStrings,
+    onRemovePinned: () -> Unit,
+    onRemoveTag: (String) -> Unit,
+    onRemoveProtocol: (ConnectionMode) -> Unit,
+    onRemoveProvider: (dev.macodes.data.CloudProvider) -> Unit,
+    onClearAll: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = Spacing.Lg, vertical = Spacing.Xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
+    ) {
+        if (filterState.pinnedOnly) {
+            RemovableFilterChip(label = ws.hostOrg.filterPinnedOnly, onRemove = onRemovePinned)
+        }
+        filterState.selectedProtocols.forEach { mode ->
+            RemovableFilterChip(
+                label = if (mode == ConnectionMode.MOSH) "Mosh" else "SSH",
+                onRemove = { onRemoveProtocol(mode) },
+            )
+        }
+        filterState.selectedProviders.forEach { provider ->
+            RemovableFilterChip(
+                label = provider.shortBadge,
+                onRemove = { onRemoveProvider(provider) },
+            )
+        }
+        filterState.selectedTags.forEach { tag ->
+            RemovableFilterChip(
+                label = "#$tag",
+                onRemove = { onRemoveTag(tag) },
+            )
+        }
+        TextButton(
+            onClick = onClearAll,
+            modifier = Modifier.heightIn(min = Sizes.TouchTarget),
+        ) {
+            Text(ws.hostOrg.filterClearAll)
+        }
+    }
+}
+
+@Composable
+private fun RemovableFilterChip(
+    label: String,
+    onRemove: () -> Unit,
+) {
+    InputChip(
+        selected = true,
+        onClick = onRemove,
+        label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        trailingIcon = {
+            Icon(
+                Icons.Filled.Close,
+                contentDescription = null,
+                modifier = Modifier.size(InputChipDefaults.IconSize),
+            )
+        },
+        colors =
+            InputChipDefaults.inputChipColors(
+                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                selectedTrailingIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            ),
+    )
+}
+
 /** Batch mode header: Close on the left, “x selected” in the middle, and Edit + three-dot menu on the right. */
 @Composable
 private fun SelectionHeader(
@@ -650,6 +1058,7 @@ private fun SelectionHeader(
     onClose: () -> Unit,
     onEdit: () -> Unit,
     onMoveToFolder: () -> Unit,
+    onManageTags: () -> Unit,
     onSelectAll: () -> Unit,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
@@ -675,7 +1084,6 @@ private fun SelectionHeader(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.weight(1f))
-            // Edit: Available only when a single host is selected (edit the currently selected host)
             IconButton(onClick = onEdit, enabled = count == 1) {
                 Icon(
                     Icons.Default.Edit,
@@ -699,6 +1107,14 @@ private fun SelectionHeader(
                         onClick = {
                             moreOpen = false
                             onMoveToFolder()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(s.workspace.hostOrg.manageTagsAction) },
+                        leadingIcon = { Icon(Icons.Filled.Label, null) },
+                        onClick = {
+                            moreOpen = false
+                            onManageTags()
                         },
                     )
                     DropdownMenuItem(
@@ -726,7 +1142,7 @@ private fun SelectionHeader(
                         },
                     )
                     DropdownMenuItem(
-                        text = { Text(s.hostsRemove, color = MaterialTheme.colorScheme.error) },
+                        text = { Text(s.hostsDelete, color = MaterialTheme.colorScheme.error) },
                         leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
                         onClick = {
                             moreOpen = false
@@ -741,25 +1157,36 @@ private fun SelectionHeader(
 }
 
 /**
- * Host card (Termius style): System avatar + two rows of info.
- * - Row 1: Host IP/address; Row 2: Active or “protocol, username, system”
- * - Tap the card to establish the connection; long press the card or tap the avatar to enter batch mode
- * - In batch mode, tap to toggle selection; selected cards are highlighted with a border in the primary color.
+ * Compact Host card:
+ * - Primary: Host name + pin indicator + SSH/Mosh badge
+ * - Secondary: username@hostname:port
+ * - Optional metadata (only when non-empty): Cloud Provider + vCPU/RAM specs + max 2 Tags (+N)
  */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 private fun HostCard(
     host: Host,
     sessions: List<HostSessionItem>,
+    tagColorsByName: Map<String, Int?>,
     selectionMode: Boolean,
     selected: Boolean,
     onCardClick: () -> Unit,
     onAvatarClick: () -> Unit,
     onLongClick: () -> Unit,
     onTerminal: () -> Unit,
+    onDetails: () -> Unit,
+    onEdit: () -> Unit,
+    onTogglePin: () -> Unit,
+    onManageTags: () -> Unit,
+    onMoveToFolder: () -> Unit,
+    onDuplicate: () -> Unit,
+    onCopyAddress: () -> Unit,
+    onCopySshCommand: () -> Unit,
+    onDelete: () -> Unit,
     onHerdr: () -> Unit,
     onSftp: () -> Unit,
     onAgents: () -> Unit,
+    aiAgentEnabled: Boolean = true,
     onOpenSession: (TerminalController) -> Unit,
     onOpenSftp: (Host, SftpSession?) -> Unit,
     onCloseAllSessions: () -> Unit,
@@ -767,18 +1194,13 @@ private fun HostCard(
     val s = LocalAppStrings.current
     val sys = host.system.ifBlank { host.hostname }
     val connecting = sessions.any { it.isConnecting }
+    val isConnected = sessions.any { it.isConnected }
     val isMosh = host.connectionMode == ConnectionMode.MOSH
     val protoLabel = if (isMosh) s.hostsModeMosh else s.hostsModeSsh
-    // First line: Alias (name) takes precedence; if empty, fall back to the host address.
     val title = host.name.ifBlank { host.hostname }
-    val detail =
-        buildString {
-            append("${host.username}@${host.hostname}:${host.port}")
-            if (host.system.isNotBlank()) {
-                append(" · ")
-                append(host.system)
-            }
-        }
+    val endpoint = "${host.username}@${host.hostname}:${host.port}"
+    val specsSummary = formatHostCardSpecs(host.inventory)
+    val hasOptionalMeta = host.cloudProvider != null || specsSummary != null || host.tags.isNotEmpty()
 
     Card(
         modifier =
@@ -807,176 +1229,240 @@ private fun HostCard(
             },
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Column {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = Spacing.Lg, vertical = Spacing.Md),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = Spacing.Md, end = Spacing.Xs, top = Spacing.Md, bottom = Spacing.Md),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
+        ) {
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(Corners.Md))
+                    .background(systemColor(sys))
+                    .clickable(onClick = onAvatarClick),
+                contentAlignment = Alignment.Center,
             ) {
-                // System Avatar (Rounded Square + White Icon): Tap to enter/toggle batch selection
-                Box(
-                    Modifier
-                        .size(Sizes.AvatarCard)
-                        .clip(RoundedCornerShape(Corners.Md))
-                        .background(systemColor(sys))
-                        .clickable(onClick = onAvatarClick),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (connecting) {
-                        // Connection: The avatar shows a spinning icon; once the connection is complete, you will be automatically redirected to the terminal screen.
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(Sizes.IconMedium),
-                            color = Color.White,
-                            strokeWidth = 2.dp,
-                        )
-                    } else {
-                        SystemAvatarIcon(sys, Sizes.IconMedium)
-                    }
+                if (connecting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(Sizes.IconSmall),
+                        color = Color.White,
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    SystemAvatarIcon(sys, Sizes.IconSmall)
                 }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.Xs),
-                    ) {
-                        Text(
-                            title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
+            }
+
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.Xs),
+                ) {
+                    if (host.isPinned) {
+                        Icon(
+                            imageVector = Icons.Filled.PushPin,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(14.dp),
                         )
-                        Surface(
-                            shape = RoundedCornerShape(Corners.Sm),
-                            color =
-                                if (isMosh) {
-                                    MaterialTheme.colorScheme.secondaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                },
-                        ) {
-                            Text(
-                                text = protoLabel,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color =
-                                    if (isMosh) {
-                                        MaterialTheme.colorScheme.onSecondaryContainer
-                                    } else {
-                                        MaterialTheme.colorScheme.onPrimaryContainer
-                                    },
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            )
-                        }
                     }
                     Text(
-                        detail,
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
                     )
-                    if (host.tags.isNotEmpty()) {
-                        val visibleTags = host.tags.take(3)
-                        val overflowCount = host.tags.size - visibleTags.size
-                        Row(
-                            modifier = Modifier.padding(top = 2.dp),
-                            horizontalArrangement = Arrangement.spacedBy(Spacing.Xs),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            visibleTags.forEach { tag ->
-                                Surface(
-                                    shape = RoundedCornerShape(Corners.Sm),
-                                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                    border = BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant),
-                                ) {
-                                    Text(
-                                        text = "#$tag",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                    )
-                                }
-                            }
-                            if (overflowCount > 0) {
-                                Surface(
-                                    shape = RoundedCornerShape(Corners.Sm),
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                ) {
-                                    Text(
-                                        text = "+$overflowCount",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                    )
-                                }
-                            }
-                        }
+                    Surface(
+                        shape = RoundedCornerShape(Corners.Sm),
+                        color =
+                            if (isMosh) {
+                                MaterialTheme.colorScheme.secondaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.primaryContainer
+                            },
+                    ) {
+                        Text(
+                            text = protoLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color =
+                                if (isMosh) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                },
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+                        )
+                    }
+                    if (isConnected) {
+                        Box(
+                            Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(StatusColors.Connected),
+                        )
                     }
                 }
-                if (selectionMode) {
-                    // Selection indicator: checkmark circle
-                    Box(
-                        Modifier
-                            .size(24.dp)
-                            .clip(RoundedCornerShape(Corners.Full))
-                            .background(
-                                if (selected) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceContainerHighest
-                                },
-                            ),
-                        contentAlignment = Alignment.Center,
+
+                Text(
+                    endpoint,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+
+                if (hasOptionalMeta) {
+                    FlowRow(
+                        modifier = Modifier.padding(top = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.Xs),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.Xs),
                     ) {
-                        if (selected) {
-                            Icon(
-                                Icons.Filled.Check,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimary,
-                                modifier = Modifier.size(14.dp),
+                        host.cloudProvider?.let { provider ->
+                            Surface(
+                                shape = RoundedCornerShape(Corners.Sm),
+                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = Alphas.SELECTION_BORDER),
+                            ) {
+                                Text(
+                                    text = provider.shortBadge,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    maxLines = 1,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                )
+                            }
+                        }
+                        if (specsSummary != null) {
+                            Surface(
+                                shape = RoundedCornerShape(Corners.Sm),
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            ) {
+                                Text(
+                                    text = specsSummary,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                )
+                            }
+                        }
+                        val visibleTags = host.tags.take(2)
+                        val overflowCount = host.tags.size - visibleTags.size
+                        visibleTags.forEach { tag ->
+                            HostTagBadge(
+                                tagName = tag,
+                                colorIndex = tagColorsByName[tag.trim().removePrefix("#").lowercase()],
                             )
                         }
+                        if (overflowCount > 0) {
+                            Surface(
+                                shape = RoundedCornerShape(Corners.Sm),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                            ) {
+                                Text(
+                                    text = "+$overflowCount",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                )
+                            }
+                        }
                     }
-                } else {
-                    HostMoreMenu(
-                        sessions = sessions,
-                        onTerminal = onTerminal,
-                        onHerdr = onHerdr,
-                        onSftp = onSftp,
-                        onAgents = onAgents,
-                        onOpenTerminal = onOpenSession,
-                        onOpenSftp = onOpenSftp,
-                        onCloseAll = onCloseAllSessions,
-                    )
                 }
+            }
+
+            if (selectionMode) {
+                Box(
+                    Modifier
+                        .padding(end = Spacing.Sm)
+                        .size(24.dp)
+                        .clip(RoundedCornerShape(Corners.Full))
+                        .background(
+                            if (selected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerHighest
+                            },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (selected) {
+                        Icon(
+                            Icons.Filled.Check,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                }
+            } else {
+                HostMoreMenu(
+                    isPinned = host.isPinned,
+                    sessions = sessions,
+                    onTerminal = onTerminal,
+                    onDetails = onDetails,
+                    onEdit = onEdit,
+                    onTogglePin = onTogglePin,
+                    onManageTags = onManageTags,
+                    onMoveToFolder = onMoveToFolder,
+                    onDuplicate = onDuplicate,
+                    onCopyAddress = onCopyAddress,
+                    onCopySshCommand = onCopySshCommand,
+                    onDelete = onDelete,
+                    onHerdr = onHerdr,
+                    onSftp = onSftp,
+                    onAgents = onAgents,
+                    aiAgentEnabled = aiAgentEnabled,
+                    onOpenTerminal = onOpenSession,
+                    onOpenSftp = onOpenSftp,
+                    onCloseAll = onCloseAllSessions,
+                )
             }
         }
     }
 }
 
-/** Single point of entry for cards: “More” icon + single session badge; integrate connection capabilities and existing sessions into a unified menu. */
+/** Unified card action menu: Connect, Details, Edit, Pin, Tags, Folder, Duplicate, Copy, Delete, and live sessions. */
 @Composable
 private fun HostMoreMenu(
+    isPinned: Boolean,
     sessions: List<HostSessionItem>,
     onTerminal: () -> Unit,
+    onDetails: () -> Unit,
+    onEdit: () -> Unit,
+    onTogglePin: () -> Unit,
+    onManageTags: () -> Unit,
+    onMoveToFolder: () -> Unit,
+    onDuplicate: () -> Unit,
+    onCopyAddress: () -> Unit,
+    onCopySshCommand: () -> Unit,
+    onDelete: () -> Unit,
     onHerdr: () -> Unit,
     onSftp: () -> Unit,
     onAgents: () -> Unit,
+    aiAgentEnabled: Boolean = true,
     onOpenTerminal: (TerminalController) -> Unit,
     onOpenSftp: (Host, SftpSession?) -> Unit,
     onCloseAll: () -> Unit,
 ) {
     val s = LocalAppStrings.current
+    val ws = s.workspace
     var open by remember { mutableStateOf(false) }
     val activeCount = sessions.count { it.isActive }
     val connectingOnly = activeCount > 0 && sessions.filter { it.isActive }.all { it.isConnecting }
     Box {
-        IconButton(onClick = { open = true }) {
+        IconButton(
+            onClick = { open = true },
+            modifier = Modifier.size(Sizes.TouchTarget),
+        ) {
             BadgedBox(
                 badge = {
                     if (activeCount > 0) {
@@ -1000,20 +1486,80 @@ private fun HostMoreMenu(
             onDismissRequest = { open = false },
             modifier = Modifier.width(Sizes.HostActionsMenuWidth),
         ) {
-            Text(
-                s.hostsConnect,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
             DropdownMenuItem(
-                text = { Text(s.hostsActionTerminal) },
+                text = { Text(s.hostsConnect) },
                 leadingIcon = { Icon(Icons.Default.Terminal, contentDescription = null) },
                 onClick = {
                     open = false
                     onTerminal()
                 },
             )
+            DropdownMenuItem(
+                text = { Text(ws.hostOrg.detailsAction) },
+                leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
+                onClick = {
+                    open = false
+                    onDetails()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(s.hostsEdit) },
+                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                onClick = {
+                    open = false
+                    onEdit()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(if (isPinned) ws.hostOrg.unpinAction else ws.hostOrg.pinAction) },
+                leadingIcon = { Icon(Icons.Default.PushPin, contentDescription = null) },
+                onClick = {
+                    open = false
+                    onTogglePin()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(ws.hostOrg.manageTagsAction) },
+                leadingIcon = { Icon(Icons.Default.Label, contentDescription = null) },
+                onClick = {
+                    open = false
+                    onManageTags()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(ws.hostsFolderMoveTo) },
+                leadingIcon = { Icon(Icons.Default.DriveFileMove, contentDescription = null) },
+                onClick = {
+                    open = false
+                    onMoveToFolder()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(ws.hostOrg.duplicateAction) },
+                leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                onClick = {
+                    open = false
+                    onDuplicate()
+                },
+            )
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text(ws.hostOrg.copyAddressAction) },
+                leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                onClick = {
+                    open = false
+                    onCopyAddress()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(ws.hostOrg.copySshCommandAction) },
+                leadingIcon = { Icon(Icons.Default.ContentPasteGo, contentDescription = null) },
+                onClick = {
+                    open = false
+                    onCopySshCommand()
+                },
+            )
+            HorizontalDivider()
             DropdownMenuItem(
                 text = { Text(s.hostsActionHerdr) },
                 leadingIcon = {
@@ -1032,14 +1578,16 @@ private fun HostMoreMenu(
                     onSftp()
                 },
             )
-            DropdownMenuItem(
-                text = { Text(s.hostsActionAgents) },
-                leadingIcon = { Icon(Icons.Default.SmartToy, contentDescription = null) },
-                onClick = {
-                    open = false
-                    onAgents()
-                },
-            )
+            if (aiAgentEnabled) {
+                DropdownMenuItem(
+                    text = { Text(s.hostsActionAgents) },
+                    leadingIcon = { Icon(Icons.Default.SmartToy, contentDescription = null) },
+                    onClick = {
+                        open = false
+                        onAgents()
+                    },
+                )
+            }
             if (sessions.isNotEmpty()) {
                 HorizontalDivider()
                 Text(
@@ -1050,7 +1598,6 @@ private fun HostMoreMenu(
                 )
             }
             sessions.forEach { item ->
-                // Three-state labels: connected green / connecting orange / disconnected gray (SFTP sessions are always active)
                 val statusLabel =
                     when (item) {
                         is HostSessionItem.Terminal ->
@@ -1059,7 +1606,6 @@ private fun HostMoreMenu(
                                 ConnStatus.CONNECTING, ConnStatus.AUTH -> s.connStatusConnecting
                                 else -> s.connStatusClosed
                             }
-                        // SFTP: has connection = active; disconnected retained (session=null) = disconnected; enter the tab to reconnect
                         is HostSessionItem.Sftp -> if (item.session != null) s.hostsActive else s.connStatusClosed
                         is HostSessionItem.Agent ->
                             when {
@@ -1079,13 +1625,7 @@ private fun HostMoreMenu(
                                 else -> StatusColors.Neutral
                             }
                         is HostSessionItem.Sftp ->
-                            if (item.session !=
-                                null
-                            ) {
-                                StatusColors.Connected
-                            } else {
-                                StatusColors.Neutral
-                            }
+                            if (item.session != null) StatusColors.Connected else StatusColors.Neutral
                         is HostSessionItem.Agent ->
                             when {
                                 item.controller.pendingApprovals.isNotEmpty() -> StatusColors.Warning
@@ -1164,8 +1704,8 @@ private fun HostMoreMenu(
                         )
                 }
             }
+            HorizontalDivider()
             if (sessions.isNotEmpty()) {
-                HorizontalDivider()
                 DropdownMenuItem(
                     text = { Text(s.hostsCloseAll, color = MaterialTheme.colorScheme.error) },
                     leadingIcon = {
@@ -1177,6 +1717,16 @@ private fun HostMoreMenu(
                     },
                 )
             }
+            DropdownMenuItem(
+                text = { Text(s.hostsDelete, color = MaterialTheme.colorScheme.error) },
+                leadingIcon = {
+                    Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                },
+                onClick = {
+                    open = false
+                    onDelete()
+                },
+            )
         }
     }
 }
@@ -1354,113 +1904,93 @@ internal fun systemColor(system: String): Color {
 private fun FolderBreadcrumbsBar(
     breadcrumbs: List<HostFolder>,
     onSelectFolder: (String?) -> Unit,
+    onEditCurrentFolder: () -> Unit,
 ) {
     val s = LocalAppStrings.current
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
                 .padding(horizontal = Spacing.Lg, vertical = Spacing.Xs),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.Xs),
     ) {
-        Surface(
-            shape = RoundedCornerShape(Corners.Full),
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            border = BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant),
+        Row(
             modifier =
                 Modifier
-                    .clip(RoundedCornerShape(Corners.Full))
-                    .clickable { onSelectFolder(null) },
+                    .weight(1f)
+                    .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.Xs),
         ) {
-            Text(
-                text = s.workspace.hostsFolderAll,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = Spacing.Md, vertical = 6.dp),
-            )
-        }
-        breadcrumbs.forEachIndexed { index, folder ->
-            val isCurrent = index == breadcrumbs.lastIndex
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(16.dp),
-            )
             Surface(
                 shape = RoundedCornerShape(Corners.Full),
-                color =
-                    if (isCurrent) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceContainer
-                    },
-                border =
-                    if (isCurrent) {
-                        null
-                    } else {
-                        BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant)
-                    },
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                border = BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant),
                 modifier =
                     Modifier
                         .clip(RoundedCornerShape(Corners.Full))
-                        .clickable(enabled = !isCurrent) { onSelectFolder(folder.id) },
+                        .clickable { onSelectFolder(null) },
             ) {
                 Text(
-                    text = folder.name,
+                    text = s.workspace.hostsFolderAll,
                     style = MaterialTheme.typography.labelMedium,
-                    fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
-                    color =
-                        if (isCurrent) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = Spacing.Md, vertical = 6.dp),
                 )
             }
+            breadcrumbs.forEachIndexed { index, folder ->
+                val isCurrent = index == breadcrumbs.lastIndex
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+                Surface(
+                    shape = RoundedCornerShape(Corners.Full),
+                    color =
+                        if (isCurrent) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainer
+                        },
+                    border =
+                        if (isCurrent) {
+                            null
+                        } else {
+                            BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant)
+                        },
+                    modifier =
+                        Modifier
+                            .clip(RoundedCornerShape(Corners.Full))
+                            .clickable(enabled = !isCurrent) { onSelectFolder(folder.id) },
+                ) {
+                    Text(
+                        text = folder.name,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                        color =
+                            if (isCurrent) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = Spacing.Md, vertical = 6.dp),
+                    )
+                }
+            }
         }
-    }
-}
-
-@Composable
-private fun TagFilterBar(
-    tags: List<String>,
-    selectedTag: String?,
-    onSelectTag: (String) -> Unit,
-) {
-    val s = LocalAppStrings.current
-    val chipColors =
-        FilterChipDefaults.filterChipColors(
-            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        )
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = Spacing.Lg, vertical = Spacing.Xs),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.Sm),
-    ) {
-        FilterChip(
-            selected = selectedTag == null,
-            onClick = { if (selectedTag != null) onSelectTag(selectedTag) },
-            label = { Text(s.workspace.hostsTagsAll) },
-            colors = chipColors,
-        )
-        tags.forEach { tag ->
-            val active = selectedTag.equals(tag, ignoreCase = true)
-            FilterChip(
-                selected = active,
-                onClick = { onSelectTag(tag) },
-                label = { Text("#$tag") },
-                colors = chipColors,
+        IconButton(
+            onClick = onEditCurrentFolder,
+            modifier = Modifier.size(Sizes.TouchTarget),
+        ) {
+            Icon(
+                Icons.Filled.Edit,
+                contentDescription = s.workspace.hostsFolderEdit,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(Sizes.IconSmall),
             )
         }
     }
@@ -1468,7 +1998,7 @@ private fun TagFilterBar(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FolderCard(
+private fun FolderRow(
     folder: HostFolder,
     hostCount: Int,
     subfolderCount: Int,
@@ -1476,63 +2006,46 @@ private fun FolderCard(
     onLongClick: () -> Unit,
 ) {
     val s = LocalAppStrings.current
-    Card(
+    Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(Corners.Lg))
+                .heightIn(min = Sizes.TouchTarget)
                 .combinedClickable(
                     onClick = onClick,
                     onLongClick = onLongClick,
-                ),
-        shape = RoundedCornerShape(Corners.Lg),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-        border = BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                ).padding(horizontal = Spacing.Lg, vertical = Spacing.Md),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.Lg, vertical = Spacing.Md),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.Md),
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(Sizes.AvatarCard)
-                        .clip(RoundedCornerShape(Corners.Md))
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Filled.Folder,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(Sizes.IconMedium),
-                )
-            }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(
-                    text = folder.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = s.workspace.hostsFolderCount(hostCount, subfolderCount),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        Icon(
+            Icons.Filled.Folder,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            text = folder.name,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = s.workspace.hostsFolderCount(hostCount, subfolderCount),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(Sizes.IconSmall),
+        )
     }
 }
 

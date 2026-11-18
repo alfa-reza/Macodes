@@ -228,6 +228,7 @@ fun TerminalScreen(
                         onReconnect = { onReconnectSftp(tab) },
                         onFavoritesChanged = { favs -> onFavoritesChanged(tab.host, favs) },
                         onPathChanged = { p -> onSftpPathChanged(tab.host, p) },
+                        aiAgentEnabled = settings.aiAgentEnabled,
                         onAskAgent = { context -> onAskAgent(tab.host, context) },
                     )
             }
@@ -835,37 +836,39 @@ private fun TerminalBody(
                 // Function menu in the lower-right corner: + Expand (Upload / File Management / Git; expandable).
                 // The voice feature has been moved to a permanent button in the center of the screen and does not appear in the menu.
                 if (voiceState == VoiceUiState.IDLE) {
-                    CanvasToolMenu(
-                        menuOpen = toolMenuOpen,
-                        onMenuOpenChange = { toolMenuOpen = it },
-                        items =
-                            listOf(
-                                CanvasMenuAction(
-                                    id = "agent",
-                                    label = s.nativeAgents.askSelectedOutput,
-                                    icon = Icons.Filled.SmartToy,
-                                    onClick = {
-                                        toolMenuOpen = false
-                                        val selected = controller.selection.selectedText().trim()
-                                        if (selected.isEmpty()) {
-                                            scope.launch { snackbar.showSnackbar(s.nativeAgents.selectOutputFirst) }
-                                        } else {
-                                            scope.launch {
-                                                val wd =
-                                                    runCatching {
-                                                        TerminalGitCommandRunner(controller).fetchWorkdir()
-                                                    }.getOrNull()
-                                                controller.selection.clear()
-                                                controller.frame++
-                                                terminalAgentLaunchContext(
-                                                    selected,
-                                                    wd,
-                                                    s.nativeAgents.terminalContextPrompt,
-                                                )?.let { context -> onAskAgent(controller.host, context) }
+                    val toolItems =
+                        buildList {
+                            if (settings.aiAgentEnabled) {
+                                add(
+                                    CanvasMenuAction(
+                                        id = "agent",
+                                        label = s.nativeAgents.askSelectedOutput,
+                                        icon = Icons.Filled.SmartToy,
+                                        onClick = {
+                                            toolMenuOpen = false
+                                            val selected = controller.selection.selectedText().trim()
+                                            if (selected.isEmpty()) {
+                                                scope.launch { snackbar.showSnackbar(s.nativeAgents.selectOutputFirst) }
+                                            } else {
+                                                scope.launch {
+                                                    val wd =
+                                                        runCatching {
+                                                            TerminalGitCommandRunner(controller).fetchWorkdir()
+                                                        }.getOrNull()
+                                                    controller.selection.clear()
+                                                    controller.frame++
+                                                    terminalAgentLaunchContext(
+                                                        selected,
+                                                        wd,
+                                                        s.nativeAgents.terminalContextPrompt,
+                                                    )?.let { context -> onAskAgent(controller.host, context) }
+                                                }
                                             }
-                                        }
-                                    },
-                                ),
+                                        },
+                                    ),
+                                )
+                            }
+                            add(
                                 CanvasMenuAction(
                                     id = "git",
                                     label = s.git.menuLabel,
@@ -876,59 +879,67 @@ private fun TerminalBody(
                                         gitPanelOpen = true
                                     },
                                 ),
-                                CanvasMenuAction(
-                                    id = "upload",
-                                    label = s.upload.menuLabel,
-                                    icon = Icons.Filled.Upload,
-                                    onClick = {
-                                        toolMenuOpen = false
-                                        // Detect the current directory (reuse Git detection: tmux / /proc / prompt),
-                                        // In case of failure, only provide the /tmp option
-                                        scope.launch {
-                                            val wd =
-                                                runCatching {
-                                                    TerminalGitCommandRunner(
-                                                        controller,
-                                                    ).fetchWorkdir()
-                                                }.getOrNull()
-                                            uploadTargets =
-                                                buildList {
-                                                    if (!wd.isNullOrBlank()) add(wd)
-                                                    add("/tmp")
-                                                }
-                                            uploadDirDialog = true
-                                        }
-                                    },
+                            )
+                        }
+                    CanvasToolMenu(
+                        menuOpen = toolMenuOpen,
+                        onMenuOpenChange = { toolMenuOpen = it },
+                        items =
+                            toolItems +
+                                listOf(
+                                    CanvasMenuAction(
+                                        id = "upload",
+                                        label = s.upload.menuLabel,
+                                        icon = Icons.Filled.Upload,
+                                        onClick = {
+                                            toolMenuOpen = false
+                                            // Detect the current directory (reuse Git detection: tmux / /proc / prompt),
+                                            // In case of failure, only provide the /tmp option
+                                            scope.launch {
+                                                val wd =
+                                                    runCatching {
+                                                        TerminalGitCommandRunner(
+                                                            controller,
+                                                        ).fetchWorkdir()
+                                                    }.getOrNull()
+                                                uploadTargets =
+                                                    buildList {
+                                                        if (!wd.isNullOrBlank()) add(wd)
+                                                        add("/tmp")
+                                                    }
+                                                uploadDirDialog = true
+                                            }
+                                        },
+                                    ),
+                                    CanvasMenuAction(
+                                        id = "favorites",
+                                        label = s.sftpExt.favoritesTitle,
+                                        icon = Icons.Filled.Star,
+                                        onClick = {
+                                            toolMenuOpen = false
+                                            onOpenFavorites(controller.host)
+                                        },
+                                    ),
+                                    CanvasMenuAction(
+                                        id = "filemanager",
+                                        label = s.upload.fileManagerLabel,
+                                        icon = Icons.Filled.FolderOpen,
+                                        onClick = {
+                                            toolMenuOpen = false
+                                            // Detect the terminal’s current working directory (reuse the Git detection chain),
+                                            // Navigate directly to this directory when opening the SFTP file manager
+                                            scope.launch {
+                                                val wd =
+                                                    runCatching {
+                                                        TerminalGitCommandRunner(
+                                                            controller,
+                                                        ).fetchWorkdir()
+                                                    }.getOrNull()
+                                                onOpenSftpForHost(controller.host, wd)
+                                            }
+                                        },
+                                    ),
                                 ),
-                                CanvasMenuAction(
-                                    id = "favorites",
-                                    label = s.sftpExt.favoritesTitle,
-                                    icon = Icons.Filled.Star,
-                                    onClick = {
-                                        toolMenuOpen = false
-                                        onOpenFavorites(controller.host)
-                                    },
-                                ),
-                                CanvasMenuAction(
-                                    id = "filemanager",
-                                    label = s.upload.fileManagerLabel,
-                                    icon = Icons.Filled.FolderOpen,
-                                    onClick = {
-                                        toolMenuOpen = false
-                                        // Detect the terminal’s current working directory (reuse the Git detection chain),
-                                        // Navigate directly to this directory when opening the SFTP file manager
-                                        scope.launch {
-                                            val wd =
-                                                runCatching {
-                                                    TerminalGitCommandRunner(
-                                                        controller,
-                                                    ).fetchWorkdir()
-                                                }.getOrNull()
-                                            onOpenSftpForHost(controller.host, wd)
-                                        }
-                                    },
-                                ),
-                            ),
                         theme = theme,
                         modifier =
                             Modifier

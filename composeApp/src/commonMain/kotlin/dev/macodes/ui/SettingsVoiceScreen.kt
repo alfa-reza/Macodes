@@ -1,5 +1,6 @@
 package dev.macodes.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,6 +48,7 @@ import dev.macodes.data.AsrProvider
 import dev.macodes.data.AsrProviderType
 import dev.macodes.data.newId
 import dev.macodes.ui.theme.Corners
+import dev.macodes.ui.theme.Sizes
 import dev.macodes.ui.theme.Spacing
 import dev.macodes.util.openApplicationSettings
 import dev.macodes.voice.VolcAsrProtocol
@@ -101,6 +103,7 @@ fun SettingsVoiceScreen(
                 Modifier.fillMaxWidth().padding(horizontal = Spacing.Lg),
                 shape = RoundedCornerShape(Corners.Lg),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                border = BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {
                 Column {
@@ -109,6 +112,7 @@ fun SettingsVoiceScreen(
                         checked = enabled,
                         onCheckedChange = ::setEnabled,
                     )
+                    SettingsDivider()
                     SettingsOptionItem(
                         title = s.voice.settingsMicrophonePermission,
                         value = "",
@@ -122,6 +126,7 @@ fun SettingsVoiceScreen(
                 Modifier.fillMaxWidth().padding(horizontal = Spacing.Lg),
                 shape = RoundedCornerShape(Corners.Lg),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                border = BorderStroke(Sizes.BorderThin, MaterialTheme.colorScheme.outlineVariant),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {
                 Column {
@@ -238,6 +243,7 @@ fun SettingsVoiceScreen(
 
     // Add / Edit Dialog
     editing?.let { provider ->
+        SensitiveScreenProtection()
         AsrProviderEditDialog(
             provider = provider,
             isNew = isNew,

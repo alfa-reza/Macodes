@@ -18,6 +18,38 @@ enum class ConnectionMode {
     MOSH,
 }
 
+/** Optional manual cloud provider label for VPS/cloud hosts (API sync is out of scope). */
+@Serializable
+enum class CloudProvider(
+    val shortBadge: String,
+    val displayName: String,
+) {
+    AWS("AWS", "AWS"),
+    OCI("OCI", "Oracle Cloud (OCI)"),
+    GCP("GCP", "Google Cloud (GCP)"),
+    DIGITALOCEAN("DigitalOcean", "DigitalOcean"),
+    AZURE("Azure", "Microsoft Azure"),
+    OTHER("Other", "Other"),
+}
+
+/** Cached hardware specifications detected read-only over an authenticated SSH connection. */
+@Serializable
+data class HostInventory(
+    val cpuCores: Int? = null,
+    val memoryTotalMb: Long? = null,
+    val diskTotalMb: Long? = null,
+    val architecture: String = "",
+    val detectedAt: Long = 0L,
+)
+
+/** Explicit user-managed host tag definition (kept separate from host attributes and tag assignments). */
+@Serializable
+data class HostTag(
+    val id: String,
+    val name: String,
+    val colorIndex: Int? = null,
+)
+
 @Serializable
 data class Host(
     val id: String,
@@ -60,6 +92,14 @@ data class Host(
     val credentialId: String? = null,
     /** Optional folder ID for hierarchical host organization; null places the host at root. */
     val folderId: String? = null,
+    /** Pin favorite host to top of host lists without duplicating entries. */
+    val isPinned: Boolean = false,
+    /** Optional cloud provider label; null means Not Specified. */
+    val cloudProvider: CloudProvider? = null,
+    /** Opt-in automatic read-only VPS specification probe upon SSH connection. */
+    val autoDetectInventory: Boolean = false,
+    /** Locally cached server specifications detected over SSH. */
+    val inventory: HostInventory? = null,
 )
 
 @Serializable
@@ -72,6 +112,19 @@ data class HostFolder(
 
 @Serializable
 enum class ThemeMode { DARK, LIGHT, SYSTEM }
+
+/** Controls Android FLAG_SECURE screen-capture/recording protection scope. */
+@Serializable
+enum class ScreenProtectionMode {
+    /** Block screenshots, screen recording, and recents preview across the entire app. */
+    FULL,
+
+    /** Block capture only when sensitive credentials, keys, or passwords are displayed. */
+    PARTIAL,
+
+    /** Disable screen-capture blocking everywhere. */
+    OFF,
+}
 
 @Serializable
 data class AppSettings(
@@ -123,6 +176,10 @@ data class AppSettings(
     val showQuickConnectHistory: Boolean = true,
     /** Connections tab: show SFTP quick entry at the bottom (default enabled). */
     val showConnectionsSftp: Boolean = true,
+    /** Screen capture / screen recording protection policy (default: Partial for sensitive screens). */
+    val screenProtectionMode: ScreenProtectionMode = ScreenProtectionMode.PARTIAL,
+    /** Whether AI Agent features are enabled in the UI (disabled by default; can be enabled manually). */
+    val aiAgentEnabled: Boolean = false,
 )
 
 /** Agent workspace preferences are saved independently on each host to avoid overwriting global terminal settings. */

@@ -15,6 +15,49 @@ import dev.macodes.data.SessionLogErrorCode
  * [LocalAppStrings] 读取。
  */
 @Immutable
+data class SettingsExtraStrings(
+    val groupAbout: String,
+    val version: String,
+    val website: String,
+    val contact: String,
+    val groupSecurity: String,
+    val groupStorage: String,
+    val screenProtectionTitle: String,
+    val screenProtectionFull: String,
+    val screenProtectionFullDesc: String,
+    val screenProtectionPartial: String,
+    val screenProtectionPartialDesc: String,
+    val screenProtectionOff: String,
+    val screenProtectionOffDesc: String,
+    val cursorBlinkTitle: String,
+    val cursorBlinkHint: String,
+    val fontSizeDisabledByCols: String,
+    val terminalLivePreview: String,
+    val aiAgentTitle: String,
+    val aiAgentHint: String,
+    val storageAndHistoryTitle: String,
+    val storageAndHistorySubtitle: (cacheSize: String, historyCount: Int) -> String,
+    val storageCacheSection: String,
+    val storageCacheSizeLabel: String,
+    val storageCacheDesc: String,
+    val storageCacheClear: String,
+    val storageCacheCleared: String,
+    val storageHistorySection: String,
+    val storageQuickConnectHistory: String,
+    val storageQuickConnectCount: (Int) -> String,
+    val storageSessionLogs: String,
+    val storageSessionLogsCount: (Int) -> String,
+    val storageClearAllHistory: String,
+    val storageHistoryCleared: String,
+    val storageWarnClearTitle: String,
+    val storageWarnClearQuickConnect: (Int) -> String,
+    val storageWarnClearLogs: (Int) -> String,
+    val storageWarnClearAll: (quickCount: Int, logCount: Int) -> String,
+    val storageWarnConfirmDelete: String,
+    val storageEmpty: String,
+)
+
+@Immutable
 data class AppStrings(
     // 底栏
     val appTabHosts: String,
@@ -272,11 +315,7 @@ data class AppStrings(
     val hostsSectionTitle: String,
     val connSectionTitle: String,
     val sftpSectionTitle: String,
-    // 设置页「关于」区（版本/官网/联系入口）
-    val settingsGroupAbout: String,
-    val settingsVersion: String,
-    val settingsWebsite: String,
-    val settingsContact: String,
+    val settingsExtra: SettingsExtraStrings,
     // 终端页
     val terminalCancel: String,
     val terminalCopied: String,
@@ -512,6 +551,74 @@ data class WorkspaceStrings(
     val hostsSuggestedTags: String,
     val hostsNewHost: String,
     val editFolder: String,
+    val hostOrg: HostOrgStrings,
+)
+
+@Immutable
+data class HostOrgStrings(
+    val folderDeleteNonEmptyConfirm: (name: String, hosts: Int, subfolders: Int) -> String,
+    val folderDeleteMoveContents: String,
+    val folderDeleteEverything: String,
+    val allHostsSection: String,
+    val filterAction: String,
+    val filterTitle: String,
+    val filterTagsLabel: String,
+    val filterProtocolLabel: String,
+    val filterProviderLabel: String,
+    val filterPinnedOnly: String,
+    val filterSortLabel: String,
+    val sortByName: String,
+    val sortRecentlyUsed: String,
+    val filterClearAll: String,
+    val filterApply: String,
+    val resultsCount: (Int) -> String,
+    val noFilterResults: String,
+    val detailsAction: String,
+    val pinAction: String,
+    val unpinAction: String,
+    val duplicateAction: String,
+    val copyAddressAction: String,
+    val copySshCommandAction: String,
+    val copiedAddressMessage: String,
+    val copiedSshCommandMessage: String,
+    val deleteConfirmTitle: String,
+    val deleteSingleConfirm: (String) -> String,
+    val deleteSelectedConfirm: (Int) -> String,
+    val duplicateSaveTitle: String,
+    val duplicateSaveMessage: (String) -> String,
+    val saveAnyway: String,
+    val manageTagsAction: String,
+    val tagsTitle: String,
+    val tagNew: String,
+    val tagRename: String,
+    val tagDelete: String,
+    val tagDeleteConfirm: (String) -> String,
+    val tagNameLabel: String,
+    val tagColorLabel: String,
+    val tagColorDefault: String,
+    val tagsEmpty: String,
+    val assignTagsTitle: String,
+    val bulkTagsAdd: String,
+    val bulkTagsRemove: String,
+    val cloudProviderLabel: String,
+    val providerNotSpecified: String,
+    val providerOther: String,
+    val pinToggleLabel: String,
+    val inventorySectionTitle: String,
+    val inventoryAutoDetectLabel: String,
+    val inventoryAutoDetectHint: String,
+    val inventoryCpuLabel: String,
+    val inventoryRamLabel: String,
+    val inventoryDiskLabel: String,
+    val inventoryArchLabel: String,
+    val inventoryLastDetectedLabel: String,
+    val inventoryNotDetected: String,
+    val inventoryRefreshAction: String,
+    val inventoryRefreshing: String,
+    val inventoryRefreshFailed: (String) -> String,
+    val detailsTitle: String,
+    val osLabel: String,
+    val folderLabel: String,
 )
 
 @Immutable
@@ -1249,10 +1356,56 @@ private val EnStrings =
         hostsSectionTitle = "My hosts",
         connSectionTitle = "Sessions",
         sftpSectionTitle = "Select a host",
-        settingsGroupAbout = "About",
-        settingsVersion = "Version",
-        settingsWebsite = "Website",
-        settingsContact = "Contact",
+        settingsExtra =
+            SettingsExtraStrings(
+                groupAbout = "About",
+                version = "Version",
+                website = "Website",
+                contact = "Contact",
+                groupSecurity = "Security & Privacy",
+                groupStorage = "Storage & Diagnostics",
+                screenProtectionTitle = "Screen capture protection",
+                screenProtectionFull = "Full",
+                screenProtectionFullDesc = "Block screenshots, screen recording, and app-switcher preview everywhere",
+                screenProtectionPartial = "Partial",
+                screenProtectionPartialDesc = "Block capture only on credentials, passwords, and private keys",
+                screenProtectionOff = "Off",
+                screenProtectionOffDesc = "Allow screenshots and screen recording everywhere",
+                cursorBlinkTitle = "Blinking cursor",
+                cursorBlinkHint = "Animate the terminal cursor while a session is active",
+                fontSizeDisabledByCols = "Auto-sized while target columns is active",
+                terminalLivePreview = "Live preview",
+                aiAgentTitle = "AI Agent",
+                aiAgentHint = "Disabled by default. Enable manually to access Agent actions on hosts",
+                storageAndHistoryTitle = "Cache & History",
+                storageAndHistorySubtitle = { cacheSize, historyCount ->
+                    "$cacheSize cache · $historyCount history items"
+                },
+                storageCacheSection = "Cache",
+                storageCacheSizeLabel = "App cache & diagnostic logs",
+                storageCacheDesc = "Temporary files and local diagnostic logs",
+                storageCacheClear = "Clear cache",
+                storageCacheCleared = "Cache cleared",
+                storageHistorySection = "History",
+                storageQuickConnectHistory = "Quick Connect history",
+                storageQuickConnectCount = { n -> if (n == 0) "Empty" else "$n saved endpoints" },
+                storageSessionLogs = "Connection & session logs",
+                storageSessionLogsCount = { n -> if (n == 0) "Empty" else "$n recorded sessions" },
+                storageClearAllHistory = "Clear all history",
+                storageHistoryCleared = "History deleted",
+                storageWarnClearTitle = "Delete history?",
+                storageWarnClearQuickConnect = { n ->
+                    "Permanently delete $n Quick Connect history entries? Saved hosts will not be affected."
+                },
+                storageWarnClearLogs = { n ->
+                    "Permanently delete $n connection and session logs? This action cannot be undone."
+                },
+                storageWarnClearAll = { quickCount, logCount ->
+                    "Permanently delete $quickCount Quick Connect entries and $logCount session logs? This cannot be undone."
+                },
+                storageWarnConfirmDelete = "Delete",
+                storageEmpty = "Nothing to clear",
+            ),
         voice =
             VoiceStrings(
                 settingsVoice = "Voice input",
@@ -1878,12 +2031,15 @@ private val EnStrings =
                     "Delete \"$name\"? Hosts and subfolders inside will be moved up to the parent folder."
                 },
                 hostsFolderCount = { h, sub ->
-                    val hostPart = if (h == 1) "1 host" else "$h hosts"
-                    if (sub > 0) {
-                        val subPart = if (sub == 1) "1 folder" else "$sub folders"
-                        "$hostPart · $subPart"
-                    } else {
-                        hostPart
+                    when {
+                        h == 0 && sub == 0 -> "Empty"
+                        sub == 0 -> if (h == 1) "1 host" else "$h hosts"
+                        h == 0 -> if (sub == 1) "1 folder" else "$sub folders"
+                        else -> {
+                            val hostPart = if (h == 1) "1 host" else "$h hosts"
+                            val subPart = if (sub == 1) "1 folder" else "$sub folders"
+                            "$hostPart · $subPart"
+                        }
                     }
                 },
                 hostsFolderEmpty = "This folder is empty",
@@ -1891,6 +2047,79 @@ private val EnStrings =
                 hostsSuggestedTags = "Existing tags",
                 hostsNewHost = "New Host",
                 editFolder = "Folder",
+                hostOrg =
+                    HostOrgStrings(
+                        folderDeleteNonEmptyConfirm = { name, h, sub ->
+                            "\"$name\" contains $h host(s) and $sub subfolder(s). Choose whether to move contents to the parent folder or delete everything."
+                        },
+                        folderDeleteMoveContents = "Move contents up & delete",
+                        folderDeleteEverything = "Delete folder & all contents",
+                        allHostsSection = "All Hosts",
+                        filterAction = "Filter",
+                        filterTitle = "Filter & Sort Hosts",
+                        filterTagsLabel = "Tags (match all)",
+                        filterProtocolLabel = "Protocol",
+                        filterProviderLabel = "Cloud Provider",
+                        filterPinnedOnly = "Pinned hosts only",
+                        filterSortLabel = "Sort by",
+                        sortByName = "Name",
+                        sortRecentlyUsed = "Recently used",
+                        filterClearAll = "Clear all",
+                        filterApply = "Apply",
+                        resultsCount = { n -> if (n == 1) "1 result" else "$n results" },
+                        noFilterResults = "No hosts match your search or filters",
+                        detailsAction = "Details",
+                        pinAction = "Pin host",
+                        unpinAction = "Unpin host",
+                        duplicateAction = "Duplicate",
+                        copyAddressAction = "Copy address",
+                        copySshCommandAction = "Copy SSH command",
+                        copiedAddressMessage = "Address copied",
+                        copiedSshCommandMessage = "SSH command copied",
+                        deleteConfirmTitle = "Delete host?",
+                        deleteSingleConfirm = { name -> "Delete \"$name\" and its stored host credentials?" },
+                        deleteSelectedConfirm = { count ->
+                            "Delete $count selected hosts and their stored host credentials?"
+                        },
+                        duplicateSaveTitle = "Similar host exists",
+                        duplicateSaveMessage = { endpoint ->
+                            "A host for $endpoint already exists. Save this host anyway?"
+                        },
+                        saveAnyway = "Save anyway",
+                        manageTagsAction = "Manage tags",
+                        tagsTitle = "Manage Tags",
+                        tagNew = "New tag",
+                        tagRename = "Rename tag",
+                        tagDelete = "Delete tag",
+                        tagDeleteConfirm = { name -> "Delete tag \"#$name\"? Hosts will keep their configuration." },
+                        tagNameLabel = "Tag name",
+                        tagColorLabel = "Color (optional)",
+                        tagColorDefault = "Default",
+                        tagsEmpty = "No tags yet. Create one below.",
+                        assignTagsTitle = "Assign tags",
+                        bulkTagsAdd = "Add tags",
+                        bulkTagsRemove = "Remove tags",
+                        cloudProviderLabel = "Cloud provider",
+                        providerNotSpecified = "Not specified",
+                        providerOther = "Other",
+                        pinToggleLabel = "Pin host to top",
+                        inventorySectionTitle = "Server Specifications",
+                        inventoryAutoDetectLabel = "Auto-detect specs on connect",
+                        inventoryAutoDetectHint =
+                            "Runs read-only CPU, RAM, disk, and arch commands over SSH (no root or agent)",
+                        inventoryCpuLabel = "vCPU",
+                        inventoryRamLabel = "Memory",
+                        inventoryDiskLabel = "Disk",
+                        inventoryArchLabel = "Architecture",
+                        inventoryLastDetectedLabel = "Last detected",
+                        inventoryNotDetected = "Not detected",
+                        inventoryRefreshAction = "Refresh specs",
+                        inventoryRefreshing = "Detecting…",
+                        inventoryRefreshFailed = { msg -> "Spec detection failed: $msg" },
+                        detailsTitle = "Host details",
+                        osLabel = "Operating system",
+                        folderLabel = "Folder",
+                    ),
             ),
     )
 
@@ -2140,10 +2369,56 @@ private val ZhStrings =
         hostsSectionTitle = "我的主机",
         connSectionTitle = "会话",
         sftpSectionTitle = "选择主机",
-        settingsGroupAbout = "关于",
-        settingsVersion = "版本",
-        settingsWebsite = "官网",
-        settingsContact = "联系",
+        settingsExtra =
+            SettingsExtraStrings(
+                groupAbout = "关于",
+                version = "版本",
+                website = "官网",
+                contact = "联系",
+                groupSecurity = "安全与隐私",
+                groupStorage = "存储与诊断",
+                screenProtectionTitle = "防截屏与录屏保护",
+                screenProtectionFull = "全部屏蔽",
+                screenProtectionFullDesc = "在应用所有页面禁止截屏、录屏及后台预览缩略图",
+                screenProtectionPartial = "仅敏感页面",
+                screenProtectionPartialDesc = "仅在查看或编辑凭据、密码和私钥时禁止截屏与录屏",
+                screenProtectionOff = "关闭",
+                screenProtectionOffDesc = "允许在应用内正常截屏和录屏",
+                cursorBlinkTitle = "光标闪烁",
+                cursorBlinkHint = "终端会话活跃时启用光标闪烁动画",
+                fontSizeDisabledByCols = "已启用按列数自动缩放字体",
+                terminalLivePreview = "实时预览",
+                aiAgentTitle = "AI Agent",
+                aiAgentHint = "默认关闭；手动开启后可在主机与会话中使用 Agent 功能",
+                storageAndHistoryTitle = "缓存与历史记录",
+                storageAndHistorySubtitle = { cacheSize, historyCount ->
+                    "$cacheSize 缓存 · $historyCount 条历史记录"
+                },
+                storageCacheSection = "缓存",
+                storageCacheSizeLabel = "应用缓存与诊断日志",
+                storageCacheDesc = "临时缓存文件与本地诊断日志",
+                storageCacheClear = "清理缓存",
+                storageCacheCleared = "缓存已清理",
+                storageHistorySection = "历史记录",
+                storageQuickConnectHistory = "快速连接历史",
+                storageQuickConnectCount = { n -> if (n == 0) "暂无记录" else "$n 条历史记录" },
+                storageSessionLogs = "连接与会话日志",
+                storageSessionLogsCount = { n -> if (n == 0) "暂无记录" else "$n 条会话记录" },
+                storageClearAllHistory = "清空全部历史记录",
+                storageHistoryCleared = "历史记录已删除",
+                storageWarnClearTitle = "确认删除历史记录？",
+                storageWarnClearQuickConnect = { n ->
+                    "确定永久删除 $n 条快速连接历史记录吗？已保存的主机配置不受影响。"
+                },
+                storageWarnClearLogs = { n ->
+                    "确定永久删除 $n 条连接与会话日志吗？此操作无法撤销。"
+                },
+                storageWarnClearAll = { quickCount, logCount ->
+                    "确定永久删除 $quickCount 条快速连接记录和 $logCount 条会话日志吗？此操作无法撤销。"
+                },
+                storageWarnConfirmDelete = "确认删除",
+                storageEmpty = "暂无可清理内容",
+            ),
         voice =
             VoiceStrings(
                 settingsVoice = "语音输入",
@@ -2762,12 +3037,85 @@ private val ZhStrings =
                     "删除“$name”？其中的主机和子文件夹将移回上级目录。"
                 },
                 hostsFolderCount = { h, sub ->
-                    if (sub > 0) "$h 台主机 · $sub 个文件夹" else "$h 台主机"
+                    when {
+                        h == 0 && sub == 0 -> "空"
+                        sub == 0 -> "$h 台主机"
+                        h == 0 -> "$sub 个文件夹"
+                        else -> "$h 台主机 · $sub 个文件夹"
+                    }
                 },
                 hostsFolderEmpty = "此文件夹为空",
                 hostsTagsAll = "全部",
                 hostsSuggestedTags = "已有标签",
                 hostsNewHost = "新建主机",
                 editFolder = "所属文件夹",
+                hostOrg =
+                    HostOrgStrings(
+                        folderDeleteNonEmptyConfirm = { name, h, sub ->
+                            "“$name”包含 $h 台主机和 $sub 个子文件夹。请选择将内容移回上级目录，或全部删除。"
+                        },
+                        folderDeleteMoveContents = "移动内容并删除",
+                        folderDeleteEverything = "删除文件夹及全部内容",
+                        allHostsSection = "全部主机",
+                        filterAction = "筛选",
+                        filterTitle = "筛选与排序主机",
+                        filterTagsLabel = "标签（需全部匹配）",
+                        filterProtocolLabel = "协议",
+                        filterProviderLabel = "云服务商",
+                        filterPinnedOnly = "仅置顶主机",
+                        filterSortLabel = "排序方式",
+                        sortByName = "名称",
+                        sortRecentlyUsed = "最近使用",
+                        filterClearAll = "重置全部",
+                        filterApply = "应用",
+                        resultsCount = { n -> "$n 个结果" },
+                        noFilterResults = "没有符合搜索或筛选条件的主机",
+                        detailsAction = "详情",
+                        pinAction = "置顶主机",
+                        unpinAction = "取消置顶",
+                        duplicateAction = "复制主机",
+                        copyAddressAction = "复制地址",
+                        copySshCommandAction = "复制 SSH 命令",
+                        copiedAddressMessage = "已复制地址",
+                        copiedSshCommandMessage = "已复制 SSH 命令",
+                        deleteConfirmTitle = "删除主机？",
+                        deleteSingleConfirm = { name -> "确定删除“$name”及其保存的主机凭据吗？" },
+                        deleteSelectedConfirm = { count -> "确定删除已选的 $count 台主机及其保存的凭据吗？" },
+                        duplicateSaveTitle = "存在相似主机",
+                        duplicateSaveMessage = { endpoint -> "已存在连接 $endpoint 的主机，仍要保存吗？" },
+                        saveAnyway = "仍然保存",
+                        manageTagsAction = "管理标签",
+                        tagsTitle = "标签管理",
+                        tagNew = "新建标签",
+                        tagRename = "重命名标签",
+                        tagDelete = "删除标签",
+                        tagDeleteConfirm = { name -> "确定删除标签“#$name”？不会删除主机本身。" },
+                        tagNameLabel = "标签名称",
+                        tagColorLabel = "颜色（可选）",
+                        tagColorDefault = "默认",
+                        tagsEmpty = "暂无标签，可在下方创建。",
+                        assignTagsTitle = "分配标签",
+                        bulkTagsAdd = "添加标签",
+                        bulkTagsRemove = "移除标签",
+                        cloudProviderLabel = "云服务商",
+                        providerNotSpecified = "未指定",
+                        providerOther = "其他",
+                        pinToggleLabel = "置顶到列表顶部",
+                        inventorySectionTitle = "服务器规格",
+                        inventoryAutoDetectLabel = "连接后自动检测规格",
+                        inventoryAutoDetectHint = "通过 SSH 只读检测 CPU、内存、磁盘和架构（无需 root 或代理）",
+                        inventoryCpuLabel = "vCPU",
+                        inventoryRamLabel = "内存",
+                        inventoryDiskLabel = "磁盘",
+                        inventoryArchLabel = "架构",
+                        inventoryLastDetectedLabel = "最近检测",
+                        inventoryNotDetected = "未检测",
+                        inventoryRefreshAction = "刷新规格",
+                        inventoryRefreshing = "检测中…",
+                        inventoryRefreshFailed = { msg -> "规格检测失败：$msg" },
+                        detailsTitle = "主机详情",
+                        osLabel = "操作系统",
+                        folderLabel = "所属文件夹",
+                    ),
             ),
     )
